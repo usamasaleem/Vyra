@@ -28,7 +28,34 @@ Target operators:
 
 ---
 
-# 2. Customer Demand
+# 2. Dubai Rental Market Size
+
+## UAE and Dubai Market Overview
+
+| Metric | Estimate |
+|---|---:|
+| UAE car rental market (2025 estimate) | USD 610M |
+| UAE rental market forecast (2031) | USD 1.33B |
+| Market growth | ~13.9% CAGR |
+| Dubai rental companies | ~3,494 |
+| Dubai rental vehicles | ~71,040 |
+
+## Luxury and Exotic Segment Estimate
+
+Public data for exotic rental operators is limited. Working estimates:
+
+| Segment | Estimated Count |
+|---|---:|
+| Luxury-focused operators | 300–500 |
+| Exotic/supercar operators | 100–200 |
+| Serious fleets (20+ vehicles) | 50–100 |
+| Initial Vyra target accounts | 50–150 |
+
+These are market estimates requiring validation.
+
+---
+
+# 3. Customer Demand
 
 ## Customer Enquiry Patterns
 
@@ -49,7 +76,132 @@ Customer expectations:
 
 ---
 
-# 3. Business Problems in the Market
+# 4. Luxury Vehicle Rental Pricing
+
+## Daily Rental Categories (AED)
+
+| Category | Examples | Daily Price |
+|---|---|---:|
+| Premium Executive | Mercedes S-Class, BMW 7 Series, Range Rover | 700–1,800 |
+| Entry Exotic | Porsche 911, Audi R8 | 1,400–2,500 |
+| Supercar | Lamborghini Huracan, Ferrari Roma | 2,500–4,000 |
+| High Exotic | Ferrari F8, McLaren, Ferrari 812 | 3,500–6,000 |
+| Hypercar | SF90, Aventador SVJ, Revuelto | 6,000–15,000+ |
+
+---
+
+# 5. Rental Revenue Economics
+
+Example calculations:
+
+## Lamborghini Huracan
+
+Assumption:
+- AED 3,000/day
+- 15 rental days/month
+
+Estimated revenue:
+
+AED 45,000/month
+AED 540,000/year
+
+## Ferrari SF90
+
+Assumption:
+- AED 5,000/day
+- 15 rental days/month
+
+Estimated revenue:
+
+AED 75,000/month
+AED 900,000/year
+
+---
+
+# 6. Sales Team Salary Market
+
+## Dubai Rental Sales Roles
+
+| Role | Monthly Salary |
+|---|---:|
+| Junior rental salesperson | AED 3,000–4,000 |
+| Standard rental salesperson | AED 4,000–6,000 |
+| Luxury rental salesperson | AED 5,000–10,000 |
+| Senior closer | AED 10,000–15,000+ |
+
+## Example Team Costs
+
+Small team:
+
+2 salespeople × AED 5,000/month = AED 10,000/month
+
+Annual salary cost:
+
+AED 120,000
+
+Medium team:
+
+5 salespeople × AED 6,000/month = AED 30,000/month
+
+Annual salary cost:
+
+AED 360,000
+
+---
+
+# 7. Lead and Revenue Impact Opportunity
+
+Example operator:
+
+| Metric | Estimate |
+|---|---:|
+| Daily enquiries | 50 |
+| Monthly enquiries | 1,500 |
+| Sales team | 5 people |
+| Monthly salary cost | AED 30,000 |
+
+Potential lost booking value:
+
+Average booking example:
+- AED 3,000/day vehicle
+- 3-day rental
+- AED 9,000 booking value
+
+10 missed bookings/month:
+
+AED 90,000 potential lost rental value/month
+
+---
+
+# 8. Vyra Pricing Opportunity
+
+Potential subscription range:
+
+| Customer Type | Monthly Price |
+|---|---:|
+| Small operator | AED 1,000–2,000 |
+| Growth operator | AED 3,000–5,000 |
+| Enterprise fleet | AED 8,000–15,000 |
+
+---
+
+# 9. Market Opportunity Estimate
+
+## Conservative Scenario
+
+100 target operators × AED 4,000/month
+
+= AED 4.8M ARR
+
+## Growth Scenario
+
+500 operators × AED 5,000/month
+
+= AED 30M ARR
+
+---
+
+# 10. Business Problems in the Market
 
 Luxury rental operators may face:
 
@@ -61,63 +213,7 @@ Luxury rental operators may face:
 
 ---
 
-# 4. Market Opportunity
-
-Vyra's market opportunity is based on helping rental operators improve:
-
-- Enquiry handling
-- Customer qualification
-- Sales visibility
-- Follow-up consistency
-- Booking pipeline management
-
-The value proposition is operational improvement rather than guaranteed revenue growth.
-
----
-
-# 5. Target Customer Profile
-
-## Ideal Early Customers
-
-Characteristics:
-- Dubai-based luxury/exotic rental operators
-- Small to medium sales teams
-- Multiple daily WhatsApp enquiries
-- Valuable vehicle inventory
-- Need better enquiry organization
-
-Initial hypothesis:
-- Operators with approximately 20–150 vehicles may be suitable prospects.
-
-This vehicle range is a prospecting assumption and requires validation.
-
----
-
-# 6. Competitive Landscape Research Areas
-
-Future research should cover:
-
-## Existing Solutions
-
-- WhatsApp automation tools
-- CRM systems for rental companies
-- Rental management software
-- AI customer support platforms
-- Shared sales inbox solutions
-
-## Comparison Areas
-
-Evaluate:
-- Pricing
-- Ease of adoption
-- WhatsApp integration
-- Lead management features
-- AI capabilities
-- Rental-specific workflows
-
----
-
-# 7. Market Validation Questions
+# 11. Market Validation Questions
 
 Key questions:
 
@@ -131,9 +227,7 @@ Key questions:
 
 ---
 
-# 8. Business Metrics to Validate
-
-Important market metrics:
+# 12. Important Metrics To Track
 
 - Number of incoming enquiries
 - First response time
@@ -144,10 +238,11 @@ Important market metrics:
 - Average rental value
 - Repeat customer rate
 - Sales team workload
+- Revenue per vehicle
 
 ---
 
-# 9. Commercial Validation
+# 13. Commercial Validation
 
 Unvalidated areas:
 
@@ -158,16 +253,3 @@ Unvalidated areas:
 - Cost savings
 
 Validation should focus on measurable operator outcomes rather than assumptions.
-
----
-
-# 10. Research Sources To Collect
-
-Future market research should include:
-
-- Interviews with Dubai rental operators
-- Competitor pricing analysis
-- Customer enquiry analysis
-- Rental marketplace research
-- Industry reports
-- Sales funnel benchmarks
