@@ -46,3 +46,8 @@ Future areas:
 - PROJECT-CONTEXT.md: why Vyra exists
 - WHATSAPP-AGENT-BRIEF.md: product requirements
 - CURRENT-STATE.md: verified implementation status
+
+## Repository
+
+Primary GitHub repository:
+https://github.com/usamasaleem/Vyra
