@@ -2,7 +2,7 @@
 
 ## A faster way for luxury car-rental businesses to turn WhatsApp enquiries into bookings
 
-Vyra is a WhatsApp sales assistant for Dubai luxury and exotic car-rental companies. It responds quickly, understands what customers want, answers routine questions, recommends suitable vehicles, and sends complete qualified opportunities to the sales team.
+Vyra is a WhatsApp sales assistant for Dubai luxury and exotic car-rental companies. It responds quickly, understands what customers want, explains Operations-approved options, and sends complete qualified opportunities to the sales team.
 
 It gives every enquiry a fast first response while keeping pricing exceptions, eligibility decisions, payment verification, and final booking confirmation in human hands.
 
@@ -45,7 +45,7 @@ Customers can say “something sporty for my birthday,” “tomorrow until Mond
 
 Vyra gradually gathers the vehicle or category, dates, duration, location, budget, resident or visitor status, driver details, number of drivers, special requirements, and urgency.
 
-### Recommends suitable vehicles
+### Recommends Operations-approved vehicles
 
 It presents a small selection based on the customer's request and explains the relevant terms:
 
@@ -71,7 +71,7 @@ When a customer is ready, uncertain, complex, or asks for a human, Vyra passes t
 
 The customer does not need to start again.
 
-### Keeps the team organised
+### Keeps the sales team organised
 
 The team can see new enquiries, conversations being qualified, options sent, quotes awaiting approval, handoffs, follow-ups, confirmed bookings, and lost opportunities.
 
@@ -85,7 +85,7 @@ Every active conversation has a clear owner and next action.
 4. **Decide:** Vyra explains the quote, deposit, delivery, and requirements, clearly labeling estimates.
 5. **Connect:** A salesperson receives the full context when approval, negotiation, or human judgment is needed.
 6. **Confirm:** The operator verifies availability, payment, eligibility, and final terms before confirming.
-7. **Continue:** Vyra can support reminders, handover instructions, extensions, and post-rental follow-up through approved workflows.
+7. **Continue:** Vyra can pass approved operational updates to customers through Sales; fleet, delivery, handover, extensions, and post-rental execution belong to Operations.
 
 ## Key use cases
 
@@ -133,7 +133,7 @@ Quick, clear, consistent communication supports the service level expected for h
 
 ### Managers can see the funnel
 
-Operators can measure response time, qualification, quotes, handoffs, conversion, and lost-enquiry reasons.
+Operators can measure sales response time, qualification, quotes, handoffs, conversion, and lost-enquiry reasons. Fleet, delivery, maintenance, booking, payment, and operational reports belong to the Operations Agent.
 
 ### Humans keep control
 
@@ -176,7 +176,7 @@ For a busy rental team:
 For an established fleet:
 
 - Everything in Growth
-- Connected inventory and booking workflows
+- Operations-connected availability and booking handoffs
 - Multi-team routing
 - Advanced approvals
 - Corporate and event enquiries
@@ -246,3 +246,4 @@ A customer should not have to chase a rental company for a basic answer, repeat 
 - [Current product state](https://github.com/usamasaleem/Vyra/blob/main/docs/CURRENT-STATE.md)
 
 Market sizes, operator counts, pricing ranges, salary ranges, and revenue examples are working estimates. Validate them through interviews, pilot data, and operator financials before using them in investor or sales material.
+\n\n## Sales and Operations boundary\n\nThe Sales Agent owns customer conversations, qualification, recommendations using approved data, quotes as sales conversations, handoffs, and follow-up. The Operations Agent owns fleet, inventory, availability, pricing inputs, bookings, documents, payments, delivery, active-rental support, and operational reporting. Sales asks Operations for facts and communicates the returned status; it does not edit or override operational records.\n\nSee [Operations Agent](../Operations%20Agent/operations%20agent.md).\n
