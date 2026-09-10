@@ -1,248 +1,628 @@
 # Vyra Chat Sales Agent
 
-## A faster way for luxury car-rental businesses to turn WhatsApp enquiries into bookings
+## 1. Product definition
 
-Vyra is a WhatsApp sales assistant for Dubai luxury and exotic car-rental companies. It responds quickly, understands what customers want, answers routine questions, recommends suitable vehicles, and sends complete qualified opportunities to the sales team.
+The Vyra Chat Sales Agent is a WhatsApp-based AI sales assistant for Dubai luxury and exotic car-rental operators. It handles the first part of the customer journey: understanding an enquiry, collecting the facts needed to evaluate it, answering verified questions, presenting suitable options, and creating a controlled handoff to a salesperson.
 
-It gives every enquiry a fast first response while keeping pricing exceptions, eligibility decisions, payment verification, and final booking confirmation in human hands.
+The agent is a sales coordinator, not the final commercial authority. It may explain approved prices, deposits, requirements, delivery rules, and vehicle availability when those facts come from trusted sources. It must not invent facts, approve exceptions, verify payments, or confirm a booking unless the configured business workflow explicitly authorizes that action.
 
-**Customer enquiry → helpful conversation → qualified opportunity → salesperson follow-up → confirmed booking**
+The intended journey is:
 
-## The problem Vyra solves
+`Customer enquiry → AI qualification → verified options/quote → human sales handoff → confirmed booking`
 
-A customer may begin with “How much for a Lamborghini this weekend?” The operator still needs to check dates, model, availability, price, deposit, delivery, kilometres, insurance, and driver requirements before giving a reliable answer.
+This reflects Vyra's product context and WhatsApp brief:
 
-When the team is busy, enquiries wait, follow-ups are forgotten, and customers contact another rental company. Salespeople spend time answering repeated questions instead of closing serious opportunities.
-
-Vyra gives the customer an immediate, useful response and gives the salesperson a clear, qualified opportunity.
-
-## Who it is for
-
-Vyra is designed for:
-
-- Luxury car-rental companies
-- Exotic and supercar fleets
-- Premium chauffeur and vehicle-experience providers
-- Operators receiving many enquiries through WhatsApp
-- Sales teams that need shared visibility and clear ownership
-- Growing businesses that want faster responses without adding another full shift
-
-The first market is Dubai, where customers compare providers and care about availability, price, deposit, insurance, delivery, and requirements. Vyra's market research estimates approximately 3,494 rental companies and 71,040 rental vehicles in Dubai. The luxury and exotic segment estimates are directional and should be validated through operator interviews.
-
-## What the agent does
-
-### Responds immediately
-
-Vyra welcomes the customer and begins helping while the sales team is busy, asleep, or handling another conversation.
-
-> “I can help you find the right car. What dates do you need it for, and would you prefer delivery or collection?”
-
-### Understands natural language
-
-Customers can say “something sporty for my birthday,” “tomorrow until Monday,” “near Marina,” or “under AED 2,000 a day.” They do not need to know the exact model or complete a long form.
-
-### Collects the details salespeople need
-
-Vyra gradually gathers the vehicle or category, dates, duration, location, budget, resident or visitor status, driver details, number of drivers, special requirements, and urgency.
-
-### Recommends suitable vehicles
-
-It presents a small selection based on the customer's request and explains the relevant terms:
-
-- Vehicle and model
-- Availability status
-- Price basis
-- Deposit
-- Included kilometres
-- Delivery or collection
-- Insurance and other important conditions
-
-If the first choice is unavailable, it offers alternatives. It never implies that a vehicle is reserved without confirmation.
-
-### Explains the rental clearly
-
-Customers can ask about pricing, deposits, insurance, kilometres, fuel, Salik, fines, delivery, collection, airport or hotel handover, extensions, cancellations, age, and licence requirements.
-
-Vyra uses the operator's approved information. If something cannot be verified, it says so and creates the next step.
-
-### Hands over at the right moment
-
-When a customer is ready, uncertain, complex, or asks for a human, Vyra passes the conversation to the sales team with the customer details, request, options, unanswered questions, urgency, and recommended next action.
-
-The customer does not need to start again.
-
-### Keeps the team organised
-
-The team can see new enquiries, conversations being qualified, options sent, quotes awaiting approval, handoffs, follow-ups, confirmed bookings, and lost opportunities.
-
-Every active conversation has a clear owner and next action.
-
-## The customer journey
-
-1. **Start:** The customer messages from a website, social profile, advertisement, referral, or saved contact.
-2. **Discover:** Vyra asks for the smallest useful details and confirms dates, times, and location.
-3. **Explore:** The customer sees suitable vehicles and can ask follow-up questions.
-4. **Decide:** Vyra explains the quote, deposit, delivery, and requirements, clearly labeling estimates.
-5. **Connect:** A salesperson receives the full context when approval, negotiation, or human judgment is needed.
-6. **Confirm:** The operator verifies availability, payment, eligibility, and final terms before confirming.
-7. **Continue:** Vyra can support reminders, handover instructions, extensions, and post-rental follow-up through approved workflows.
-
-## Key use cases
-
-- New customer asks for a Lamborghini, Ferrari, Porsche, Range Rover, or another luxury vehicle.
-- Requested vehicle is unavailable and the customer needs alternatives.
-- Customer asks for a total price or wants to compare cars.
-- Customer requests a discount or special terms.
-- Tourist asks about documents and eligibility.
-- Customer needs same-day delivery to a hotel, residence, office, or airport.
-- Existing renter wants an extension or vehicle change.
-- Customer asks to speak to a person.
-- Customer raises a deposit, payment, damage, fine, refund, or cancellation issue.
-- Corporate, event, long-term, or multi-vehicle enquiry needs a specialist salesperson.
-
-## What remains with the operator
-
-Vyra supports the sales team; it does not remove commercial accountability. The operator controls:
-
-- Discount and eligibility exceptions
-- Payment and deposit verification
-- Final availability confirmation
-- Final booking confirmation
-- Refunds, disputes, and cancellation decisions
-- Safety, legal, fraud, and sensitive customer cases
-
-Vyra never invents availability, hides fees, claims a payment was received, or turns a draft quote into a confirmed booking.
-
-## Why operators buy it
-
-### More enquiries receive a fast response
-
-Customers are less likely to disappear while waiting for an answer.
-
-### Salespeople spend more time closing
-
-The team focuses on serious conversations, approvals, negotiation, and bookings.
-
-### Fewer opportunities are lost
-
-Every enquiry has a stage, owner, and next action instead of living in one person's phone or memory.
-
-### The experience feels premium
-
-Quick, clear, consistent communication supports the service level expected for high-value vehicles.
-
-### Managers can see the funnel
-
-Operators can measure response time, qualification, quotes, handoffs, conversion, and lost-enquiry reasons.
-
-### Humans keep control
-
-Automation provides speed and structure. People retain responsibility for decisions involving money, eligibility, trust, and final confirmation.
-
-## Commercial opportunity
-
-Vyra's market research suggests that luxury and exotic rentals can generate thousands of dirhams per vehicle per day. It also estimates that a five-person sales team may cost around AED 30,000 per month and that a small number of missed bookings can represent tens of thousands of dirhams in potential rental value.
-
-These are working estimates, not audited facts. The first pilot should measure the operator's real response times, enquiry volume, missed opportunities, average booking value, and conversion rate.
-
-## Suggested packages
-
-### Starter
-
-For a small operator:
-
-- WhatsApp enquiry assistant
-- Approved FAQs and rental information
-- Basic qualification
-- Human handoff
-- Shared lead view
-- Monthly performance summary
-
-### Growth
-
-For a busy rental team:
-
-- Everything in Starter
-- Vehicle recommendations
-- Availability and rate imports
-- Quote preparation
-- Ownership and follow-up management
-- Priority and response tracking
-- Sales funnel reporting
-- Multiple staff users
-
-### Premium
-
-For an established fleet:
-
-- Everything in Growth
-- Connected inventory and booking workflows
-- Multi-team routing
-- Advanced approvals
-- Corporate and event enquiries
-- Rental lifecycle support
-- Custom reporting
-- Dedicated onboarding and operating reviews
-
-The market research proposes directional subscription ranges of AED 1,000–2,000 for small operators, AED 3,000–5,000 for growth operators, and AED 8,000–15,000 for larger fleets. Validate pricing through paid pilots.
-
-## Rollout for a rental company
-
-### Week 1: Understand the business
-
-Map vehicles, prices, deposits, requirements, delivery areas, service hours, sales staff, and the current enquiry process.
-
-### Week 2: Prepare approved information
-
-Organise vehicle lists, FAQs, rate cards, and policies into information the assistant is allowed to use.
-
-### Week 3: Connect the team
-
-Connect WhatsApp, add staff, define owners and escalation rules, and agree on what requires human confirmation.
-
-### Weeks 4–6: Run a controlled pilot
-
-Vyra handles routine qualification and approved answers while the team supervises, corrects information, and measures response and conversion.
-
-Start with a limited group of vehicles and questions. Expand after the core conversations are reliable.
-
-## How success is measured
-
-Track:
-
-- First-response time
-- Time to a useful answer
-- Qualified enquiries
-- Handoff rate and human response time
-- Quote requests and quote-to-booking conversion
-- Lost-enquiry reasons
-- Customer complaints and opt-outs
-- Salesperson time saved
-- Booking value influenced by Vyra
-
-The important question is whether more serious customers receive the right answer, reach the right salesperson, and move closer to a confirmed booking.
-
-## Trust and service boundaries
-
-Vyra should clearly distinguish between an estimate, pending availability, a quote awaiting approval, and a confirmed booking.
-
-Rental terms vary by operator. Deposits, insurance, kilometres, delivery, driver age, documents, and post-rental charges must come from approved operator information. Public Dubai terms show why generic assumptions are unsafe: [Luxury Cars of Dubai](https://luxurycarsofdubai.com/terms/), [NCK](https://www.nckcarrental.com/services/luxury-car-rental-service/), and [Lux Motors](https://luxmotorsdxb.com/terms-and-conditions/).
-
-The customer journey should follow the operator's privacy notice and UAE requirements. See the [UAE data-protection guidance](https://u.ae/en/about-the-uae/digital-uae/data/data-protection-laws).
-
-## The promise
-
-Vyra helps a rental company answer faster, qualify better, and hand off more intelligently.
-
-It gives the sales team better timing, better context, and better visibility so they can close more of the enquiries already reaching the business.
-
-A customer should not have to chase a rental company for a basic answer, repeat the same details to several people, or guess whether a quote is real. Vyra gives them a quick, clear starting point and a smooth path to a human when the decision matters.
-
-## Source documents
-
-- [Vyra market research](https://github.com/usamasaleem/Vyra/blob/main/docs/Vyra-MARKET-RESEARCH.md)
-- [Vyra project context](https://github.com/usamasaleem/Vyra/blob/main/docs/PROJECT-CONTEXT.md)
+- [Project context](https://github.com/usamasaleem/Vyra/blob/main/docs/PROJECT-CONTEXT.md)
 - [WhatsApp agent brief](https://github.com/usamasaleem/Vyra/blob/main/docs/WHATSAPP-AGENT-BRIEF.md)
-- [Current product state](https://github.com/usamasaleem/Vyra/blob/main/docs/CURRENT-STATE.md)
+- [Current state](https://github.com/usamasaleem/Vyra/blob/main/docs/CURRENT-STATE.md)
 
-Market sizes, operator counts, pricing ranges, salary ranges, and revenue examples are working estimates. Validate them through interviews, pilot data, and operator financials before using them in investor or sales material.
+## 2. Outcomes
+
+### Customer outcomes
+
+- Receive a fast first response on WhatsApp.
+- Explain what they need in natural language instead of completing a long form.
+- See relevant vehicles and transparent, verified terms.
+- Know which details are still missing.
+- Understand when a human must review or confirm something.
+- Avoid repeating information after handoff.
+- Receive clear next steps and realistic response expectations.
+
+### Operator outcomes
+
+- Reduce repetitive questions handled manually.
+- Capture more complete enquiries.
+- Respond consistently across shifts and salespeople.
+- Prevent unsupported promises about availability, price, deposits, or delivery.
+- Route high-intent or sensitive conversations to the right person.
+- Preserve customer context and ownership.
+- Measure enquiry volume, response speed, conversion, and lost opportunities.
+
+### Business outcomes
+
+- Increase qualified enquiries reaching salespeople.
+- Improve speed-to-lead without surrendering commercial control.
+- Create an auditable record of what was asked, answered, quoted, and approved.
+- Build a reliable foundation for inventory, booking, and sales analytics integrations.
+
+## 3. Users and actors
+
+| Actor | Needs | Authority |
+|---|---|---|
+| Customer / renter | Vehicle, date, price, requirements, delivery, and booking guidance | Can provide or correct their own details |
+| AI sales agent | Qualify, answer, recommend, summarize, and route | Only uses approved data and configured actions |
+| Salesperson | Continue conversation, negotiate within policy, and close booking | Can approve commercial actions assigned to their role |
+| Sales manager | Monitor queue, reassign ownership, approve exceptions, review performance | Can override assignments and policies |
+| Operations / fleet staff | Maintain vehicles, status, delivery, and rental conditions | Authoritative source for operational facts |
+| System administrator | Configure businesses, users, policies, prompts, integrations, and retention | Full configuration authority |
+| External systems | WhatsApp, CRM, inventory, calendar, payments, identity/document tools | Provide machine-readable events or records |
+
+## 4. Core principles
+
+1. **Approved data determines facts.** The agent should answer from the operator's current knowledge and inventory sources.
+2. **Verification before commitment.** Availability, price, deposit, delivery timing, and eligibility must be checked at the appropriate point.
+3. **Human control over consequential decisions.** Discounts, exceptions, payment verification, and final booking confirmation remain human-controlled in the initial product.
+4. **Honest uncertainty.** If the agent cannot verify an answer, it says so and creates a next action.
+5. **One conversation, one owner.** The system must make it clear whether the AI or a salesperson is responsible for the next reply.
+6. **Context survives handoff.** The salesperson receives a concise, structured summary and the original conversation.
+7. **Minimum necessary data.** Collect only what is needed for qualification, fulfillment, compliance, or support.
+8. **Every important action is traceable.** Record source, timestamp, actor, decision, and status for material claims and state changes.
+
+## 5. Feature map
+
+### A. WhatsApp conversation layer
+
+- Receive inbound WhatsApp text messages and webhook events.
+- Send replies, option lists, structured questions, confirmations, and human-handoff notices.
+- Support free-form language, common spelling errors, and incomplete answers.
+- Detect language and respond in the configured language; initial launch can prioritize English with Arabic support planned.
+- Recognize returning customers and resume an open enquiry when identity can be matched safely.
+- Handle out-of-hours messages with an honest service-hours response and a queued follow-up.
+- Protect against duplicate webhook events and repeated outbound messages.
+- Track delivery, failure, read, and response events where available.
+- Use approved WhatsApp templates for business-initiated follow-ups, subject to the channel's current rules and account configuration.
+
+### B. Intent and qualification
+
+The agent should identify the customer's primary intent:
+
+- Rent a specific vehicle.
+- Find a vehicle by category, make, budget, or experience.
+- Compare several options.
+- Ask for a price or quote.
+- Ask about availability.
+- Ask about deposit, insurance, kilometres, fuel, Salik, fines, or damage.
+- Ask about delivery or collection.
+- Ask about driver and document requirements.
+- Modify, extend, or cancel an existing rental.
+- Report an issue or request support.
+- Speak to a human.
+- Send a complaint or dispute.
+- Ask an unrelated or unsafe question.
+
+For a new rental enquiry, capture:
+
+- Desired vehicle or category.
+- Start date/time and end date/time.
+- Rental duration.
+- Delivery or collection location.
+- Customer status: UAE resident, visitor, or unknown.
+- Driver age and licence/document status when relevant.
+- Number of drivers.
+- Budget or price sensitivity, if volunteered or useful.
+- Intended use when policy requires it.
+- Contact identity and preferred follow-up channel.
+- Special requirements such as child seat, airport delivery, chauffeur, event use, or cross-emirate travel.
+
+The agent should ask one or two high-value questions at a time, acknowledge already supplied information, and avoid making the customer repeat themselves.
+
+### C. Vehicle discovery and recommendation
+
+The recommendation layer can:
+
+- Search trusted inventory by dates, vehicle, category, price band, seats, transmission, location, and delivery capability.
+- Explain why an option matches the request.
+- Present a small set of suitable options rather than an unfiltered catalogue.
+- Offer alternatives when the requested vehicle is unavailable.
+- Distinguish between “available now,” “needs operator confirmation,” “unavailable,” and “unknown.”
+- Show the last verified time for availability when useful.
+- Explain included kilometres, extra-kilometre charges, deposit, insurance, delivery, fuel, Salik, and fines from the vehicle or operator policy.
+- Never imply that a displayed option is reserved.
+
+### D. Pricing and quote support
+
+Pricing must be explicit about what is known and what is conditional. The agent can:
+
+- Calculate a draft total from approved rate cards and rental dates.
+- Separate rental price from deposit, VAT, delivery, extras, and potential post-rental charges.
+- Show daily, weekly, monthly, or event packages when configured.
+- Explain included kilometres and extra-kilometre rates.
+- State whether the quote is an estimate, a pending quote, or an approved quote.
+- Record quote version, source, timestamp, currency, and expiry.
+- Ask a salesperson to approve discounts or non-standard terms.
+- Send a quote summary for human approval before it becomes a commercial commitment.
+
+The agent must not conceal fees, change a price because the customer is uncertain, or claim that a payment or deposit has been received without a trusted payment event.
+
+### E. Requirements and eligibility guidance
+
+The agent can explain operator-configured requirements such as age, driving licence, passport, visa or entry documentation, Emirates ID, international driving permit, authorized-driver rules, and payment instrument requirements.
+
+Requirements may vary by customer nationality, residency, vehicle category, age, rental duration, and operator policy. The agent should ask for the minimum information needed and escalate uncertain cases rather than making a legal determination.
+
+For example, a high-performance or exotic vehicle may have a higher minimum age or stricter deposit policy than a standard luxury vehicle. The salesperson or operator system must make the final eligibility decision.
+
+### F. Delivery, collection, and rental logistics
+
+Support questions about:
+
+- Delivery to hotels, residences, offices, airports, and other permitted locations.
+- Collection location and time windows.
+- Delivery fees or free-delivery zones.
+- Traffic, weather, road closure, or availability-related delays.
+- Handover requirements and inspection.
+- Fuel and mileage expectations.
+- Cross-emirate delivery or travel.
+- Extension requests and late returns.
+- Roadside assistance and emergency escalation.
+
+The agent should create a logistics task when a location, time, or service requirement needs operational confirmation.
+
+### G. Human handoff and shared ownership
+
+Handoff is a first-class product capability. A handoff should include:
+
+- Customer identity and WhatsApp number.
+- Conversation link and full transcript.
+- Intent and qualification stage.
+- Requested dates, vehicle, location, and budget.
+- Facts already verified.
+- Open questions and unresolved risks.
+- Quote or options already shown.
+- Customer sentiment and urgency.
+- Recommended next action.
+- Reason for handoff.
+- Assigned salesperson, queue, priority, and SLA.
+
+Typical handoff triggers:
+
+- Customer explicitly asks for a person.
+- Final availability or booking confirmation is required.
+- Discount or exception is requested.
+- Payment, deposit, refund, dispute, or identity verification is involved.
+- The customer is angry, confused, vulnerable, or reports a safety issue.
+- The agent cannot verify a material fact.
+- The customer has a complex multi-vehicle, long-term, corporate, event, or cross-emirate request.
+- The conversation enters an unsupported intent.
+
+After handoff, the AI should pause or operate in a clearly configured assistive mode. It must not compete with the assigned salesperson. Ownership changes must be visible and auditable.
+
+### H. Follow-up and pipeline management
+
+The agent can create structured stages:
+
+`New → Qualifying → Options sent → Quote requested → Quote sent → Awaiting customer → Human review → Booking pending → Confirmed → Rental active → Completed / Lost`
+
+Follow-up features:
+
+- Remind the salesperson about unanswered or ageing enquiries.
+- Send approved follow-ups when the customer has consented and the channel rules allow it.
+- Stop automated follow-up after opt-out, complaint, handoff, or booking completion.
+- Record why an enquiry was lost: unavailable vehicle, price, eligibility, no response, timing, competitor, or unknown.
+- Reopen an enquiry when the customer replies.
+
+### I. Operator console and administration
+
+The sales team needs:
+
+- Shared inbox with filters by stage, owner, priority, SLA, and vehicle.
+- Conversation search.
+- Manual assignment and reassignment.
+- AI pause/resume controls.
+- Internal notes separate from customer-visible messages.
+- Approved knowledge and policy management.
+- Inventory and rate-card management or integration.
+- User roles and permissions.
+- Audit log.
+- Reporting dashboard.
+- Test/simulation mode before publishing changes.
+
+## 6. End-to-end use cases
+
+### Use case 1: New customer asks for a Lamborghini
+
+1. Customer sends “I need a Lamborghini from Friday to Sunday.”
+2. Agent confirms dates and asks for delivery/collection location.
+3. Agent asks whether the customer has a specific model or budget.
+4. Inventory service returns matching vehicles and status.
+5. Agent presents two or three verified options with clear terms.
+6. Customer selects one and asks for the total.
+7. Agent prepares a draft quote or requests human approval.
+8. Salesperson receives the summary and confirms availability.
+9. Customer receives a human-approved quote and next steps.
+
+### Use case 2: Requested vehicle is unavailable
+
+The agent states that it cannot confirm the requested vehicle for the dates, offers verified alternatives, and asks whether the customer is flexible on model, dates, or budget. It creates a follow-up task if the operator should check partner inventory.
+
+### Use case 3: Discount request
+
+The agent acknowledges the request, collects the commercial context, and routes it to an authorized salesperson. It must not promise that the discount will be accepted.
+
+### Use case 4: Tourist with document questions
+
+The agent explains the operator's configured document checklist, marks eligibility as pending if any factor is uncertain, and routes the case to a salesperson or compliance workflow. It should not provide a definitive legal opinion.
+
+### Use case 5: Same-day delivery
+
+The agent collects vehicle, location, timing, and customer readiness. It checks current inventory and creates an urgent logistics or sales task. It says “pending confirmation” until an authorized person or system confirms delivery.
+
+### Use case 6: Existing renter wants an extension
+
+The agent identifies the rental, captures the requested extension, checks whether the vehicle remains available, and routes pricing and approval to the assigned salesperson or operations team.
+
+### Use case 7: Payment or deposit dispute
+
+The agent acknowledges the issue, avoids arguing or assigning blame, captures the rental and transaction reference, pauses sales automation, and escalates to a human with high priority.
+
+### Use case 8: Customer asks for a human
+
+The agent immediately explains that it will connect them, captures the reason if possible, assigns or queues the conversation, and tells the customer what to expect next.
+
+### Use case 9: Customer stops responding
+
+The system marks the enquiry as awaiting customer, schedules only approved follow-ups, and closes or archives it according to operator policy. A late reply must reopen the conversation with its prior context.
+
+### Use case 10: Returning customer
+
+When identity is matched safely, the agent can reference an open enquiry or prior preference, but it should confirm critical details rather than relying on stale memory.
+
+## 7. Conversation state and data model
+
+A conversation record should include:
+
+- Conversation ID, business ID, WhatsApp number, and customer identity.
+- Current stage, intent, priority, owner, and AI mode.
+- Structured rental request.
+- Vehicle/options shown and their source timestamps.
+- Quote records and approval state.
+- Required documents and eligibility state.
+- Handoff reason, owner, SLA, and next action.
+- Consent, opt-out, and communication preferences.
+- Message IDs, delivery status, and webhook event IDs.
+- Audit events and source references.
+- Created, updated, last customer message, and last staff response timestamps.
+
+Every extracted field should carry confidence or provenance where practical:
+
+`value + source message + extracted time + confidence + verification state`
+
+Suggested verification states:
+
+- `unknown`
+- `customer-stated`
+- `system-verified`
+- `human-confirmed`
+- `expired`
+- `conflicting`
+
+## 8. Safety, trust, and operational controls
+
+The initial product needs:
+
+- Duplicate-event protection and idempotent message handling.
+- Retry and recovery for failed outbound messages and background jobs.
+- Rate limits and abuse protection.
+- Prompt and tool boundaries so the model cannot call unauthorized actions.
+- Redaction and access controls for identity documents and payment information.
+- Tenant isolation between rental operators.
+- Role-based permissions.
+- Audit logs for quotes, assignments, policy changes, and human overrides.
+- Clear opt-out and deletion handling.
+- Retention rules for conversations and documents.
+- Human escalation for complaints, threats, accidents, safety issues, payment disputes, and suspected fraud.
+
+UAE personal-data handling should be designed with the Federal Decree Law No. 45 of 2021 in mind. The official UAE government summary highlights confidentiality, lawful processing, data-subject rights, and controls for cross-border transfer and sharing: [UAE data protection laws](https://u.ae/en/about-the-uae/digital-uae/data/data-protection-laws). This document is a product design reference, not legal advice; the operator should validate its notices, consent, retention, processor arrangements, and regional requirements.
+
+Rental policies are operator-specific. Public Dubai rental terms commonly vary on deposits, included kilometres, delivery, documents, driver age, and post-rental charges. The agent therefore must treat each operator's published and internal policy as authoritative rather than generalizing from another rental company. Examples of market variation include [Luxury Cars of Dubai terms](https://luxurycarsofdubai.com/terms/), [NCK delivery and deposit information](https://www.nckcarrental.com/services/luxury-car-rental-service/), and [Lux Motors requirements](https://luxmotorsdxb.com/terms-and-conditions/).
+
+## 9. Metrics
+
+### Customer experience
+
+- First-response time.
+- Time to first useful answer.
+- Qualification completion rate.
+- Customer effort: messages or turns to a qualified enquiry.
+- Handoff acceptance rate.
+- Customer opt-out and complaint rate.
+
+### Sales performance
+
+- Qualified enquiries per day.
+- Enquiry-to-quote rate.
+- Quote-to-booking rate.
+- Time from enquiry to human response.
+- Time from quote to booking.
+- Lost-enquiry reasons.
+- Revenue or booking value influenced by the agent.
+- Repeat-customer rate.
+
+### Reliability and control
+
+- Verified-answer rate.
+- Unsupported-claim rate.
+- Availability freshness and mismatch rate.
+- Duplicate-message rate.
+- Webhook processing success rate.
+- Handoff SLA breaches.
+- AI-to-human takeover accuracy.
+- Percentage of conversations with complete audit trails.
+
+## 10. Recommended delivery phases
+
+### Phase 1: Reliable text qualification
+
+- Inbound and outbound WhatsApp text.
+- Intent detection.
+- Structured rental requirements.
+- Approved FAQ and policy answers.
+- Basic conversation memory.
+- Human request and manual handoff.
+- Message deduplication, retries, logging, and operator isolation.
+
+### Phase 2: Sales workspace
+
+- Shared inbox.
+- Assignment and ownership.
+- Queue and SLA controls.
+- Internal notes.
+- Conversation search.
+- Follow-up tasks.
+- Basic funnel reporting.
+- AI pause/resume.
+
+### Phase 3: Trusted inventory and quote support
+
+- Inventory integration.
+- Availability freshness.
+- Vehicle recommendations.
+- Rate cards and draft quotes.
+- Quote approval workflow.
+- Delivery and logistics tasks.
+- Alternative-vehicle suggestions.
+
+### Phase 4: Booking and lifecycle integrations
+
+- Booking record creation after human approval.
+- Payment and deposit status from a trusted provider.
+- Document collection and verification workflows.
+- Rental extensions, returns, and support.
+- Customer history and repeat-renter preferences.
+- Operational notifications.
+
+### Phase 5: Optimization
+
+- Multilingual quality improvements.
+- Lead scoring and prioritization.
+- Sales coaching and conversation analytics.
+- Experimentation on approved messaging.
+- Partner inventory and marketplace integrations.
+- Forecasting and operator-level insights.
+
+## 11. Definition of done for the first production-worthy version
+
+The first version should not be considered ready until it can:
+
+- Receive and process duplicate or delayed WhatsApp events safely.
+- Preserve conversation context across restarts and handoffs.
+- Answer approved FAQs with source-backed content.
+- State uncertainty when a fact is not verified.
+- Capture a complete rental enquiry.
+- Stop or escalate when a human decision is required.
+- Assign one clear owner to every active conversation.
+- Produce a useful handoff summary.
+- Prevent unauthorized discounts, payment claims, and final booking confirmations.
+- Record audit events for material decisions.
+- Protect data across operators and roles.
+- Recover from failed messages and background jobs.
+- Demonstrate performance with simulated traffic and representative conversations.
+
+## 12. Product boundary
+
+The sales agent should be excellent at qualification, explanation, recommendation, and coordination before it attempts autonomous booking. The highest-value early capability is dependable context and handoff: every customer should reach a salesperson with the right facts, the right urgency, and no invented promises.
+
+
+## 13. Customer journey: what the user experiences
+
+The customer should experience one continuous conversation even though several systems and people may participate behind the scenes. The agent should always make the next step obvious.
+
+### Stage 0: Entry and first response
+
+**Customer experience**
+
+The customer sends a message such as “How much for a Ferrari this weekend?” or taps a WhatsApp button from a website, advertisement, Instagram profile, or referral. The agent responds quickly, identifies itself as the rental assistant, acknowledges the request, and asks the smallest useful next question.
+
+**System behavior**
+
+- Create or reopen a conversation.
+- Store the inbound message and channel metadata.
+- Detect language and likely intent.
+- Check whether an open conversation or booking already exists.
+- Start a qualification timer and assign an initial queue.
+- Mark the customer as new, returning, or unresolved identity.
+
+**Success condition:** The customer knows the enquiry was received and what information is needed next.
+
+### Stage 1: Discovery and qualification
+
+The agent asks for dates, vehicle preference, location, and any detail that materially changes the answer. It accepts partial replies such as “tomorrow,” “for 3 days,” “near Marina,” or “something sporty under 1,000,” but confirms normalized dates and times instead of assuming them.
+
+The system extracts structured fields, keeps the original wording, tracks missing or conflicting values, asks one or two high-value questions at a time, detects urgency, and saves a draft enquiry even if the customer leaves early.
+
+**Success condition:** The system has enough information to search inventory or knows exactly what is missing.
+
+### Stage 2: Options and explanation
+
+The customer receives a small set of relevant options with verified model, dates, price basis, deposit, included kilometres, delivery terms, and important requirements. Each option is labeled as available, pending confirmation, unavailable, or unknown. The customer can ask follow-up questions without restarting.
+
+The system records the source timestamp for availability and pricing, stores options shown, and marks whether each is a recommendation, draft quote, or approved offer. A displayed option is never treated as reserved.
+
+### Stage 3: Quote and commercial review
+
+The agent separates rental charge from deposit, delivery, VAT, extras, and possible post-rental charges. Estimates are labeled as estimates. Discounts, unusual durations, multi-car requests, and non-standard terms create a human approval task. A draft quote never becomes a booking by implication.
+
+A quote record should include components, currency, source, timestamp, expiry, approval state, and the person or system that approved it.
+
+### Stage 4: Handoff to a salesperson
+
+The customer is told why a human is needed and is not asked to repeat the conversation. The handoff packet includes the transcript, summary, contact, intent, stage, urgency, dates, location, vehicle, budget, requirements, verified facts, unresolved questions, options shown, quote versions, reason for handoff, next action, owner, priority, and SLA.
+
+Customer-facing AI automation pauses by default. In assistive mode, the AI may summarize or draft a reply for the salesperson but must not send independently. The success condition is one visible owner and one coherent next reply.
+
+### Stage 5: Booking confirmation
+
+The customer must be able to distinguish between enquiry, quote sent, payment pending, reserved, and confirmed. Confirmation includes vehicle, dates, price, deposit, delivery or collection, documents, cancellation terms, and contact person.
+
+The system rechecks availability, requires the configured approval and booking events, records who confirmed, links the booking to the conversation, stops lead follow-ups, and stores a final agreed-terms snapshot.
+
+### Stage 6: Pre-handover and active rental
+
+The agent may support document reminders, delivery timing, handover instructions, extension requests, and roadside-support routing. It must not silently alter a live rental. Extensions, vehicle swaps, damage, fines, accidents, payment disputes, and late returns create explicit operational tasks and human ownership.
+
+### Stage 7: Completion, retention, and re-entry
+
+After return, the system can mark the rental complete, record unresolved charges or disputes, and request feedback through an approved workflow. Returning-customer preferences may improve discovery, but dates, vehicle, price, eligibility, and payment details are revalidated.
+
+## 14. Conversation state machine
+
+| State | Meaning | Customer-facing behavior | Exit condition |
+|---|---|---|---|
+| New | First message received, intent unresolved | Acknowledge and clarify | Intent detected |
+| Qualifying | Required rental details incomplete | Ask targeted questions | Minimum fields complete or escalation |
+| Awaiting verification | Answer depends on inventory, price, eligibility, or operations | Explain what is being checked | Verified answer or human review |
+| Options sent | Candidate vehicles or terms shown | Answer questions and capture preference | Customer chooses, changes request, or goes quiet |
+| Quote pending | Draft quote needs approval or fresh availability | Label estimate and expectation | Quote approved, revised, or rejected |
+| Awaiting customer | Customer must respond or provide information | Approved follow-up only | Reply, opt-out, timeout, or close |
+| Human queued | Handoff created but not accepted | Give queue and expectation message | Owner accepts or manager reassigns |
+| Human active | Salesperson owns the next reply | AI paused or assistive | Booking, closure, or return to AI |
+| Booking pending | Customer or operator still has a required action | Show exact blocker and next step | Confirmed, cancelled, or expired |
+| Confirmed | Booking has authoritative confirmation | Transition to lifecycle support | Rental starts or is cancelled |
+| Support escalation | Issue, complaint, safety, fraud, or dispute | Acknowledge and route urgently | Human resolves or closes |
+| Closed / lost | No active next action | Do not keep messaging automatically | New customer message reopens |
+
+Every transition records actor, timestamp, reason, previous state, new state, and linked message or system event.
+
+## 15. Edge-case playbook
+
+### Ambiguous or incomplete input
+
+- “This weekend” → ask for exact dates and timezone; store the original phrase.
+- “Tomorrow” near midnight → confirm the calendar date using the business timezone.
+- “A Ferrari” → ask whether model, budget, or driving experience matters.
+- Missing return date → ask for duration or return date before quoting.
+- Repeated date changes → confirm the latest version and mark prior quotes stale.
+
+### Conflicting information
+
+If the customer first says Friday and later says Saturday, summarize the conflict and ask which is correct. Do not silently overwrite the original. Conflicts between customer statements, inventory, rate cards, or booking records block a final commitment until verified.
+
+### Stale or unavailable inventory
+
+Recheck availability before quoting or confirming after a delay. If inventory is down, say live availability cannot be verified, offer a human check, save the enquiry, and never use old data as current.
+
+### Price mismatch or discount request
+
+Acknowledge differences between an advertisement, older quote, and current rate. Show the currently verified source, create salesperson review, and preserve quote versions. Never promise a discount or change an approved quote without an audit trail.
+
+### Deposit and payment
+
+Check trusted payment events rather than screenshots or customer assertions. Route deposit refunds, cash exceptions, payment disputes, and “remove the deposit” requests to the authorized team. Discourage sharing card numbers in chat and use the approved secure process.
+
+### Eligibility and documents
+
+If age, nationality, licence, visa, IDP, Emirates ID, or authorized-driver rules are unclear, mark eligibility pending and route to a human. Do not make a definitive acceptance or rejection from incomplete information. A readable document is not automatically a verified document.
+
+### Safety, fraud, complaints, and legal escalation
+
+Immediately hand off or escalate accidents, injuries, dangerous driving, threats, harassment, suspected fraud, identity theft, suspicious payment activity, damage or fine disputes, requests to falsify documents, and legal complaints. Acknowledge, avoid blame, preserve the record, and stop sales automation.
+
+### Repeated human requests or angry customers
+
+Repeated requests for a human are a handoff trigger. For an angry customer, switch from sales mode to service recovery, stop promotional follow-ups, capture only the minimum facts, and route to a person. Do not defend policy or continue recommending cars during an unresolved complaint.
+
+### Language and low-confidence interpretation
+
+For slang, spelling, voice transcription, or mixed languages, reflect the interpretation and ask for confirmation. Low-confidence dates require clarification; low-confidence requests for a final booking require human review.
+
+### Duplicate or out-of-order events
+
+Provider retries, duplicate customer messages, delayed receipts, and out-of-order events must not create duplicate replies, leads, or state changes. Use provider message IDs and idempotency keys; make state transitions conditional on the current version.
+
+### Media and documents
+
+Acknowledge received files, identify supported types, and route sensitive documents to the approved review workflow. Unsupported or corrupted files receive a clear re-upload request. The agent must not claim a document is valid merely because it is readable.
+
+### Out-of-hours and queue delay
+
+Tell the customer the current service expectation, capture the request, assign a queue, and avoid promising an exact callback time unless the business can meet it. Same-day urgency raises priority and creates an internal SLA.
+
+### Opt-out and returning customer identity
+
+Stop automated follow-up immediately after opt-out and preserve only the minimum operational record. Do not merge returning-customer records solely by name or preference; reconcile identity safely before exposing prior booking information.
+
+### Multiple drivers, corporate, event, or long-term requests
+
+Capture the primary customer, payer, and authorized drivers separately when needed. Multi-vehicle, corporate, event, and long-term requests become structured opportunities routed to a specialist rather than being forced into a single-car flow.
+
+### Cancellation or change after confirmation
+
+Retrieve the booking, explain the configured next step, and route refund, fee, date-change, and vehicle-change decisions to the authorized team. Never promise a refund or waive a fee autonomously.
+
+### System or integration failure
+
+Save the inbound request durably, tell the customer what cannot be verified, create a retry or incident task, prevent partial state from appearing confirmed, and resume from the saved conversation after recovery.
+
+## 16. Human handoff contract
+
+A handoff is complete only when a reason, queue or person, priority, SLA, customer expectation, transcript, summary, next action, and AI sending mode are recorded. It must be possible to accept, reassign, escalate, or close the handoff without losing context.
+
+Suggested summary:
+
+> **Customer:** [name / WhatsApp number]  
+> **Request:** [vehicle/category, dates, duration, pickup/delivery]  
+> **Budget:** [amount or unknown]  
+> **Verified:** [facts and source times]  
+> **Unresolved:** [questions, conflicts, approvals]  
+> **Intent:** [buying signal / urgency]  
+> **Options shown:** [vehicles and quote versions]  
+> **Reason:** [specific handoff trigger]  
+> **Next action:** [who must do what by when]
+
+## 17. Journey-level acceptance scenarios
+
+1. A new customer gives only a vehicle name; the agent asks for dates and does not invent a price.
+2. Natural-language dates are normalized and confirmed before inventory search.
+3. An unavailable car produces verified alternatives and preserves the original preference.
+4. An expired quote is rechecked rather than repeated.
+5. A discount request creates human review and no promise.
+6. A human request stops qualification and creates a visible handoff.
+7. A payment screenshot does not mark payment received.
+8. An accident report stops sales automation and starts urgent routing.
+9. A salesperson accepting a handoff prevents competing AI replies.
+10. A duplicate webhook creates no duplicate message or lead.
+11. Inventory failure saves the enquiry and sends an honest pending message.
+12. Opt-out stops automated follow-up immediately.
+13. A return after several days revalidates stale availability and price.
+14. A changed date supersedes the old quote.
+15. Cancellation routes policy decisions without promising a refund.
+
+## Sources
+
+1. [Vyra Project Context](https://github.com/usamasaleem/Vyra/blob/main/docs/PROJECT-CONTEXT.md).
+2. [Vyra WhatsApp Agent Brief](https://github.com/usamasaleem/Vyra/blob/main/docs/WHATSAPP-AGENT-BRIEF.md).
+3. [Vyra Current State](https://github.com/usamasaleem/Vyra/blob/main/docs/CURRENT-STATE.md).
+4. [UAE Government — Data protection laws](https://u.ae/en/about-the-uae/digital-uae/data/data-protection-laws).
+5. [Luxury Cars of Dubai — Terms](https://luxurycarsofdubai.com/terms/).
+6. [NCK — Luxury car rental and delivery](https://www.nckcarrental.com/services/luxury-car-rental-service/).
+7. [Lux Motors DXB — Terms and conditions](https://luxmotorsdxb.com/terms-and-conditions/).
