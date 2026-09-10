@@ -432,6 +432,191 @@ The first version should not be considered ready until it can:
 
 The sales agent should be excellent at qualification, explanation, recommendation, and coordination before it attempts autonomous booking. The highest-value early capability is dependable context and handoff: every customer should reach a salesperson with the right facts, the right urgency, and no invented promises.
 
+
+## 13. Customer journey: what the user experiences
+
+The customer should experience one continuous conversation even though several systems and people may participate behind the scenes. The agent should always make the next step obvious.
+
+### Stage 0: Entry and first response
+
+**Customer experience**
+
+The customer sends a message such as “How much for a Ferrari this weekend?” or taps a WhatsApp button from a website, advertisement, Instagram profile, or referral. The agent responds quickly, identifies itself as the rental assistant, acknowledges the request, and asks the smallest useful next question.
+
+**System behavior**
+
+- Create or reopen a conversation.
+- Store the inbound message and channel metadata.
+- Detect language and likely intent.
+- Check whether an open conversation or booking already exists.
+- Start a qualification timer and assign an initial queue.
+- Mark the customer as new, returning, or unresolved identity.
+
+**Success condition:** The customer knows the enquiry was received and what information is needed next.
+
+### Stage 1: Discovery and qualification
+
+The agent asks for dates, vehicle preference, location, and any detail that materially changes the answer. It accepts partial replies such as “tomorrow,” “for 3 days,” “near Marina,” or “something sporty under 1,000,” but confirms normalized dates and times instead of assuming them.
+
+The system extracts structured fields, keeps the original wording, tracks missing or conflicting values, asks one or two high-value questions at a time, detects urgency, and saves a draft enquiry even if the customer leaves early.
+
+**Success condition:** The system has enough information to search inventory or knows exactly what is missing.
+
+### Stage 2: Options and explanation
+
+The customer receives a small set of relevant options with verified model, dates, price basis, deposit, included kilometres, delivery terms, and important requirements. Each option is labeled as available, pending confirmation, unavailable, or unknown. The customer can ask follow-up questions without restarting.
+
+The system records the source timestamp for availability and pricing, stores options shown, and marks whether each is a recommendation, draft quote, or approved offer. A displayed option is never treated as reserved.
+
+### Stage 3: Quote and commercial review
+
+The agent separates rental charge from deposit, delivery, VAT, extras, and possible post-rental charges. Estimates are labeled as estimates. Discounts, unusual durations, multi-car requests, and non-standard terms create a human approval task. A draft quote never becomes a booking by implication.
+
+A quote record should include components, currency, source, timestamp, expiry, approval state, and the person or system that approved it.
+
+### Stage 4: Handoff to a salesperson
+
+The customer is told why a human is needed and is not asked to repeat the conversation. The handoff packet includes the transcript, summary, contact, intent, stage, urgency, dates, location, vehicle, budget, requirements, verified facts, unresolved questions, options shown, quote versions, reason for handoff, next action, owner, priority, and SLA.
+
+Customer-facing AI automation pauses by default. In assistive mode, the AI may summarize or draft a reply for the salesperson but must not send independently. The success condition is one visible owner and one coherent next reply.
+
+### Stage 5: Booking confirmation
+
+The customer must be able to distinguish between enquiry, quote sent, payment pending, reserved, and confirmed. Confirmation includes vehicle, dates, price, deposit, delivery or collection, documents, cancellation terms, and contact person.
+
+The system rechecks availability, requires the configured approval and booking events, records who confirmed, links the booking to the conversation, stops lead follow-ups, and stores a final agreed-terms snapshot.
+
+### Stage 6: Pre-handover and active rental
+
+The agent may support document reminders, delivery timing, handover instructions, extension requests, and roadside-support routing. It must not silently alter a live rental. Extensions, vehicle swaps, damage, fines, accidents, payment disputes, and late returns create explicit operational tasks and human ownership.
+
+### Stage 7: Completion, retention, and re-entry
+
+After return, the system can mark the rental complete, record unresolved charges or disputes, and request feedback through an approved workflow. Returning-customer preferences may improve discovery, but dates, vehicle, price, eligibility, and payment details are revalidated.
+
+## 14. Conversation state machine
+
+| State | Meaning | Customer-facing behavior | Exit condition |
+|---|---|---|---|
+| New | First message received, intent unresolved | Acknowledge and clarify | Intent detected |
+| Qualifying | Required rental details incomplete | Ask targeted questions | Minimum fields complete or escalation |
+| Awaiting verification | Answer depends on inventory, price, eligibility, or operations | Explain what is being checked | Verified answer or human review |
+| Options sent | Candidate vehicles or terms shown | Answer questions and capture preference | Customer chooses, changes request, or goes quiet |
+| Quote pending | Draft quote needs approval or fresh availability | Label estimate and expectation | Quote approved, revised, or rejected |
+| Awaiting customer | Customer must respond or provide information | Approved follow-up only | Reply, opt-out, timeout, or close |
+| Human queued | Handoff created but not accepted | Give queue and expectation message | Owner accepts or manager reassigns |
+| Human active | Salesperson owns the next reply | AI paused or assistive | Booking, closure, or return to AI |
+| Booking pending | Customer or operator still has a required action | Show exact blocker and next step | Confirmed, cancelled, or expired |
+| Confirmed | Booking has authoritative confirmation | Transition to lifecycle support | Rental starts or is cancelled |
+| Support escalation | Issue, complaint, safety, fraud, or dispute | Acknowledge and route urgently | Human resolves or closes |
+| Closed / lost | No active next action | Do not keep messaging automatically | New customer message reopens |
+
+Every transition records actor, timestamp, reason, previous state, new state, and linked message or system event.
+
+## 15. Edge-case playbook
+
+### Ambiguous or incomplete input
+
+- “This weekend” → ask for exact dates and timezone; store the original phrase.
+- “Tomorrow” near midnight → confirm the calendar date using the business timezone.
+- “A Ferrari” → ask whether model, budget, or driving experience matters.
+- Missing return date → ask for duration or return date before quoting.
+- Repeated date changes → confirm the latest version and mark prior quotes stale.
+
+### Conflicting information
+
+If the customer first says Friday and later says Saturday, summarize the conflict and ask which is correct. Do not silently overwrite the original. Conflicts between customer statements, inventory, rate cards, or booking records block a final commitment until verified.
+
+### Stale or unavailable inventory
+
+Recheck availability before quoting or confirming after a delay. If inventory is down, say live availability cannot be verified, offer a human check, save the enquiry, and never use old data as current.
+
+### Price mismatch or discount request
+
+Acknowledge differences between an advertisement, older quote, and current rate. Show the currently verified source, create salesperson review, and preserve quote versions. Never promise a discount or change an approved quote without an audit trail.
+
+### Deposit and payment
+
+Check trusted payment events rather than screenshots or customer assertions. Route deposit refunds, cash exceptions, payment disputes, and “remove the deposit” requests to the authorized team. Discourage sharing card numbers in chat and use the approved secure process.
+
+### Eligibility and documents
+
+If age, nationality, licence, visa, IDP, Emirates ID, or authorized-driver rules are unclear, mark eligibility pending and route to a human. Do not make a definitive acceptance or rejection from incomplete information. A readable document is not automatically a verified document.
+
+### Safety, fraud, complaints, and legal escalation
+
+Immediately hand off or escalate accidents, injuries, dangerous driving, threats, harassment, suspected fraud, identity theft, suspicious payment activity, damage or fine disputes, requests to falsify documents, and legal complaints. Acknowledge, avoid blame, preserve the record, and stop sales automation.
+
+### Repeated human requests or angry customers
+
+Repeated requests for a human are a handoff trigger. For an angry customer, switch from sales mode to service recovery, stop promotional follow-ups, capture only the minimum facts, and route to a person. Do not defend policy or continue recommending cars during an unresolved complaint.
+
+### Language and low-confidence interpretation
+
+For slang, spelling, voice transcription, or mixed languages, reflect the interpretation and ask for confirmation. Low-confidence dates require clarification; low-confidence requests for a final booking require human review.
+
+### Duplicate or out-of-order events
+
+Provider retries, duplicate customer messages, delayed receipts, and out-of-order events must not create duplicate replies, leads, or state changes. Use provider message IDs and idempotency keys; make state transitions conditional on the current version.
+
+### Media and documents
+
+Acknowledge received files, identify supported types, and route sensitive documents to the approved review workflow. Unsupported or corrupted files receive a clear re-upload request. The agent must not claim a document is valid merely because it is readable.
+
+### Out-of-hours and queue delay
+
+Tell the customer the current service expectation, capture the request, assign a queue, and avoid promising an exact callback time unless the business can meet it. Same-day urgency raises priority and creates an internal SLA.
+
+### Opt-out and returning customer identity
+
+Stop automated follow-up immediately after opt-out and preserve only the minimum operational record. Do not merge returning-customer records solely by name or preference; reconcile identity safely before exposing prior booking information.
+
+### Multiple drivers, corporate, event, or long-term requests
+
+Capture the primary customer, payer, and authorized drivers separately when needed. Multi-vehicle, corporate, event, and long-term requests become structured opportunities routed to a specialist rather than being forced into a single-car flow.
+
+### Cancellation or change after confirmation
+
+Retrieve the booking, explain the configured next step, and route refund, fee, date-change, and vehicle-change decisions to the authorized team. Never promise a refund or waive a fee autonomously.
+
+### System or integration failure
+
+Save the inbound request durably, tell the customer what cannot be verified, create a retry or incident task, prevent partial state from appearing confirmed, and resume from the saved conversation after recovery.
+
+## 16. Human handoff contract
+
+A handoff is complete only when a reason, queue or person, priority, SLA, customer expectation, transcript, summary, next action, and AI sending mode are recorded. It must be possible to accept, reassign, escalate, or close the handoff without losing context.
+
+Suggested summary:
+
+> **Customer:** [name / WhatsApp number]  
+> **Request:** [vehicle/category, dates, duration, pickup/delivery]  
+> **Budget:** [amount or unknown]  
+> **Verified:** [facts and source times]  
+> **Unresolved:** [questions, conflicts, approvals]  
+> **Intent:** [buying signal / urgency]  
+> **Options shown:** [vehicles and quote versions]  
+> **Reason:** [specific handoff trigger]  
+> **Next action:** [who must do what by when]
+
+## 17. Journey-level acceptance scenarios
+
+1. A new customer gives only a vehicle name; the agent asks for dates and does not invent a price.
+2. Natural-language dates are normalized and confirmed before inventory search.
+3. An unavailable car produces verified alternatives and preserves the original preference.
+4. An expired quote is rechecked rather than repeated.
+5. A discount request creates human review and no promise.
+6. A human request stops qualification and creates a visible handoff.
+7. A payment screenshot does not mark payment received.
+8. An accident report stops sales automation and starts urgent routing.
+9. A salesperson accepting a handoff prevents competing AI replies.
+10. A duplicate webhook creates no duplicate message or lead.
+11. Inventory failure saves the enquiry and sends an honest pending message.
+12. Opt-out stops automated follow-up immediately.
+13. A return after several days revalidates stale availability and price.
+14. A changed date supersedes the old quote.
+15. Cancellation routes policy decisions without promising a refund.
+
 ## Sources
 
 1. [Vyra Project Context](https://github.com/usamasaleem/Vyra/blob/main/docs/PROJECT-CONTEXT.md).
