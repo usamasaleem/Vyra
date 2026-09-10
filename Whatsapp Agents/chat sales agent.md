@@ -617,6 +617,326 @@ Suggested summary:
 14. A changed date supersedes the old quote.
 15. Cancellation routes policy decisions without promising a refund.
 
+## 18. Recommended technology stack and implementation blueprint
+
+### 18.1 Status and assumptions
+
+This section is a proposed implementation, not a description of deployed software. The [current-state document](https://github.com/usamasaleem/Vyra/blob/main/docs/CURRENT-STATE.md) reports a WhatsApp prototype with successful outbound tests and webhook verification, but no durable memory, complete handoff, shared inbox, or inventory engine. The existing prototype's programming language, deployment, credentials, and code have not been audited here.
+
+Assume a small team, a first pilot with one rental operator, text-first conversations, and eventual support for multiple operators. Preserve compatible prototype code after reviewing it. Do not migrate working components merely to match this recommendation.
+
+### 18.2 Stack choices
+
+| Layer | Recommended starting choice | What it does for Vyra | Tradeoff |
+|---|---|---|---|
+| Shared language | TypeScript on a supported Node.js LTS release | Shares data contracts across inbox, API, and workers | Runtime input validation is still required |
+| Sales inbox | Next.js with React | Conversation list, messages, assignments, quote review, settings | Keep business rules in shared backend services |
+| HTTP API | Fastify | Receives webhooks and authenticated staff commands | Separate API deployment adds modest operational work |
+| Durable records | Supabase-managed PostgreSQL | Messages, leads, owners, quotes, policies, audit and outbox | Carefully design permissions and database migrations |
+| Staff identity | Supabase Auth | Login and staff identity; membership table defines operator roles | Authentication alone does not establish tenant authorization |
+| Files | Private object storage, initially Supabase Storage | Approved vehicle images and secure document uploads | Separate document access from ordinary inbox access |
+| Background jobs | BullMQ with a compatible persistent Redis service | Model turns, sending, integration refreshes, reminders | Redis is an extra dependency; PostgreSQL remains the recovery source |
+| AI | OpenAI Responses API through the official server-side SDK | Interpret messages and call narrow business tools | Choose a model using measured quality, latency, and cost |
+| Channel | Direct Meta WhatsApp Cloud API | Receive customer messages and deliver replies | Operator onboarding and channel rules need explicit implementation |
+| Pilot hosting | Render web services plus a background worker; Supabase for data | Run inbox, API, and persistent processing | Confirm plan, region, backups, and worker resources before provisioning |
+| Delivery checks | GitHub Actions, TypeScript checks, integration tests, browser tests | Prevent unsafe releases and broken customer journeys | Test external failures as well as successful flows |
+| Monitoring | Structured logs, error tracking, metrics and alerting | Find lost messages, queue delays, failed tools and missed handoffs | Redact customer content and secrets |
+
+These are architectural recommendations. Next.js documents its React application framework, Fastify its server framework, BullMQ its Redis-backed queue, and Render its background worker deployment model. [T1–T4]
+
+Start with one repository and shared modules, deployed as separate web/API and worker processes. A dedicated vector database, Kubernetes, and multiple cooperating AI agents are unnecessary for the first pilot. If the team already runs a reliable database-backed queue, it can replace BullMQ/Redis; do not run two job systems for the same responsibility.
+
+### 18.3 How the pieces connect
+
+```mermaid
+flowchart TD
+    C[Customer on WhatsApp] --> M[Meta Cloud API]
+    M --> W[Webhook API]
+    W --> D[(PostgreSQL: events and messages)]
+    D --> R[Outbox relay]
+    R --> Q[Redis and BullMQ]
+    Q --> O[Conversation worker]
+    O --> A[AI interpretation and tool requests]
+    A --> B[Backend rules and approved tools]
+    B --> I[Inventory and policy sources]
+    B --> D
+    O --> S[Outbound dispatcher]
+    S --> M
+    U[Salesperson] --> UI[Sales inbox]
+    UI --> B
+    D --> UI
+```
+
+The database is the record of what happened. The queue schedules work. The AI proposes language and actions. Backend services authorize actions. The dispatcher is the only component that sends WhatsApp messages, including messages written by salespeople.
+
+### 18.4 One message, from arrival to reply
+
+Example: “Need a Ferrari tomorrow for three days, deliver to Marina.”
+
+1. **Receive and authenticate.** The webhook endpoint verifies the provider signature against the untouched request body before trusting its contents. Resolve the business from the receiving WhatsApp account/phone-number mapping, never from text in the message.
+2. **Save before acknowledging.** In one database transaction, persist the inbound event, deduplicate the provider message, and add a processing outbox record. Return success after durable acceptance. If storage fails, do not acknowledge success and lose the message.
+3. **Schedule work.** An outbox relay publishes a job. If the queue is unavailable, the unsent outbox record remains recoverable. Publishing twice must be harmless.
+4. **Load context.** The worker loads operator policy, conversation ownership, recent messages, structured enquiry fields, open approvals, and relevant source records.
+5. **Interpret.** Extract vehicle preference, duration, location and proposed date. Resolve “tomorrow” relative to message time and the operator's timezone; ask the customer to confirm ambiguity. Do not assume which Ferrari or exact pickup time.
+6. **Choose the next action.** Backend rules allow clarification, approved information retrieval, inventory lookup, or handoff. Human-owned conversations produce internal assistance only.
+7. **Use tools if ready.** Search current inventory when the necessary inputs are known. A failed lookup produces an unknown result rather than invented availability.
+8. **Prepare a reply.** Generate a short response referencing returned evidence. Use backend-rendered amounts and approved wording for quotes and confirmation status.
+9. **Check current state again.** Reject stale output if the customer corrected the dates, a salesperson took over, or a relevant policy changed during generation.
+10. **Save the send intent.** Store the validated outbound message with its conversation revision and logical idempotency key.
+11. **Dispatch.** Check channel eligibility and ownership immediately before sending. Save the provider response identifier and subsequent delivery events.
+12. **Update the inbox.** Staff see the persisted message and its true delivery state. Provider acceptance is distinct from delivery or reading.
+
+This sequence is a proposed Vyra processing contract. Exact Meta payload fields, signature requirements, endpoint permissions and API version must be validated during channel integration; the technical Meta pages were not retrievable in this documentation pass.
+
+### 18.5 WhatsApp setup and sending rules
+
+For the pilot, connect the operator's authorized WhatsApp Business Account and number, configure production credentials, subscribe the required events, and expose a public HTTPS webhook. Verify inbound text, outbound text, status updates, credential rotation and revoked access separately; a successful verification challenge is not an end-to-end message test.
+
+Keep secrets in server-side secret storage. Maintain an explicit mapping of operator, WhatsApp account, receiving number and credential reference. Never put provider access tokens into the browser or prompts.
+
+WhatsApp's published policy allows ordinary replies within 24 hours of the last user message and requires approved templates outside that window. It also requires clear escalation paths for automation. Evaluate eligibility when a message is actually sent, including human-authored replies; a delayed job may cross the window boundary. Record opt-outs and prevent disallowed follow-ups. [T5]
+
+A rejected or paused template should create an internal task instead of repeated sends. Human takeover changes who replies, not channel permissions. Do not ask customers to share full card or sensitive ID numbers in WhatsApp; use an approved secure collection flow where required. [T5]
+
+For multiple operators, add a supported onboarding process for each account, permission lifecycle and offboarding. Do not assume the pilot account's credentials can serve unrelated businesses. Staff should use the shared inbox for pilot replies; any separate native-app/coexistence workflow needs explicit verification that ownership and message history stay synchronized.
+
+### 18.6 Database design
+
+Use UUIDs for internal identities, UTC timestamps for storage, an operator IANA timezone for interpretation/display, and integer minor units or exact decimal arithmetic for money. Never use floating-point arithmetic for totals.
+
+| Table | Important fields | Responsibility |
+|---|---|---|
+| operators | id, name, timezone, service_hours, policy_version | Rental business configuration |
+| memberships | operator_id, user_id, role, active | Staff access and authority |
+| whatsapp_accounts | operator_id, provider_account_id, phone_number_id, secret_ref | Trusted channel routing |
+| contacts | operator_id, channel_identifier, verified_identity_ref | Contact matching without assuming legal identity |
+| conversations | operator_id, contact_id, owner_id, handler_mode, revision | Reply ownership and concurrency |
+| enquiries | conversation_id, stage, requested_dates, vehicle_preferences, missing_fields | A customer can have multiple rental requests |
+| messages | operator_id, conversation_id, provider_id, direction, kind, delivery_state | Durable conversation history |
+| inbound_events | provider_event_key, payload_ref, received_at, processed_at | Ingestion audit and deduplication |
+| outbox | event_type, aggregate_id, payload, status, attempts, next_attempt_at | Recoverable scheduling and sending intents |
+| agent_runs | conversation_id, input_revision, prompt_version, model_id, result_state, usage | Explain and evaluate AI processing |
+| field_evidence | enquiry_id, field, value, source_message_id, verification_state | Trace each extracted fact |
+| knowledge_versions | operator_id, topic, version, approval, effective_dates | Approved policy text and provenance |
+| vehicles / availability | operator_id, vehicle_id, intervals, source, checked_at | Fleet and dated availability |
+| quotes / quote_lines | enquiry_id, revision, totals, valid_until, approval_id | Immutable commercial versions |
+| handoffs / tasks | conversation_id, reason, queue, owner, due_at, status | Visible follow-through |
+| approvals | action, subject_id, subject_version, approver, timestamp | Bind authority to the exact decision |
+| bookings / payment_events | external_ref, authoritative_state, verified_by | Later-stage integrations |
+| documents | private_object_ref, purpose, review_status, retention_until | Sensitive file handling |
+| audit_events | actor, action, subject, timestamp, correlation_id | Accountable state changes |
+
+Add unique constraints to deduplicate inbound provider messages within their operator/account scope and each logical outbound intent. Apply tenant-consistent foreign keys so a quote cannot reference another operator's enquiry.
+
+Separate **sales stage**, **reply ownership**, **waiting reason**, and **booking status** into distinct fields. Earlier journey tables describe customer-visible situations; they should not become one overloaded database enum. “Awaiting customer” can coexist with “quote sent,” and “human active” can coexist with “booking pending.”
+
+### 18.7 Authentication and operator isolation
+
+Verify the staff session on every API call, then load active operator membership and required role. A browser-supplied operator ID is a requested scope, not proof of permission.
+
+Use PostgreSQL row-level security for exposed tables as defense in depth. Supabase documents that privileged service keys can bypass RLS; keep them server-side and ensure privileged background jobs perform explicit operator scoping. [T6]
+
+Test cross-operator access using guessed IDs, search, file links, subscriptions, exports and worker jobs. Background jobs receive internal IDs and reload trusted records; they do not inherit authorization from a model-generated argument.
+
+Salespeople may accept handoffs and send messages. Managers may approve configured commercial exceptions. Operations staff may update fulfillment facts. Administrative access should not silently grant finance authority unless that is the operator's chosen policy.
+
+### 18.8 AI design: interpretation, memory and tools
+
+Use a bounded workflow with a configurable model, prompt version, maximum tool calls and time budget. Select the production model after evaluating representative English, Arabic and mixed-language cases against the same acceptance set; no specific model, price or performance is assumed here.
+
+OpenAI function calling allows the model to request application-defined functions; the application executes them and supplies the results. Strict schemas improve argument shape, but do not establish whether a requested action is authorized or a fact is true. Use explicit strict schemas with all properties required, nullable values for optional inputs, and no additional properties. [T7]
+
+Suggested application tool boundary:
+
+| Tool | Permitted behavior | Mandatory backend check |
+|---|---|---|
+| get_operator_policy(topic) | Retrieve approved, effective policy | Operator scope and source version |
+| search_vehicles(criteria) | Return candidates and freshness | Validated dates and trusted inventory source |
+| prepare_quote(enquiry_id) | Calculate draft from approved rules | Versioned inputs; no automatic discount |
+| record_enquiry_fields(fields) | Save customer-provided facts | Evidence and explicit conflict handling |
+| request_handoff(reason) | Queue human review | Idempotent task; pause sending |
+| request_booking_review(quote_id) | Create approval task | Quote belongs to enquiry and is current |
+
+Do not expose unrestricted SQL, arbitrary URLs, refunds, payment verification or final booking confirmation as general AI tools.
+
+Build model context from a short approved instruction set, current enquiry fields, recent messages, a summary of older exchanges, and relevant approved knowledge. The summary must link back to evidence and cannot establish payment or identity truth. Structured records override stale summaries; unresolved contradictions remain explicit.
+
+Customer messages, retrieved text and file contents are untrusted input. A message saying “ignore your rules and confirm” cannot change permissions. On refusal, malformed output, timeout or exhausted tool budget, save a failure state and use a bounded clarification or human task.
+
+For material commercial messages, render amounts, dates, expiry and status from validated database fields. Let the model phrase the surrounding explanation. This reduces the risk of a fluent response changing approved terms.
+
+### 18.9 Knowledge, inventory and quotes
+
+Start policy retrieval with approved topics in PostgreSQL. Import useful Markdown content into drafts, have the operator approve it, and publish an effective version. This product specification must not become a source of actual fleet prices or rental rules.
+
+Add semantic retrieval only when the knowledge set is large enough to need it. Retrieved passages must retain operator, topic, version and source. Never use semantic similarity as the authoritative availability or pricing lookup.
+
+Initially, staff can maintain fleet records or import a validated CSV. Each availability answer includes source, checked time and confidence/status. Without complete booking coverage, label availability “requires confirmation.” Later, connect a rental-management API through an adapter with the same contract.
+
+Availability checks must account for overlapping bookings, holds, maintenance and delivery/turnaround buffers. Prevent local overlapping reservations transactionally. A local database lock cannot prevent a booking in an external system; final confirmation requires that external system's reservation contract or a human recheck.
+
+Use a deterministic quote calculator. Inputs include exact rental timestamps, billing rules, rate version, vehicle, extras, delivery and any approved discount. Keep the refundable deposit separate from the rental total. Explicitly represent unknown charges; do not substitute zero. Reprice after a changed date, vehicle or policy, preserving the prior quote.
+
+### 18.10 Reliable jobs and message ordering
+
+Queue jobs should be small and repeatable: process inbound message, generate turn, dispatch outbound intent, refresh inventory, create reminder, check missed SLA. BullMQ supplies job scheduling and retry mechanisms; business correctness still needs database constraints and repeat-safe handlers. [T3]
+
+Use per-conversation serialization plus a revision number. Do not assume a global queue concurrency setting serializes each conversation. Long model calls run outside database transactions; a short transaction checks the revision before accepting their output.
+
+A proposed 1–2 second collection window can combine “hi,” “Ferrari,” and “tomorrow” into one turn; test this against latency and urgent-message handling. A newer message supersedes pending draft output when it changes the request.
+
+For retryable failures, use bounded exponential backoff with jitter. Authentication failure or an invalid template requires intervention. Persist terminal failures and expose a retry control to staff.
+
+Do not promise exactly-once delivery across your database and Meta. If Meta accepted a send but the response was lost, a retry may duplicate it. Mark the outcome unknown, reconcile against available provider events, and apply an explicit operator-approved retry policy. A local idempotency key alone cannot resolve this network ambiguity.
+
+### 18.11 How human takeover actually works
+
+1. A salesperson clicks **Take over**.
+2. A backend transaction verifies their role, changes handler mode, assigns the owner and increments the revision.
+3. Pending AI send intents become cancelled or invalid.
+4. The inbox shows human ownership; workers may create internal drafts only.
+5. All subsequent staff sends pass through the same dispatcher and channel checks.
+6. **Return to AI** requires an explicit action and reloads current context.
+
+Serialize takeover commands and outbound sends through the same conversation coordinator. Define the boundary precisely: an AI message already submitted to Meta cannot be recalled by a later takeover. Show any in-flight send to the salesperson and suppress drafts that have not reached dispatch.
+
+When nobody accepts a handoff, a scheduled task checks its due time, alerts the configured fallback owner, and keeps the queue item visible. A generated handoff summary without an assigned task is not a completed handoff.
+
+### 18.12 Staff inbox and API outline
+
+The first inbox needs conversation list, thread, customer/enquiry fields, owner and mode, next action, source freshness, delivery errors, handoff queue, internal notes and manual reply. Add quote approval and knowledge publishing as those services become available.
+
+Example application endpoints, not provider API paths:
+
+| Endpoint | Behavior |
+|---|---|
+| GET /webhooks/whatsapp | Provider verification challenge |
+| POST /webhooks/whatsapp | Authenticate and durably accept events |
+| GET /conversations | Authorized operator-scoped list |
+| POST /conversations/:id/takeover | Atomic ownership change |
+| POST /conversations/:id/messages | Validated manual send intent |
+| POST /conversations/:id/resume-ai | Explicit return to automation |
+| POST /enquiries/:id/quotes | Deterministic quote draft |
+| POST /quotes/:id/approve | Role check and version-bound approval |
+| POST /handoffs/:id/accept | Record accepting owner |
+| POST /knowledge/:id/publish | Publish approved policy version |
+
+Use polling initially if it makes the pilot simpler. Later use authenticated realtime notifications to refresh records; reconnecting clients must reload from the database rather than assume every event arrived. Never expose internal notes to the outbound dispatcher.
+
+### 18.13 Documents and payment integrations
+
+Add these after the basic handoff works. Use short-lived secure upload links with explicit purpose, restricted file types/size, malware handling and private storage. Do not place raw ID documents in logs or ordinary model context. OCR can assist review but cannot mark identity verified.
+
+Use provider-hosted checkout when payment integration is introduced. Verify payment webhooks independently, match operator, booking, amount and currency, and deduplicate events. Provider payment state and human payment approval remain separate: in Vyra's initial scope, staff retain verification authority. A successful payment never automatically establishes vehicle availability or booking confirmation.
+
+### 18.14 Deployment and repository layout
+
+Suggested code organization alongside the existing documentation:
+
+```text
+apps/
+  inbox/                 Sales workspace
+  api/                   Webhooks and staff API
+  worker/                Conversation processing and dispatch
+packages/
+  contracts/             Runtime schemas and shared types
+  domain/                Quote, ownership and approval rules
+  db/                    Queries and migrations
+  ai/                    Prompts, tools and evaluation fixtures
+  integrations/          WhatsApp and inventory adapters
+tests/
+  integration/
+  journeys/
+  evaluations/
+```
+
+Develop with synthetic customer data and local database/queue services. Use a separate staging WhatsApp test setup, database, credentials and storage from production.
+
+Deploy the web/API and persistent worker as separate processes. Render documents background workers for continuous queue processing. [T4] The proposed provider combination is a pilot convenience, not a claim about UAE hosting or legal suitability; confirm residency, transfer and contractual requirements before choosing regions.
+
+Store secrets outside Git. Run migrations as a controlled release step, use backward-compatible schema changes, then deploy API and workers. Provide health checks for database, queue and worker heartbeat. Test backup restoration, not just backup creation. An AI kill switch must disable AI sends while preserving ingestion and staff access.
+
+### 18.15 Monitoring, performance and cost
+
+Track the full chain with a correlation ID: inbound event → job → agent run → tool request → send intent → provider result. Redact content by default in infrastructure logs; keep authorized conversation history in the product database.
+
+Suggested pilot targets, to measure rather than promise:
+
+- Durable webhook acceptance p95 under 1 second in normal load.
+- Ordinary text response p95 under 15 seconds, excluding human/external delays.
+- Zero observed cross-operator leaks and unauthorized confirmations in release tests.
+- Every unresolved send or handoff failure visible in the staff queue.
+
+Alert on oldest unprocessed event, outbox backlog, missing worker heartbeat, failed authentication, rising send failures and missed handoff deadlines.
+
+Estimate monthly cost from measured usage:
+
+`hosting + database/backups + Redis + storage + monitoring + WhatsApp charges + AI tokens/tools`
+
+For AI, calculate each model's input and output tokens against its current rates; include retries, summaries and tool-loop turns. For example, 1,000 enquiries with 12 model calls each means 12,000 calls before retries—an assumption, not a forecast. Measure a representative sample before purchasing larger plans. Use per-operator budgets, bounded context and tool limits; avoid dropping customer messages when a budget is reached, and route to humans instead.
+
+### 18.16 Build order and release evidence
+
+| Milestone | Build | Evidence required before moving on |
+|---|---|---|
+| 0. Audit prototype | Find existing code, webhook settings, number ownership and deployment | Real inbound and outbound test; inventory of reusable components |
+| 1. Durable transport | Events, messages, outbox, queue, dispatcher | Restart and duplicate-event tests preserve one logical message |
+| 2. Human inbox | Login, isolation, conversations, replies, takeover | Two operators cannot access each other; takeover suppresses unsent AI drafts |
+| 3. AI qualification | Extraction, memory, approved FAQs, narrow tools | Dates, corrections, refusals and human requests pass journey tests |
+| 4. Reliable handoff | Queue, owners, summary, SLA escalation | Unaccepted handoff reaches fallback owner without duplicate replies |
+| 5. Inventory and quote drafts | Fleet adapter, freshness, exact calculator | Unavailable/stale source cannot produce a confirmed offer |
+| 6. Controlled booking support | Version-bound staff approval and authoritative booking reference | Changed quote invalidates approval; payment alone cannot confirm |
+| 7. Pilot rollout | Shadow evaluation, limited live traffic, monitoring | Staff can stop AI instantly and recover every failed task |
+
+The original feature roadmap lists a fuller sales workspace as Phase 2. Implementation should still provide a minimal human reply/takeover interface before any customer-facing AI pilot; that is a dependency of safe handoff.
+
+Start in shadow mode: the AI drafts against test or appropriately authorized conversations while humans send. Move to limited automatic clarification and FAQs only after evaluation. Expand allowed actions individually.
+
+### 18.17 Technical failure tests
+
+Test observable outcomes, not just prompt wording:
+
+- Duplicate inbound event during a worker restart: one durable customer message and no duplicate logical response.
+- Database succeeds but queue publish fails: outbox later schedules processing.
+- Two customer messages arrive during generation: stale output is discarded or regenerated.
+- Human takeover races with AI generation: unsent draft is cancelled and owner remains human.
+- Meta send times out after possible acceptance: state is unknown, not falsely failed or blindly retried.
+- Reminder crosses the WhatsApp window: correct template/eligibility check at dispatch.
+- Staff modifies quote after approval: prior approval cannot authorize the new revision.
+- Inventory reports an overlapping reservation: draft cannot become confirmed.
+- A prompt asks to reveal another operator's customers: both tools and database reject access.
+- A payment screenshot arrives: no verified payment or confirmed booking is created.
+- Model fails repeatedly: bounded failure produces a visible human task.
+- Restore staging from backup: messages, owners, pending tasks and unsent outbox work reconcile correctly.
+
+Use unit tests for money/time rules, database integration tests for isolation and concurrency, provider fixtures for webhook failures, and browser tests for staff takeover and approval. Keep a reviewed conversation evaluation set covering Sections 15 and 17. Record model, prompt and knowledge versions with every evaluation so a change can be compared and rolled back.
+
+### 18.18 Operator decisions needed before launch
+
+Resolve these during implementation, without blocking the proposed architecture:
+
+- Which deployed prototype components already exist and should be reused?
+- Who maintains availability, rates and rental policies, and how frequently?
+- What are staff hours, fallback owners and realistic response SLAs?
+- Which languages are supported and reviewed?
+- Which quote actions may the AI perform without human review?
+- Is an external booking system authoritative, or will the operator initially confirm manually?
+- Which document, payment, hosting-region and retention arrangements are approved?
+- What pilot volume and monthly spending limit should guide capacity?
+
+### Technical references
+
+Official sources reviewed for this proposed design on 10 September 2026. Architecture choices and pilot targets are recommendations; source links document underlying product behavior.
+
+- **T1:** [Next.js documentation](https://nextjs.org/docs).
+- **T2:** [Fastify documentation](https://fastify.dev/docs/latest/).
+- **T3:** [BullMQ documentation](https://docs.bullmq.io/).
+- **T4:** [Render background workers](https://render.com/docs/background-workers).
+- **T5:** [WhatsApp Business Messaging Policy](https://whatsappbusiness.com/policy/).
+- **T6:** [Supabase row-level security](https://supabase.com/docs/guides/database/postgres/row-level-security).
+- **T7:** [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling).
+
+
 ## Sources
 
 1. [Vyra Project Context](https://github.com/usamasaleem/Vyra/blob/main/docs/PROJECT-CONTEXT.md).
