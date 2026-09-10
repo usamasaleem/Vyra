@@ -4,7 +4,7 @@
 
 The Vyra Chat Sales Agent is a WhatsApp-based AI sales assistant for Dubai luxury and exotic car-rental operators. It handles the first part of the customer journey: understanding an enquiry, collecting the facts needed to evaluate it, answering verified questions, presenting suitable options, and creating a controlled handoff to a salesperson.
 
-The agent is a sales coordinator, not the final commercial authority. It may explain approved prices, deposits, requirements, delivery rules, and vehicle availability when those facts come from trusted sources. It must not invent facts, approve exceptions, verify payments, or confirm a booking unless the configured business workflow explicitly authorizes that action.
+The agent is a sales coordinator, not an operations system. It may request approved prices, availability, requirements, and delivery information from the Operations Agent, then explain those facts to the customer. It must not manage inventory, edit vehicle status, control delivery, verify payments, approve documents, or confirm a booking.
 
 The intended journey is:
 
@@ -116,7 +116,7 @@ For a new rental enquiry, capture:
 
 The agent should ask one or two high-value questions at a time, acknowledge already supplied information, and avoid making the customer repeat themselves.
 
-### C. Vehicle discovery and recommendation
+### C. Vehicle discovery and recommendation (using Operations-approved data)
 
 The recommendation layer can:
 
@@ -152,7 +152,7 @@ Requirements may vary by customer nationality, residency, vehicle category, age,
 
 For example, a high-performance or exotic vehicle may have a higher minimum age or stricter deposit policy than a standard luxury vehicle. The salesperson or operator system must make the final eligibility decision.
 
-### F. Delivery, collection, and rental logistics
+### F. Delivery, collection, and rental logistics (handled by Operations)
 
 Support questions about:
 
@@ -428,7 +428,7 @@ The first version should not be considered ready until it can:
 - Recover from failed messages and background jobs.
 - Demonstrate performance with simulated traffic and representative conversations.
 
-## 12. Product boundary
+## 12. Sales and Operations boundary\n\nThe Sales Agent owns customer intent, qualification, recommendations from approved data, quotes as commercial conversations, handoffs, and sales follow-up. The Operations Agent owns inventory, vehicle status, availability, rate inputs, bookings, documents, payments, delivery, active-rental support, and operational reporting. Sales requests operational facts and displays the returned status; it does not edit or override those records.\n\nSee [Operations Agent](../Operations%20Agent/operations%20agent.md) for the operational ownership model.\n\n## 13. Product boundary
 
 The sales agent should be excellent at qualification, explanation, recommendation, and coordination before it attempts autonomous booking. The highest-value early capability is dependable context and handoff: every customer should reach a salesperson with the right facts, the right urgency, and no invented promises.
 
