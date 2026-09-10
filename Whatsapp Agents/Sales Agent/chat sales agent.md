@@ -70,6 +70,8 @@ This reflects Vyra's product context and WhatsApp brief:
 
 ## 5. Feature map
 
+> **Ownership rule:** Inventory, fleet, availability, delivery, booking, payment, documents, maintenance, active-rental support, and operational reporting are owned by the [Operations Agent](../Operations%20Agent/operations%20agent.md). The Sales Agent requests approved facts and communicates them; it does not manage those records.
+
 ### A. WhatsApp conversation layer
 
 - Receive inbound WhatsApp text messages and webhook events.
@@ -116,18 +118,9 @@ For a new rental enquiry, capture:
 
 The agent should ask one or two high-value questions at a time, acknowledge already supplied information, and avoid making the customer repeat themselves.
 
-### C. Vehicle discovery and recommendation (using Operations-approved data)
+### C. Approved options from Operations
 
-The recommendation layer can:
-
-- Search trusted inventory by dates, vehicle, category, price band, seats, transmission, location, and delivery capability.
-- Explain why an option matches the request.
-- Present a small set of suitable options rather than an unfiltered catalogue.
-- Offer alternatives when the requested vehicle is unavailable.
-- Distinguish between “available now,” “needs operator confirmation,” “unavailable,” and “unknown.”
-- Show the last verified time for availability when useful.
-- Explain included kilometres, extra-kilometre charges, deposit, insurance, delivery, fuel, Salik, and fines from the vehicle or operator policy.
-- Never imply that a displayed option is reserved.
+The Sales Agent asks Operations for current vehicle options, availability status, and applicable terms. Sales may explain and compare the returned options, but Operations owns fleet records, availability, vehicle status, and inventory changes. Sales never reserves or edits a vehicle.
 
 ### D. Pricing and quote support
 
@@ -152,21 +145,9 @@ Requirements may vary by customer nationality, residency, vehicle category, age,
 
 For example, a high-performance or exotic vehicle may have a higher minimum age or stricter deposit policy than a standard luxury vehicle. The salesperson or operator system must make the final eligibility decision.
 
-### F. Delivery, collection, and rental logistics (handled by Operations)
+### F. Operational requests routed to Operations
 
-Support questions about:
-
-- Delivery to hotels, residences, offices, airports, and other permitted locations.
-- Collection location and time windows.
-- Delivery fees or free-delivery zones.
-- Traffic, weather, road closure, or availability-related delays.
-- Handover requirements and inspection.
-- Fuel and mileage expectations.
-- Cross-emirate delivery or travel.
-- Extension requests and late returns.
-- Roadside assistance and emergency escalation.
-
-The agent should create a logistics task when a location, time, or service requirement needs operational confirmation.
+The Sales Agent captures the customer's delivery, collection, extension, handover, or support request and sends it to Operations. Operations owns delivery capacity, timing, handover execution, live-rental changes, and service recovery. Sales communicates approved updates to the customer.
 
 ### G. Human handoff and shared ownership
 
@@ -211,21 +192,9 @@ Follow-up features:
 - Record why an enquiry was lost: unavailable vehicle, price, eligibility, no response, timing, competitor, or unknown.
 - Reopen an enquiry when the customer replies.
 
-### I. Operator console and administration
+### I. Sales workspace and administration
 
-The sales team needs:
-
-- Shared inbox with filters by stage, owner, priority, SLA, and vehicle.
-- Conversation search.
-- Manual assignment and reassignment.
-- AI pause/resume controls.
-- Internal notes separate from customer-visible messages.
-- Approved knowledge and policy management.
-- Inventory and rate-card management or integration.
-- User roles and permissions.
-- Audit log.
-- Reporting dashboard.
-- Test/simulation mode before publishing changes.
+The Sales Agent workspace covers conversations, qualification, quotes, ownership, handoffs, follow-ups, and customer-facing messages. Inventory, fleet, availability, delivery, maintenance, booking, payment, document, and operational performance controls belong to the Operations Agent.
 
 ## 6. End-to-end use cases
 
@@ -765,17 +734,9 @@ Customer messages, retrieved text and file contents are untrusted input. A messa
 
 For material commercial messages, render amounts, dates, expiry and status from validated database fields. Let the model phrase the surrounding explanation. This reduces the risk of a fluent response changing approved terms.
 
-### 18.9 Knowledge, inventory and quotes
+### 18.9 Approved sales information and quote requests
 
-Start policy retrieval with approved topics in PostgreSQL. Import useful Markdown content into drafts, have the operator approve it, and publish an effective version. This product specification must not become a source of actual fleet prices or rental rules.
-
-Add semantic retrieval only when the knowledge set is large enough to need it. Retrieved passages must retain operator, topic, version and source. Never use semantic similarity as the authoritative availability or pricing lookup.
-
-Initially, staff can maintain fleet records or import a validated CSV. Each availability answer includes source, checked time and confidence/status. Without complete booking coverage, label availability “requires confirmation.” Later, connect a rental-management API through an adapter with the same contract.
-
-Availability checks must account for overlapping bookings, holds, maintenance and delivery/turnaround buffers. Prevent local overlapping reservations transactionally. A local database lock cannot prevent a booking in an external system; final confirmation requires that external system's reservation contract or a human recheck.
-
-Use a deterministic quote calculator. Inputs include exact rental timestamps, billing rules, rate version, vehicle, extras, delivery and any approved discount. Keep the refundable deposit separate from the rental total. Explicitly represent unknown charges; do not substitute zero. Reprice after a changed date, vehicle or policy, preserving the prior quote.
+Sales may use approved customer-facing information and request a draft quote from Operations. Operations owns inventory, availability, rate inputs, and quote calculation. Sales cannot change operational data or turn an estimate into a booking.
 
 ### 18.10 Reliable jobs and message ordering
 
