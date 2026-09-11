@@ -1102,7 +1102,7 @@ var VY = {
   var outTotal = document.getElementById('outTotal');
   var outPer = document.getElementById('outPer');
   var outShare = document.getElementById('outShare');
-  var presets = Array.prototype.slice.call(document.querySelectorAll('.preset'));
+  var presets = Array.prototype.slice.call(document.querySelectorAll('.preset[data-ops]'));
 
   var aed = VY.compact, group = VY.group, fill = VY.setFill, setNote = VY.setNote;
 
@@ -1178,7 +1178,7 @@ var VY = {
   if(!rate || !days || !leads || !conv) return;
 
   var segs = Array.prototype.slice.call(document.querySelectorAll('.preset.seg'));
-  var current = segs.find ? segs.find(function(s){ return s.classList.contains('on'); }) : segs[2];
+  var current = segs.filter(function(s){ return s.classList.contains('on'); })[0] || segs[0];
 
   // The example operator profile documented earlier on this page.
   var MONTHLY_ENQUIRIES = 1500;
@@ -1222,7 +1222,7 @@ var VY = {
     document.getElementById('rateVal').textContent = 'AED ' + VY.group(r);
     document.getElementById('daysVal').textContent = d + (d === 1 ? ' day' : ' days');
     document.getElementById('leadsVal').textContent = w;
-    document.getElementById('convVal').textContent = (c*100) + '%';
+    document.getElementById('convVal').textContent = conv.value + '%';
 
     var booking = r * d;            // what one converted booking is worth
     var perLead = booking * c;      // conversion-weighted value of a single lost lead
@@ -1238,7 +1238,7 @@ var VY = {
 
     var lostBookings = w * WEEKS_PER_MONTH * c;
     document.getElementById('plExplain').textContent =
-      'At ' + (c*100) + '% conversion, ' + w + ' lost leads a week works out to roughly ' +
+      'At ' + conv.value + '% conversion, ' + w + ' lost leads a week works out to roughly ' +
       (Math.round(lostBookings*10)/10) + ' lost bookings a month. Revenue only, before the cost of servicing those rentals.';
 
     var a = rateNote(r), b = daysNote(d), e = leadsNote(w), f = convNote(+conv.value);
