@@ -1,0 +1,9 @@
+[build]
+  publish = "dashboard"
+
+# The dashboard has one section so far, so the site root serves it directly.
+# When a hub page exists, replace this with a real index.html.
+[[redirects]]
+  from = "/"
+  to = "/market-research.html"
+  status = 200
