@@ -1,0 +1,251 @@
+<title>Vyra Knowledge Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg:#DFDFDF;
+    --surface:#F1F1F1;
+    --surface-2:#FFFFFF;
+    --ink:#0D0D0D;
+    --ink-dim:#6B6B6B;
+    --ink-faint:#9B9B9B;
+    --green:#00A651;
+    --green-deep:#008A43;
+    --green-soft:#D9F2E3;
+    --amber:#D9822B;
+    --red:#C8412F;
+    --line:rgba(13,13,13,0.08);
+    --line-soft:rgba(13,13,13,0.05);
+    --track:rgba(13,13,13,0.08);
+    --shadow-sm:0 1px 3px rgba(0,0,0,0.04);
+    --shadow-md:0 4px 18px rgba(0,0,0,0.06);
+    --shadow-lg:0 14px 44px rgba(0,0,0,0.11);
+    --r-card:24px;
+    --r-inner:16px;
+    --r-pill:999px;
+    color-scheme: light;
+  }
+
+  *{box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased; font-size:15px; line-height:1.5;
+  }
+  h1,h2,h3{font-family:'Inter Tight','Inter',sans-serif; letter-spacing:-0.032em; text-wrap:balance; margin:0;}
+  .tnum{font-variant-numeric:tabular-nums;}
+  a{color:inherit;}
+  .wrap{max-width:1220px; margin:0 auto; padding:0 24px;}
+  @media (max-width:640px){ .wrap{padding:0 16px;} }
+
+  /* ================= header ================= */
+  .topbar{position:sticky; top:0; z-index:60; background:color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter:blur(14px) saturate(160%);}
+  .topbar-inner{max-width:1220px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; gap:16px;}
+  @media (max-width:640px){ .topbar-inner{padding:12px 16px;} }
+  .brand{display:flex; align-items:center; gap:9px; flex-shrink:0;}
+  .brand-mark{width:34px; height:34px; border-radius:12px; background:var(--ink); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .brand-mark i{width:11px; height:11px; border-radius:50%; background:var(--green); display:block;}
+  .brand-name{font-family:'Inter Tight',sans-serif; font-weight:700; font-size:17px; letter-spacing:-0.02em;}
+  .loc-chip{display:none; align-items:center; gap:8px; flex-shrink:0; margin-left:auto; background:var(--surface-2); border-radius:var(--r-pill); padding:9px 16px 9px 12px; font-size:13px; color:var(--ink-dim); box-shadow:var(--shadow-sm); white-space:nowrap;}
+  @media (min-width:760px){ .loc-chip{display:flex;} }
+  .loc-chip .pin{width:7px; height:7px; border-radius:50%; background:var(--green); flex-shrink:0;}
+
+  /* ================= hero ================= */
+  .hero{padding:52px 0 8px;}
+  .eyebrow{display:inline-flex; align-items:center; gap:9px; background:var(--surface-2); border-radius:var(--r-pill); padding:7px 15px 7px 9px; font-size:12px; font-weight:600; color:var(--ink-dim); box-shadow:var(--shadow-sm);}
+  .eyebrow .n{background:var(--ink); color:#fff; border-radius:var(--r-pill); padding:3px 8px; font-size:11px; font-weight:700; letter-spacing:0.02em;}
+  .hero h1{font-size:clamp(40px,5.6vw,64px); font-weight:800; line-height:1.0; letter-spacing:-0.04em; margin:22px 0 20px; max-width:15ch;}
+  .hero .lede{font-size:16.5px; color:var(--ink-dim); max-width:60ch; line-height:1.55; margin:0 0 14px;}
+  .hero .src{font-size:13px; color:var(--ink-faint); max-width:64ch; line-height:1.5; margin:0;}
+
+  /* ================= section cards ================= */
+  .sections{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:44px;}
+  @media (max-width:980px){ .sections{grid-template-columns:1fr;} }
+
+  .sec{
+    display:flex; flex-direction:column; text-decoration:none;
+    background:var(--surface-2); border-radius:var(--r-card); padding:24px;
+    box-shadow:var(--shadow-sm);
+    transition:box-shadow .18s ease, transform .18s ease;
+  }
+  .sec:hover{box-shadow:var(--shadow-lg); transform:translateY(-3px);}
+  .sec:focus-visible{outline:2.5px solid var(--green); outline-offset:3px;}
+  .sec-motif{
+    background:var(--surface); border-radius:var(--r-inner); padding:18px 20px; margin-bottom:20px;
+  }
+  .sec-motif svg{display:block; width:100%; height:auto;}
+  .sec-top{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:11px;}
+  .sec h3{font-size:22px; font-weight:700; letter-spacing:-0.035em;}
+  .sec .blurb{font-size:13.5px; color:var(--ink-dim); line-height:1.55; margin:0 0 18px;}
+  .sec .inside{
+    list-style:none; margin:0 0 20px; padding:16px 0 0;
+    border-top:1px solid var(--line-soft);
+    display:flex; flex-wrap:wrap; gap:7px;
+  }
+  .sec .inside li{
+    font-size:11.5px; font-weight:500; color:var(--ink-dim);
+    background:var(--surface); border-radius:var(--r-pill); padding:5px 11px;
+  }
+  .sec .open{
+    margin-top:auto; display:inline-flex; align-items:center; gap:8px;
+    font-size:13px; font-weight:600; color:var(--ink);
+  }
+  .sec .open .arw{
+    width:24px; height:24px; border-radius:50%; background:var(--ink); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:12px;
+    transition:transform .18s ease;
+  }
+  .sec:hover .open .arw{transform:translateX(3px);}
+
+  .tag{display:inline-flex; align-items:center; gap:6px; flex-shrink:0; font-size:11px; font-weight:600; letter-spacing:0.01em; padding:6px 12px 6px 10px; border-radius:var(--r-pill); background:var(--surface); color:var(--ink-dim); white-space:nowrap;}
+  .tag::before{content:""; width:6px; height:6px; border-radius:50%; flex-shrink:0;}
+  .tag.live::before{background:var(--green);}
+  .tag.planned::before{background:var(--ink-faint);}
+
+  /* ================= planned ================= */
+  section.block{padding:58px 0 0;}
+  .block-head{margin-bottom:22px;}
+  .block-head h2{font-size:clamp(22px,2.6vw,28px); font-weight:700; margin:14px 0 10px;}
+  .block-head .intro{font-size:14.5px; color:var(--ink-dim); max-width:66ch; line-height:1.55; margin:0;}
+
+  .planned-card{background:var(--surface); border-radius:var(--r-card); padding:8px 26px;}
+  .prow{display:grid; grid-template-columns:1fr auto; gap:16px; align-items:center; padding:20px 0;}
+  .prow + .prow{border-top:1px solid var(--line-soft);}
+  .prow .p-name{font-size:15px; font-weight:600; letter-spacing:-0.01em;}
+  .prow .p-note{font-size:12.5px; color:var(--ink-faint); margin-top:4px; line-height:1.5; max-width:68ch;}
+
+  /* ================= footer ================= */
+  footer{margin-top:58px; padding:34px 0 60px;}
+  .foot-card{background:var(--surface); border-radius:var(--r-card); padding:28px;}
+  .fine{font-size:12.5px; color:var(--ink-faint); max-width:78ch; line-height:1.6; margin:0;}
+  .fine + .fine{margin-top:10px;}
+  .fine b{color:var(--ink-dim); font-weight:600;}
+
+  svg text{font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums;}
+  svg text:not([fill]){fill:var(--ink-faint);}
+
+  @media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important;} }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="brand-mark"><i></i></span><span class="brand-name">Vyra</span></div>
+    <div class="loc-chip"><span class="pin"></span>Knowledge Dashboard</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div class="eyebrow"><span class="n">01</span> Dashboard</div>
+    <h1>Everything we know so far.</h1>
+    <p class="lede">A visual, shareable version of the Vyra knowledge hub — the market we are selling into, the product we are building, and the order we are building it in.</p>
+    <p class="src">Each section is a single page. The written specifications in <b>Whatsapp Agents/</b> and <b>docs/</b> remain the source of truth; these pages present that material, they do not replace it.</p>
+
+    <div class="sections">
+
+      <a class="sec" href="market-research.html">
+        <div class="sec-motif">
+          <svg viewBox="0 0 240 68" role="img" aria-label="A rising area chart.">
+            <defs>
+              <linearGradient id="m1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00A651" stop-opacity="0.22"/>
+                <stop offset="100%" stop-color="#00A651" stop-opacity="0.02"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="62" x2="240" y2="62" stroke="rgba(13,13,13,0.10)" stroke-width="1"/>
+            <path fill="url(#m1)" d="M0,50 L48,45 L96,37 L144,27 L192,16 L240,6 L240,62 L0,62 Z"/>
+            <path fill="none" stroke="#00A651" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" d="M0,50 L48,45 L96,37 L144,27 L192,16 L240,6"/>
+            <circle cx="240" cy="6" r="4" fill="#00A651"/>
+          </svg>
+        </div>
+        <div class="sec-top">
+          <h3>Market Intelligence</h3>
+          <span class="tag live">Live</span>
+        </div>
+        <p class="blurb">Dubai market sizing, pricing bands, per-vehicle revenue and a lead-loss calculator. Every figure carries a confidence tag, so estimates never read as facts.</p>
+        <ul class="inside">
+          <li>Sizing</li><li>Pricing</li><li>Revenue</li><li>Salaries</li><li>Opportunity</li><li>Open questions</li>
+        </ul>
+        <span class="open">Open section <span class="arw">→</span></span>
+      </a>
+
+      <a class="sec" href="agents.html">
+        <div class="sec-motif">
+          <svg viewBox="0 0 240 68" role="img" aria-label="Two boxes exchanging a request and an answer.">
+            <rect x="2" y="18" width="92" height="32" rx="11" fill="#00A651"/>
+            <rect x="146" y="18" width="92" height="32" rx="11" fill="#0D0D0D"/>
+            <path d="M96,28 L142,28" stroke="#0D0D0D" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M137,24.5 L143,28 L137,31.5 Z" fill="#0D0D0D"/>
+            <path d="M144,40 L98,40" stroke="#00A651" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M103,36.5 L97,40 L103,43.5 Z" fill="#00A651"/>
+            <line x1="120" y1="4" x2="120" y2="64" stroke="rgba(13,13,13,0.16)" stroke-width="1" stroke-dasharray="3 4"/>
+          </svg>
+        </div>
+        <div class="sec-top">
+          <h3>Agent Architecture</h3>
+          <span class="tag live">Live</span>
+        </div>
+        <p class="blurb">The two agents, the boundary that keeps them honest, the eight-stage customer journey, and exactly where the first version stops.</p>
+        <ul class="inside">
+          <li>Boundary</li><li>Journey</li><li>Sales MVP</li><li>Operations MVP</li><li>Contract</li><li>Rollout</li><li>Deferred</li>
+        </ul>
+        <span class="open">Open section <span class="arw">→</span></span>
+      </a>
+
+      <a class="sec" href="roadmap.html">
+        <div class="sec-motif">
+          <svg viewBox="0 0 240 68" role="img" aria-label="Three staggered timeline bars.">
+            <rect x="2" y="8" width="82" height="14" rx="6" fill="#00A651"/>
+            <rect x="86" y="27" width="96" height="14" rx="6" fill="#0D0D0D"/>
+            <rect x="150" y="46" width="88" height="14" rx="6" fill="#D9D9D9"/>
+            <line x1="84" y1="2" x2="84" y2="66" stroke="rgba(13,13,13,0.10)" stroke-width="1"/>
+            <line x1="182" y1="2" x2="182" y2="66" stroke="rgba(13,13,13,0.10)" stroke-width="1"/>
+          </svg>
+        </div>
+        <div class="sec-top">
+          <h3>Build Roadmap</h3>
+          <span class="tag live">Live</span>
+        </div>
+        <p class="blurb">Sixteen weeks and three gates for one builder, ordered by what each stage lets you sell rather than what is easiest to build.</p>
+        <ul class="inside">
+          <li>Gate 1</li><li>Gate 2</li><li>Gate 3</li><li>Scope</li><li>Calendar risks</li>
+        </ul>
+        <span class="open">Open section <span class="arw">→</span></span>
+      </a>
+
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head">
+      <div class="eyebrow"><span class="n">02</span> Not yet built</div>
+      <h2>Sections still to come</h2>
+      <p class="intro">Both exist as written documents already. Neither has a page here yet.</p>
+    </div>
+    <div class="planned-card">
+      <div class="prow">
+        <div>
+          <div class="p-name">Product and handoff brief</div>
+          <div class="p-note">The consolidated product brief — users, scope boundaries, proposed data foundation, acceptance criteria and the decisions still open.</div>
+        </div>
+        <span class="tag planned">Planned</span>
+      </div>
+      <div class="prow">
+        <div>
+          <div class="p-name">Implementation status</div>
+          <div class="p-note">What is actually deployed today versus what is proposed. Currently a prototype with a verified webhook and working outbound test, and no durable memory, handoff or inbox.</div>
+        </div>
+        <span class="tag planned">Planned</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="foot-card">
+      <p class="fine"><b>These pages are a presentation layer.</b> Source content lives in the repository — the agent specifications and MVPs in <b>Whatsapp Agents/</b>, and the market research, project context and current state in <b>docs/</b>. Update the source document first, then reflect the change here.</p>
+      <p class="fine">Market sizes, operator counts, pricing ranges and revenue examples are working estimates rather than audited facts, and the build estimates have not been measured against real work. Each page tags its own figures so you can tell which is which.</p>
+    </div>
+  </footer>
+</div>

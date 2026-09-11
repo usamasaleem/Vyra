@@ -61,7 +61,8 @@
     display:flex; align-items:center; gap:20px;
   }
   @media (max-width:640px){ .topbar-inner{padding:12px 16px; gap:12px;} }
-  .brand{display:flex; align-items:center; gap:9px; flex-shrink:0;}
+  .brand{display:flex; align-items:center; gap:9px; flex-shrink:0; text-decoration:none; color:inherit;}
+  .brand:focus-visible{outline:2px solid var(--green); outline-offset:4px; border-radius:var(--r-pill);}
   .brand-mark{
     width:34px; height:34px; border-radius:12px; background:var(--ink);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
@@ -209,6 +210,78 @@
     font-size:12.5px; color:var(--ink-dim); line-height:1.55;
   }
   .cannot b{font-weight:600; color:var(--ink);}
+
+  /* ================= journey ================= */
+  .journey{display:grid;}
+  .jrow{display:grid; grid-template-columns:104px 26px 1fr; gap:0 20px; align-items:start;}
+  @media (max-width:760px){ .jrow{grid-template-columns:1fr; gap:10px;} }
+  .jlabel{
+    text-align:right; padding-top:26px;
+    font-size:11px; font-weight:700; letter-spacing:0.05em; color:var(--ink-faint);
+    font-variant-numeric:tabular-nums;
+  }
+  .jlabel span{display:block; font-weight:600; letter-spacing:0.02em; font-size:11px; margin-top:5px;}
+  .jlabel .sales{color:var(--green-deep);}
+  .jlabel .ops{color:var(--ink);}
+  .jlabel .human{color:var(--amber);}
+  @media (max-width:760px){ .jlabel{text-align:left; padding-top:0;} .jlabel span{display:inline; margin-left:10px;} }
+  .jrail{position:relative; display:flex; justify-content:center; align-self:stretch;}
+  @media (max-width:760px){ .jrail{display:none;} }
+  .jrail::before{
+    content:""; position:absolute; left:50%; transform:translateX(-50%);
+    top:0; bottom:0; width:1.5px; background:var(--line);
+  }
+  .jrow:first-child .jrail::before{top:30px;}
+  .jrow.last .jrail::before{bottom:auto; height:30px;}
+  .jnode{
+    position:relative; z-index:2; width:13px; height:13px; border-radius:50%;
+    margin-top:24px; border:3.5px solid var(--bg); flex-shrink:0;
+  }
+  .jnode.sales{background:var(--green);}
+  .jnode.ops{background:var(--ink);}
+  .jnode.human{background:var(--amber);}
+  .jcard{
+    background:var(--surface-2); border-radius:var(--r-card); padding:24px;
+    box-shadow:var(--shadow-sm); margin-bottom:14px;
+  }
+  .jcard.dim{background:var(--surface); box-shadow:none;}
+  .jhead{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px;}
+  .jhead h3{font-size:19px; font-weight:700; letter-spacing:-0.03em;}
+  .msg{
+    display:inline-block; max-width:46ch; background:var(--surface); color:var(--ink);
+    border-radius:16px 16px 16px 5px; padding:11px 15px; font-size:13.5px; line-height:1.45;
+    margin-bottom:16px;
+  }
+  .jcard.dim .msg{background:var(--surface-2);}
+  .msg .who{
+    display:block; font-size:10.5px; font-weight:700; letter-spacing:0.05em;
+    color:var(--ink-faint); margin-bottom:5px;
+  }
+  .msg em{font-style:normal; color:var(--ink-faint);}
+  .jbody{font-size:13.5px; color:var(--ink-dim); line-height:1.6; margin:0;}
+  .jwin{
+    display:flex; gap:10px; align-items:flex-start; margin-top:16px; padding-top:15px;
+    border-top:1px solid var(--line-soft); font-size:12.5px; color:var(--ink-faint); line-height:1.5;
+  }
+  .jwin .tick{
+    width:17px; height:17px; border-radius:50%; flex-shrink:0; margin-top:1px;
+    background:var(--green-soft); color:var(--green-deep);
+    display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;
+  }
+  .jwin b{color:var(--ink); font-weight:600;}
+
+  .jbreak{display:flex; align-items:center; gap:14px; margin:6px 0 20px;}
+  @media (max-width:760px){ .jbreak{margin:14px 0 18px;} }
+  .jbreak .ln{flex:1; height:0; border-top:1.5px dashed rgba(13,13,13,0.22);}
+  .jbreak .lb{
+    background:var(--ink); color:#fff; border-radius:var(--r-pill); padding:9px 18px;
+    font-size:11.5px; font-weight:700; letter-spacing:0.04em; white-space:nowrap;
+  }
+  .jbreak-note{
+    font-size:12.5px; color:var(--ink-faint); line-height:1.55; margin:-10px 0 22px;
+    max-width:70ch;
+  }
+  @media (min-width:761px){ .jbreak-note{padding-left:130px;} }
 
   /* ================= state field blocks ================= */
   .fieldset-note{
@@ -358,7 +431,9 @@
   .fine{font-size:12.5px; color:var(--ink-faint); max-width:74ch; line-height:1.6; margin:0;}
   .fine + .fine{margin-top:10px;}
 
-  svg text{font-family:'Inter',sans-serif; fill:var(--ink-faint); font-variant-numeric:tabular-nums;}
+  svg text{font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums;}
+  /* presentation attributes lose to CSS, so only colour text that sets no fill of its own */
+  svg text:not([fill]){fill:var(--ink-faint);}
 
   @media (prefers-reduced-motion:reduce){
     *{animation:none !important; transition:none !important; scroll-behavior:auto !important;}
@@ -368,13 +443,14 @@
 
 <div class="topbar">
   <div class="topbar-inner">
-    <div class="brand">
+    <a class="brand" href="index.html">
       <span class="brand-mark"><i></i></span>
       <span class="brand-name">Vyra</span>
-    </div>
+    </a>
     <nav class="navpills" id="nav">
       <a href="#overview">Overview</a>
       <a href="#boundary">Boundary</a>
+      <a href="#journey">Journey</a>
       <a href="#sales">Sales MVP</a>
       <a href="#operations">Operations MVP</a>
       <a href="#contract">Contract</a>
@@ -540,10 +616,122 @@
     </div>
   </section>
 
+
+  <!-- ============ JOURNEY ============ -->
+  <section class="block" id="journey">
+    <div class="block-head">
+      <div class="eyebrow"><span class="n">03</span> Journey</div>
+      <h2>One conversation, end to end</h2>
+      <p class="intro">The customer should experience a single continuous conversation, even though two agents and several people take turns behind it. These are the eight stages from the Sales Agent specification, and the point where the first version stops.</p>
+    </div>
+
+    <div class="journey">
+
+      <div class="jrow">
+        <div class="jlabel">STAGE 0<span class="sales">Sales</span></div>
+        <div class="jrail"><span class="jnode sales"></span></div>
+        <div class="jcard">
+          <div class="jhead"><h3>Entry and first response</h3><span class="tag mvp">In MVP</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span>How much for a Ferrari this weekend?</div>
+          <p class="jbody">The conversation is created, or an existing one is reopened. Language and likely intent are detected, the agent checks whether an open enquiry or booking already exists, and a qualification timer starts.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> the customer knows the enquiry was received and what is needed next.</span></div>
+        </div>
+      </div>
+
+      <div class="jrow">
+        <div class="jlabel">STAGE 1<span class="sales">Sales</span></div>
+        <div class="jrail"><span class="jnode sales"></span></div>
+        <div class="jcard">
+          <div class="jhead"><h3>Discovery and qualification</h3><span class="tag mvp">In MVP</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span>tomorrow &middot; for 3 days &middot; near Marina &middot; <em>something sporty under 2,000</em></div>
+          <p class="jbody">Partial answers are accepted as they come. Relative dates are resolved against the operator's timezone and confirmed rather than assumed, the original wording is kept beside the normalised value, and one or two high-value questions are asked at a time. If the customer stops replying, the draft enquiry is saved.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> all five qualifying fields are present, or the agent knows exactly which one is missing.</span></div>
+        </div>
+      </div>
+
+      <div class="jrow">
+        <div class="jlabel">STAGE 2<span class="ops">Sales &rarr; Ops</span></div>
+        <div class="jrail"><span class="jnode ops"></span></div>
+        <div class="jcard">
+          <div class="jhead"><h3>Options and explanation</h3><span class="tag mvp">In MVP</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span>Is the Huracán free those dates? What's the deposit?</div>
+          <p class="jbody">Sales sends a structured request; a person answers it in the Operations console and returns the status with its source and the time it was checked. Each option is labelled available, pending confirmation, unavailable or unknown. A displayed option is never treated as reserved.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> the customer can compare real options and ask follow-ups without starting over.</span></div>
+        </div>
+      </div>
+
+      <div class="jrow">
+        <div class="jlabel">STAGE 3<span class="human">Needs a person</span></div>
+        <div class="jrail"><span class="jnode human"></span></div>
+        <div class="jcard">
+          <div class="jhead"><h3>Quote and commercial review</h3><span class="tag human">Human only</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span>What's the total, all in? Any chance on the price?</div>
+          <p class="jbody">Rental charge is separated from deposit, delivery, VAT, extras and possible post-rental charges. An estimate is labelled an estimate. Discounts, unusual durations, multi-car and non-standard terms create a human approval task — a draft quote never becomes a booking by implication.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> the customer can tell what is fixed from what is still conditional.</span></div>
+        </div>
+      </div>
+
+      <div class="jrow last">
+        <div class="jlabel">STAGE 4<span class="human">Salesperson</span></div>
+        <div class="jrail"><span class="jnode human"></span></div>
+        <div class="jcard">
+          <div class="jhead"><h3>Handoff to a salesperson</h3><span class="tag mvp">In MVP</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span>Can I speak to someone?</div>
+          <p class="jbody">The customer is told why a human is joining, and is not asked to repeat anything. The packet travels with them: transcript, verified facts, unresolved questions, options shown, quote versions, reason, owner, priority and next action. Customer-facing automation pauses by default.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> there is one visible owner and one coherent next reply.</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="jbreak">
+      <span class="lb">THE MVP ENDS HERE</span>
+      <span class="ln"></span>
+    </div>
+    <p class="jbreak-note">Everything above is what the first version is built to do. Everything below is specified and deliberately deferred — in the MVP these stages happen the way they happen today, with staff working outside the system.</p>
+
+    <div class="journey">
+
+      <div class="jrow">
+        <div class="jlabel">STAGE 5<span class="ops">Operations</span></div>
+        <div class="jrail"><span class="jnode ops"></span></div>
+        <div class="jcard dim">
+          <div class="jhead"><h3>Booking confirmation</h3><span class="tag later">Post-MVP</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span>Yes, let's book it.</div>
+          <p class="jbody">Availability is rechecked, the configured approval is recorded, the booking is linked back to the conversation, lead follow-ups stop, and a snapshot of the final agreed terms is stored.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> the customer can tell enquiry, quote sent, payment pending, reserved and confirmed apart.</span></div>
+        </div>
+      </div>
+
+      <div class="jrow">
+        <div class="jlabel">STAGE 6<span class="ops">Operations</span></div>
+        <div class="jrail"><span class="jnode ops"></span></div>
+        <div class="jcard dim">
+          <div class="jhead"><h3>Pre-handover and active rental</h3><span class="tag later">Post-MVP</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span>Can I keep it two more days?</div>
+          <p class="jbody">Document reminders, delivery timing and handover instructions. Extensions, vehicle swaps, damage, fines, accidents, payment disputes and late returns each create an explicit operational task with a human owner. A live rental is never silently altered.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> every change to a live rental is owned by a named person.</span></div>
+        </div>
+      </div>
+
+      <div class="jrow last">
+        <div class="jlabel">STAGE 7<span class="ops">Ops &rarr; Sales</span></div>
+        <div class="jrail"><span class="jnode ops"></span></div>
+        <div class="jcard dim">
+          <div class="jhead"><h3>Completion and re-entry</h3><span class="tag later">Post-MVP</span></div>
+          <div class="msg"><span class="who">CUSTOMER</span><em>returns the car — then messages again four months later</em></div>
+          <p class="jbody">The rental is marked complete, unresolved charges or disputes are recorded, and feedback is requested through an approved workflow. A returning customer's preferences may improve discovery, but dates, vehicle, price, eligibility and payment details are revalidated rather than reused.</p>
+          <div class="jwin"><span class="tick">✓</span><span><b>Done when</b> a late message reopens the conversation with its prior context intact.</span></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <!-- ============ SALES MVP ============ -->
   <section class="block" id="sales">
     <div class="block-head">
-      <div class="eyebrow"><span class="n">03</span> Sales Agent</div>
+      <div class="eyebrow"><span class="n">04</span> Sales Agent</div>
       <h2>What the Sales MVP must do</h2>
       <p class="intro">The MVP ends when a qualified enquiry reaches the right salesperson with complete context, and that person can carry on the WhatsApp conversation without asking the customer to repeat anything.</p>
     </div>
@@ -625,7 +813,7 @@
   <!-- ============ OPERATIONS MVP ============ -->
   <section class="block" id="operations">
     <div class="block-head">
-      <div class="eyebrow"><span class="n">04</span> Operations Agent</div>
+      <div class="eyebrow"><span class="n">05</span> Operations Agent</div>
       <h2>What the Operations MVP must do</h2>
       <p class="intro">Give Sales a trustworthy, time-stamped answer about vehicles, availability, rates and requirements — and hold the authoritative booking record — so that no customer-facing promise rests on a stale, missing or invented fact.</p>
     </div>
@@ -701,7 +889,7 @@
   <!-- ============ CONTRACT ============ -->
   <section class="block" id="contract">
     <div class="block-head">
-      <div class="eyebrow"><span class="n">05</span> Interface</div>
+      <div class="eyebrow"><span class="n">06</span> Interface</div>
       <h2>The request and the answer</h2>
       <p class="intro">This is the whole interface between the two agents. Sales cannot read operational records directly — it asks, and an authorised person answers in the Operations console.</p>
     </div>
@@ -740,7 +928,7 @@
   <!-- ============ ROLLOUT ============ -->
   <section class="block" id="rollout">
     <div class="block-head">
-      <div class="eyebrow"><span class="n">06</span> Rollout</div>
+      <div class="eyebrow"><span class="n">07</span> Rollout</div>
       <h2>How the AI earns the right to send</h2>
       <p class="intro">Capability is added one step at a time, and each step must hold before the next begins. A capability that produces an unsupported claim returns to the previous step rather than being patched in place.</p>
     </div>
@@ -772,7 +960,7 @@
   <!-- ============ SAFETY ============ -->
   <section class="block" id="safety">
     <div class="block-head">
-      <div class="eyebrow"><span class="n">07</span> Limits</div>
+      <div class="eyebrow"><span class="n">08</span> Limits</div>
       <h2>What the agent never does alone</h2>
       <p class="intro">These are not tuned behaviours or prompt instructions. They are the actions the system is built to make impossible without a person, because each one costs real money or real trust when it goes wrong.</p>
     </div>
@@ -816,7 +1004,7 @@
   <!-- ============ DEFERRED ============ -->
   <section class="block" id="deferred">
     <div class="block-head">
-      <div class="eyebrow"><span class="n">08</span> Out of scope</div>
+      <div class="eyebrow"><span class="n">09</span> Out of scope</div>
       <h2>Deliberately not in the MVP</h2>
       <p class="intro">Each of these is specified in the full agent documents and deliberately deferred. They are listed roughly in the order they should follow, once the enquiry-to-handoff path is dependable.</p>
     </div>

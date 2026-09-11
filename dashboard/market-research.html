@@ -61,7 +61,8 @@
     display:flex; align-items:center; gap:20px;
   }
   @media (max-width:640px){ .topbar-inner{padding:12px 16px; gap:12px;} }
-  .brand{display:flex; align-items:center; gap:9px; flex-shrink:0;}
+  .brand{display:flex; align-items:center; gap:9px; flex-shrink:0; text-decoration:none; color:inherit;}
+  .brand:focus-visible{outline:2px solid var(--green); outline-offset:4px; border-radius:var(--r-pill);}
   .brand-mark{
     width:34px; height:34px; border-radius:12px; background:var(--ink);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
@@ -414,10 +415,10 @@
 
 <div class="topbar">
   <div class="topbar-inner">
-    <div class="brand">
+    <a class="brand" href="index.html">
       <span class="brand-mark"><i></i></span>
       <span class="brand-name">Vyra</span>
-    </div>
+    </a>
     <nav class="navpills" id="nav">
       <a href="#overview">Overview</a>
       <a href="#sizing">Sizing</a>

@@ -6,11 +6,14 @@ A visual, shareable-by-link version of the knowledge hub — charts, hierarchy a
 
 | File | Live link | Status |
 | --- | --- | --- |
+| [index.html](./index.html) | https://claude.ai/code/artifact/1485c888-e5f8-4130-b204-82e6c45ddc35 | Live — hub |
 | [market-research.html](./market-research.html) | https://claude.ai/code/artifact/2aa41b71-5b88-4b40-acae-77bb08e84856 | Live |
 | [agents.html](./agents.html) | https://claude.ai/code/artifact/3d6078c4-c4db-4afd-b737-a5b99212ca3d | Live |
+| [roadmap.html](./roadmap.html) | https://claude.ai/code/artifact/e8010af9-4100-4978-93ec-20a1b096dfb2 | Live |
 | Product / handoff brief | — | Not started |
 | Implementation status | — | Not started |
-| Roadmap | — | Not started |
+
+The hub link publishes all four pages together, so relative navigation works inside it — share that one rather than the individual pages.
 
 Live links are private by default — share from the artifact's own share menu when a page is ready for others to see.
 
