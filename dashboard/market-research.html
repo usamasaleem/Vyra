@@ -18,44 +18,10 @@
     --line-soft:rgba(21,22,27,0.07);
     --shadow:0 1px 2px rgba(21,22,27,0.04), 0 20px 48px rgba(21,22,27,0.07);
     --track:rgba(21,22,27,0.07);
-    color-scheme: light dark;
+    color-scheme: light;
   }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#0B0C10;
-      --surface:#15161C;
-      --surface-2:#1C1E25;
-      --ink:#F2F1ED;
-      --ink-dim:#9C9DA6;
-      --ink-faint:#6E6F78;
-      --gold:#7C8CF0;
-      --gold-bright:#98A5F5;
-      --teal:#E0A55C;
-      --rust:#E08064;
-      --accent-soft:rgba(124,140,240,0.14);
-      --line:rgba(242,241,237,0.12);
-      --line-soft:rgba(242,241,237,0.08);
-      --shadow:0 1px 2px rgba(0,0,0,0.35), 0 20px 48px rgba(0,0,0,0.4);
-      --track:rgba(242,241,237,0.09);
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#0B0C10;
-    --surface:#15161C;
-    --surface-2:#1C1E25;
-    --ink:#F2F1ED;
-    --ink-dim:#9C9DA6;
-    --ink-faint:#6E6F78;
-    --gold:#7C8CF0;
-    --gold-bright:#98A5F5;
-    --teal:#E0A55C;
-    --rust:#E08064;
-    --accent-soft:rgba(124,140,240,0.14);
-    --line:rgba(242,241,237,0.12);
-    --line-soft:rgba(242,241,237,0.08);
-    --shadow:0 1px 2px rgba(0,0,0,0.35), 0 20px 48px rgba(0,0,0,0.4);
-    --track:rgba(242,241,237,0.09);
-  }
+  /* This page is deliberately light-only — the market data reads as a printed
+     report, and a dark inversion of the serif/mono pairing didn't hold up. */
 
   *{box-sizing:border-box;}
   html{background:var(--bg);}
