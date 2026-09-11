@@ -14,6 +14,7 @@
     --green-deep:#008A43;
     --green-soft:#D9F2E3;
     --amber:#D9822B;
+    --red:#C8412F;
     --line:rgba(13,13,13,0.08);
     --line-soft:rgba(13,13,13,0.05);
     --track:rgba(13,13,13,0.08);
@@ -294,15 +295,85 @@
   .alert-card .tag{background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.85); margin-left:auto;}
   .alert-card .tag.modeled::before{background:#fff;}
 
-  /* ================= arr ================= */
-  .arr{display:grid; grid-template-columns:190px 1fr 128px; align-items:center; gap:18px; padding:16px 0;}
-  .arr + .arr{border-top:1px solid var(--line-soft);}
-  @media (max-width:620px){ .arr{grid-template-columns:1fr; gap:8px;} .arr .arr-val{text-align:left;} }
-  .arr-name{font-size:14px; font-weight:600;}
-  .arr-name span{display:block; font-size:11.5px; font-weight:400; color:var(--ink-faint); margin-top:3px; font-variant-numeric:tabular-nums;}
-  .arr-track{height:30px; background:var(--track); border-radius:var(--r-pill); position:relative; overflow:hidden;}
-  .arr-fill{position:absolute; left:0; top:0; bottom:0; border-radius:var(--r-pill);}
-  .arr-val{font-family:'Inter Tight',sans-serif; font-size:19px; font-weight:700; letter-spacing:-0.03em; text-align:right; font-variant-numeric:tabular-nums;}
+  /* ================= calculator ================= */
+  .presets{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:26px;}
+  .presets .p-label{font-size:12px; color:var(--ink-faint); margin-right:2px;}
+  .preset{
+    font-family:inherit; font-size:12.5px; font-weight:600; color:var(--ink-dim); cursor:pointer;
+    background:var(--surface); border:1px solid transparent; border-radius:var(--r-pill);
+    padding:9px 15px; transition:background .16s, color .16s, border-color .16s;
+    font-variant-numeric:tabular-nums;
+  }
+  .preset:hover{background:rgba(13,13,13,0.07); color:var(--ink);}
+  .preset.on{background:var(--ink); color:#fff; border-color:var(--ink);}
+  .preset:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
+
+  .calc-grid{display:grid; grid-template-columns:1fr 300px; gap:26px; align-items:start;}
+  @media (max-width:860px){ .calc-grid{grid-template-columns:1fr; gap:22px;} }
+
+  .fields{display:grid; gap:26px;}
+  .field-top{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px;}
+  .field-top label{font-size:13.5px; font-weight:600;}
+  .field-top .fv{
+    font-family:'Inter Tight',sans-serif; font-size:19px; font-weight:700; letter-spacing:-0.03em;
+    font-variant-numeric:tabular-nums;
+  }
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; display:block;
+    width:100%; height:10px; border-radius:var(--r-pill); outline:none; cursor:pointer; margin:0;
+    background:linear-gradient(to right, var(--ink) 0 var(--fill,20%), var(--track) var(--fill,20%) 100%);
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:24px; height:24px; border-radius:50%; background:var(--surface-2);
+    border:2.5px solid var(--ink); box-shadow:var(--shadow-md); cursor:grab;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:20px; height:20px; border-radius:50%; background:var(--surface-2);
+    border:2.5px solid var(--ink); box-shadow:var(--shadow-md); cursor:grab; }
+  input[type=range]:focus-visible{outline:2px solid var(--green); outline-offset:4px;}
+
+  /* population rail beneath the operator slider */
+  .rail{position:relative; height:6px; border-radius:var(--r-pill); background:var(--track); margin-top:12px;}
+  .rail b{position:absolute; top:0; bottom:0; border-radius:var(--r-pill);}
+  .rail .b1{background:var(--green);}
+  .rail .b2{background:var(--amber);}
+  .rail .b3{background:rgba(13,13,13,0.28);}
+  .rail-key{display:flex; flex-wrap:wrap; gap:14px; margin-top:11px;}
+  .rail-key span{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-faint); font-variant-numeric:tabular-nums;}
+  .rail-key i{width:7px; height:7px; border-radius:2px; flex-shrink:0;}
+
+  .note-line{
+    display:flex; align-items:flex-start; gap:9px; margin-top:12px;
+    font-size:12.5px; line-height:1.45; color:var(--ink-dim);
+  }
+  .note-line .dot{width:7px; height:7px; border-radius:50%; flex-shrink:0; margin-top:5px; background:var(--ink-faint);}
+  .note-line.ok .dot{background:var(--green);}
+  .note-line.stretch .dot{background:var(--amber);}
+  .note-line.over .dot{background:var(--red);}
+  .note-line.over{color:var(--red);}
+
+  .calc-out{
+    background:var(--ink); color:#fff; border-radius:20px; padding:24px;
+    position:sticky; top:86px;
+  }
+  @media (max-width:860px){ .calc-out{position:static;} }
+  .calc-out .o-label{font-size:12.5px; color:rgba(255,255,255,0.6);}
+  .calc-out .o-num{
+    font-family:'Inter Tight',sans-serif; font-size:clamp(34px,4vw,42px); font-weight:700;
+    letter-spacing:-0.04em; line-height:1; margin:12px 0 4px; font-variant-numeric:tabular-nums;
+  }
+  .calc-out .o-sub{font-size:12.5px; color:rgba(255,255,255,0.55);}
+  .calc-out .o-row{
+    display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+    margin-top:20px; padding-top:18px; border-top:1px solid rgba(255,255,255,0.14);
+    font-size:12.5px; color:rgba(255,255,255,0.6);
+  }
+  .calc-out .o-row b{font-family:'Inter Tight',sans-serif; font-size:16px; font-weight:700; color:#fff; letter-spacing:-0.02em; font-variant-numeric:tabular-nums;}
+  .calc-foot{
+    margin-top:24px; padding-top:20px; border-top:1px solid var(--line-soft);
+    font-size:12.5px; color:var(--ink-faint); line-height:1.55;
+  }
 
   /* ================= footer ================= */
   footer{margin-top:64px; padding:34px 0 60px;}
@@ -709,22 +780,73 @@
       <div class="card">
         <div class="card-head">
           <div>
-            <div class="card-title">Market opportunity — ARR scenarios</div>
-            <div class="card-note">Both scenarios assume operator counts that are still unvalidated.</div>
+            <div class="card-title">Subscription revenue calculator</div>
+            <div class="card-note">Multiplies your assumptions out. It does not forecast demand — it checks each assumption against the operator counts estimated earlier on this page.</div>
           </div>
           <span class="tag modeled">Modeled example</span>
         </div>
-        <div class="arr">
-          <div class="arr-name">Conservative <span>100 operators × AED 4,000/mo</span></div>
-          <div class="arr-track"><div class="arr-fill" style="width:16%; background:var(--ink);"></div></div>
-          <div class="arr-val tnum">AED 4.8M</div>
+
+        <div class="presets">
+          <span class="p-label">Documented scenarios</span>
+          <button type="button" class="preset" data-ops="100" data-price="4000" data-months="12">Conservative · 100 × AED 4K</button>
+          <button type="button" class="preset" data-ops="500" data-price="5000" data-months="12">Growth · 500 × AED 5K</button>
         </div>
-        <div class="arr">
-          <div class="arr-name">Growth <span>500 operators × AED 5,000/mo</span></div>
-          <div class="arr-track"><div class="arr-fill" style="width:100%; background:var(--green);"></div></div>
-          <div class="arr-val tnum">AED 30M</div>
+
+        <div class="calc-grid">
+          <div class="fields">
+
+            <div class="field">
+              <div class="field-top">
+                <label for="ops">Paying operators</label>
+                <span class="fv" id="opsVal">100</span>
+              </div>
+              <input type="range" id="ops" min="0" max="600" step="5" value="100"
+                     aria-describedby="opsNote">
+              <div class="rail" aria-hidden="true">
+                <b class="b1" style="left:8.33%; width:8.33%;"></b>
+                <b class="b2" style="left:16.67%; width:16.67%;"></b>
+                <b class="b3" style="left:50%; width:33.33%;"></b>
+              </div>
+              <div class="rail-key" aria-hidden="true">
+                <span><i style="background:var(--green);"></i>Serious fleets 50–100</span>
+                <span><i style="background:var(--amber);"></i>Exotic operators 100–200</span>
+                <span><i style="background:rgba(13,13,13,0.28);"></i>Luxury-focused 300–500</span>
+              </div>
+              <p class="note-line ok" id="opsNote"><span class="dot"></span><span class="txt"></span></p>
+            </div>
+
+            <div class="field">
+              <div class="field-top">
+                <label for="price">Monthly price per operator</label>
+                <span class="fv tnum" id="priceVal">AED 4,000</span>
+              </div>
+              <input type="range" id="price" min="1000" max="15000" step="250" value="4000"
+                     aria-describedby="priceNote">
+              <p class="note-line" id="priceNote"><span class="dot"></span><span class="txt"></span></p>
+            </div>
+
+            <div class="field">
+              <div class="field-top">
+                <label for="months">Average months paid in year one</label>
+                <span class="fv tnum" id="monthsVal">12</span>
+              </div>
+              <input type="range" id="months" min="1" max="12" step="1" value="12"
+                     aria-describedby="monthsNote">
+              <p class="note-line" id="monthsNote"><span class="dot"></span><span class="txt"></span></p>
+            </div>
+
+          </div>
+
+          <div class="calc-out">
+            <div class="o-label">Implied year-one subscription revenue</div>
+            <div class="o-num tnum" id="outTotal" aria-live="polite">AED 4.8M</div>
+            <div class="o-sub">Illustrative arithmetic · before delivery costs</div>
+            <div class="o-row"><span>Per operator, per year</span><b class="tnum" id="outPer">AED 48K</b></div>
+            <div class="o-row"><span>Share of serious fleets</span><b class="tnum" id="outShare">100%</b></div>
+          </div>
         </div>
-        <div class="scale"><span>AED 0</span><span>15M</span><span>30M ARR</span></div>
+
+        <p class="calc-foot">Revenue only, before the cost of delivering the service. Operator counts, price points and retention are all unvalidated — the two documented scenarios above are single picks on this surface, not predictions.</p>
       </div>
     </div>
   </section>
@@ -830,5 +952,103 @@
   document.addEventListener('scroll', onScroll, {passive:true});
   window.addEventListener('resize', onScroll);
   onScroll();
+})();
+
+(function(){
+  var ops = document.getElementById('ops');
+  var price = document.getElementById('price');
+  var months = document.getElementById('months');
+  if(!ops || !price || !months) return;
+
+  var opsVal = document.getElementById('opsVal');
+  var priceVal = document.getElementById('priceVal');
+  var monthsVal = document.getElementById('monthsVal');
+  var outTotal = document.getElementById('outTotal');
+  var outPer = document.getElementById('outPer');
+  var outShare = document.getElementById('outShare');
+  var presets = Array.prototype.slice.call(document.querySelectorAll('.preset'));
+
+  function aed(n){
+    if(n >= 1e6) return 'AED ' + trim(n/1e6) + 'M';
+    if(n >= 1e3) return 'AED ' + trim(n/1e3) + 'K';
+    return 'AED ' + Math.round(n);
+  }
+  function trim(v){
+    return (Math.round(v*100)/100).toString();
+  }
+  function group(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  function fill(el){
+    var pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--fill', pct + '%');
+  }
+
+  function setNote(el, level, text){
+    el.className = 'note-line ' + level;
+    el.querySelector('.txt').textContent = text;
+  }
+
+  // Operator-count reality check, against the segment estimates elsewhere on this page.
+  function opsNote(n){
+    if(n === 0) return ['', 'No paying operators — revenue is zero.'];
+    if(n < 50)  return ['ok', n + ' operators sits below the initial target band of 50–150.'];
+    if(n <= 100) return ['ok', n + ' operators is within the estimated pool of serious fleets (50–100) — the most qualified buyers.'];
+    if(n <= 200) return ['stretch', n + ' operators requires most or all of the estimated exotic and supercar segment (100–200).'];
+    if(n <= 500) return ['over', n + ' operators exceeds the exotic segment entirely — it assumes broad adoption across luxury-focused operators (300–500).'];
+    return ['over', n + ' operators exceeds every operator-count estimate on this page. Treat the result as arithmetic, not opportunity.'];
+  }
+
+  // Where the chosen price sits relative to the three proposed bands.
+  function priceNote(p){
+    if(p <= 2000) return ['ok', 'Within the small-operator band (AED 1–2K).'];
+    if(p < 3000)  return ['stretch', 'Between the small-operator and growth bands — no band proposed at this price.'];
+    if(p <= 5000) return ['ok', 'Within the growth-operator band (AED 3–5K).'];
+    if(p < 8000)  return ['stretch', 'Between the growth and enterprise bands — no band proposed at this price.'];
+    return ['ok', 'Within the enterprise-fleet band (AED 8–15K).'];
+  }
+
+  function monthsNote(m){
+    if(m === 12) return ['stretch', 'Assumes every operator pays all twelve months — that is zero churn, which no pilot has tested.'];
+    return ['ok', 'Assumes operators pay ' + m + ' of 12 months on average, so some churn during year one.'];
+  }
+
+  function update(){
+    var o = +ops.value, p = +price.value, m = +months.value;
+
+    [ops, price, months].forEach(fill);
+
+    opsVal.textContent = group(o);
+    priceVal.textContent = 'AED ' + group(p);
+    monthsVal.textContent = m;
+
+    var total = o * p * m;
+    outTotal.textContent = total === 0 ? 'AED 0' : aed(total);
+    outPer.textContent = aed(p * m);
+
+    // Share of the estimated serious-fleet pool (50-100); midpoint 75 as the denominator.
+    var share = o === 0 ? 0 : Math.round(o / 75 * 100);
+    outShare.textContent = share + '%';
+
+    var a = opsNote(o), b = priceNote(p), c = monthsNote(m);
+    setNote(document.getElementById('opsNote'), a[0], a[1]);
+    setNote(document.getElementById('priceNote'), b[0], b[1]);
+    setNote(document.getElementById('monthsNote'), c[0], c[1]);
+
+    presets.forEach(function(btn){
+      btn.classList.toggle('on',
+        +btn.dataset.ops === o && +btn.dataset.price === p && +btn.dataset.months === m);
+    });
+  }
+
+  [ops, price, months].forEach(function(el){ el.addEventListener('input', update); });
+  presets.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      ops.value = btn.dataset.ops;
+      price.value = btn.dataset.price;
+      months.value = btn.dataset.months;
+      update();
+    });
+  });
+  update();
 })();
 </script>
