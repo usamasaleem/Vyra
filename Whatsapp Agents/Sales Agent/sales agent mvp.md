@@ -13,6 +13,33 @@ Turn an incoming WhatsApp message into a qualified sales opportunity that a sale
 - Support approved follow-up templates when required by WhatsApp.
 - Stop follow-ups when a customer opts out.
 
+### Non-text messages
+
+Customers send voice notes, photos, and documents without warning. The MVP does not interpret them, but it must never drop them silently.
+
+- Store the message and record its type.
+- Acknowledge receipt and say that the message cannot be read automatically.
+- Route the conversation to a human when a non-text message carries the customer's request.
+- Never treat an unreadable message as though the customer said nothing.
+
+### Sending eligibility
+
+WhatsApp allows ordinary replies within 24 hours of the last customer message and requires an approved template outside that window.
+
+- Check eligibility at the moment of sending, not when the reply is scheduled. A delayed job can cross the window boundary.
+- Apply the same check to messages written by salespeople.
+- Create an internal task when a template is rejected or paused, rather than retrying the send.
+
+### Out of hours
+
+- Reply with the operator's real service expectation rather than an invented callback time.
+- Capture the enquiry and queue it for the next working period.
+- Raise priority when the customer states same-day urgency.
+
+### Language
+
+The MVP supports English. Another language is enabled only after its answers have been reviewed against the same acceptance checks.
+
 ## 2. Customer and conversation records
 
 - Create or match a customer using their WhatsApp number.
@@ -44,6 +71,22 @@ The agent should:
 - Confirm ambiguous dates such as “tomorrow” or “this weekend.”
 - Handle customer corrections without losing the earlier context.
 - Save an incomplete enquiry if the customer stops responding.
+- Resolve relative dates against the operator's timezone, using the time the message was sent, and confirm the calendar date before it is used.
+- Keep the customer's original wording alongside the normalised value.
+
+### When an enquiry counts as qualified
+
+An enquiry is qualified when all of the following are present and confirmed:
+
+- Vehicle or vehicle category.
+- Start date and time.
+- End date and time, or duration.
+- Delivery or collection preference, with a location when delivery is requested.
+- A contactable customer. The WhatsApp number is sufficient.
+
+Residency, driver age, budget, and special requirements are captured when the customer offers them or when operator policy requires them for the requested vehicle. Their absence does not block qualification; it is carried forward as an open question in the handoff.
+
+This definition is what the qualification completion rate in section 15 measures.
 
 ## 4. Intent recognition
 
@@ -74,28 +117,37 @@ The Sales Agent does not manage inventory or operational records.
 For the MVP it should:
 
 - Capture the customer's requested vehicle and dates.
-- Ask the Operations Agent or a human operator for availability.
+- Send a structured request to the Operations request queue.
 - Receive an approved status: available, unavailable, pending confirmation, or unknown.
 - Communicate that status accurately to the customer.
 - Request approved pricing or quote details.
 - Never change vehicle status, create a booking, verify payment, or approve documents.
 
-## 7. Sales lead stages
+For the MVP an authorised person answers these requests in the Operations console. There is no automated availability lookup, and none should be assumed. See the [Operations Agent MVP](../Operations%20Agent/operations%20agent%20mvp.md).
 
-Use these stages:
+Rules for using an answer:
 
-- New.
-- Qualifying.
-- Qualified.
-- Waiting for customer.
-- Waiting for Operations.
-- Human handoff.
-- Quote pending.
-- Booking pending.
-- Won.
-- Lost.
+- An answer carries its source and the time it was checked. An answer without a time checked cannot be given to a customer.
+- An expired answer is rechecked before it is reused.
+- An unknown answer is communicated as unknown, with a next action. It is never softened into a maybe.
 
-Each lead should have:
+## 7. Lead state
+
+Lead state is four independent fields. They must not be collapsed into a single status list, because they change for different reasons and can hold any combination.
+
+**Sales stage** — new, qualifying, qualified, options sent, quote sent, won, lost.
+
+**Reply ownership** — AI or salesperson. Exactly one at a time.
+
+**Waiting reason** — none, waiting for customer, waiting for Operations, waiting for internal approval.
+
+**Booking status** — none, pending, confirmed, cancelled.
+
+A single lead can be qualified, owned by a salesperson, waiting for Operations, and have no booking yet. That combination is ordinary, and a single flat status list cannot express it.
+
+These four fields mirror the state separation in the [Operations Agent MVP](../Operations%20Agent/operations%20agent%20mvp.md) section 6.
+
+Each lead should also have:
 
 - Current stage.
 - Assigned salesperson or queue.
@@ -190,6 +242,9 @@ An authorised user can configure:
 - Approved sales knowledge.
 - Enabled languages.
 - AI on/off switch.
+- Default reply ownership for a new conversation.
+- Data retention period for conversations, customer records, and uploaded files.
+- Handling of a customer request to delete their data.
 
 ## 14. Reliability and visibility
 
@@ -217,7 +272,25 @@ Track only the essential sales measures:
 
 Fleet, availability, vehicle utilisation, delivery, maintenance, payment, deposit, document, and operational reports belong to the Operations Agent.
 
-## 16. MVP acceptance checklist
+## 16. Pilot rollout
+
+Capability is added one step at a time. Each step must hold before the next begins.
+
+### Step 1: Shadow
+
+The AI drafts every reply and a salesperson reviews and sends it. No customer receives a message the AI sent. Measure draft quality against the acceptance checklist before moving on.
+
+### Step 2: Limited automation
+
+The AI sends clarifying questions and approved FAQ answers by itself. Everything else is drafted for a human.
+
+### Step 3: Supervised live
+
+The AI handles qualification end to end. Staff watch the inbox and can stop AI replies instantly.
+
+A capability that produces an unsupported claim returns to the previous step rather than being patched in place.
+
+## 17. MVP acceptance checklist
 
 The MVP is ready for a supervised pilot when:
 
@@ -227,6 +300,10 @@ The MVP is ready for a supervised pilot when:
 - [ ] The agent captures the required rental details.
 - [ ] Ambiguous dates and conflicting information are clarified.
 - [ ] Approved FAQs are answered without inventing facts.
+- [ ] A voice note or photo is acknowledged and routed, never silently dropped.
+- [ ] Relative dates resolve against the operator's timezone and are confirmed with the customer.
+- [ ] An Operations answer with no time checked cannot reach a customer.
+- [ ] A follow-up crossing the 24-hour window uses an approved template or does not send.
 - [ ] Unknown availability or pricing creates an Operations request or human handoff.
 - [ ] A customer can request a person at any time.
 - [ ] A salesperson receives a complete handoff summary.
@@ -236,6 +313,7 @@ The MVP is ready for a supervised pilot when:
 - [ ] Failed processing is visible and recoverable.
 - [ ] Sales data from one rental operator cannot be accessed by another.
 - [ ] The team has tested the main journeys and edge cases before using real customer traffic.
+- [ ] The AI ran in shadow mode and its drafts were reviewed before it sent anything to a customer.
 
 ## MVP boundary
 

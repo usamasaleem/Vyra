@@ -397,7 +397,13 @@ The first version should not be considered ready until it can:
 - Recover from failed messages and background jobs.
 - Demonstrate performance with simulated traffic and representative conversations.
 
-## 12. Sales and Operations boundary\n\nThe Sales Agent owns customer intent, qualification, recommendations from approved data, quotes as commercial conversations, handoffs, and sales follow-up. The Operations Agent owns inventory, vehicle status, availability, rate inputs, bookings, documents, payments, delivery, active-rental support, and operational reporting. Sales requests operational facts and displays the returned status; it does not edit or override those records.\n\nSee [Operations Agent](../Operations%20Agent/operations%20agent.md) for the operational ownership model.\n\n## 13. Product boundary
+## 12. Sales and Operations boundary
+
+The Sales Agent owns customer intent, qualification, recommendations from approved data, quotes as commercial conversations, handoffs, and sales follow-up. The Operations Agent owns inventory, vehicle status, availability, rate inputs, bookings, documents, payments, delivery, active-rental support, and operational reporting. Sales requests operational facts and displays the returned status; it does not edit or override those records.
+
+See [Operations Agent](../Operations%20Agent/operations%20agent.md) for the operational ownership model.
+
+### Product boundary
 
 The sales agent should be excellent at qualification, explanation, recommendation, and coordination before it attempts autonomous booking. The highest-value early capability is dependable context and handoff: every customer should reach a salesperson with the right facts, the right urgency, and no invented promises.
 

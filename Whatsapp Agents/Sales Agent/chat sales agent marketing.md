@@ -246,4 +246,10 @@ A customer should not have to chase a rental company for a basic answer, repeat 
 - [Current product state](https://github.com/usamasaleem/Vyra/blob/main/docs/CURRENT-STATE.md)
 
 Market sizes, operator counts, pricing ranges, salary ranges, and revenue examples are working estimates. Validate them through interviews, pilot data, and operator financials before using them in investor or sales material.
-\n\n## Sales and Operations boundary\n\nThe Sales Agent owns customer conversations, qualification, recommendations using approved data, quotes as sales conversations, handoffs, and follow-up. The Operations Agent owns fleet, inventory, availability, pricing inputs, bookings, documents, payments, delivery, active-rental support, and operational reporting. Sales asks Operations for facts and communicates the returned status; it does not edit or override operational records.\n\nSee [Operations Agent](../Operations%20Agent/operations%20agent.md).\n
+
+
+## Sales and Operations boundary
+
+The Sales Agent owns customer conversations, qualification, recommendations using approved data, quotes as sales conversations, handoffs, and follow-up. The Operations Agent owns fleet, inventory, availability, pricing inputs, bookings, documents, payments, delivery, active-rental support, and operational reporting. Sales asks Operations for facts and communicates the returned status; it does not edit or override operational records.
+
+See [Operations Agent](../Operations%20Agent/operations%20agent.md).
