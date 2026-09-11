@@ -375,6 +375,29 @@
     font-size:12.5px; color:var(--ink-faint); line-height:1.55;
   }
 
+  /* ---- lead-loss calculator ---- */
+  .fields-2{display:grid; grid-template-columns:1fr 1fr; gap:26px 32px;}
+  @media (max-width:760px){ .fields-2{grid-template-columns:1fr;} }
+
+  .periods{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:28px;}
+  @media (max-width:780px){ .periods{grid-template-columns:repeat(2,1fr);} }
+  .period{background:var(--surface); border-radius:18px; padding:18px 20px;}
+  .period .p-k{font-size:12px; color:var(--ink-faint); margin-bottom:10px;}
+  .period .p-v{
+    font-family:'Inter Tight',sans-serif; font-size:clamp(18px,2vw,23px); font-weight:700;
+    letter-spacing:-0.038em; line-height:1.05; font-variant-numeric:tabular-nums;
+  }
+  .period.hero{background:var(--ink); color:#fff;}
+  .period.hero .p-k{color:rgba(255,255,255,0.6);}
+
+  .per-lead{
+    margin-top:24px; padding-top:20px; border-top:1px solid var(--line-soft);
+    display:grid; gap:12px;
+  }
+  .pl-row{display:flex; align-items:baseline; justify-content:space-between; gap:16px; font-size:13.5px; color:var(--ink-dim);}
+  .pl-row b{font-family:'Inter Tight',sans-serif; font-size:18px; font-weight:700; color:var(--ink); letter-spacing:-0.025em; font-variant-numeric:tabular-nums;}
+  .pl-explain{font-size:12.5px; color:var(--ink-faint); line-height:1.55;}
+
   /* ================= footer ================= */
   footer{margin-top:64px; padding:34px 0 60px;}
   .foot-card{background:var(--surface); border-radius:var(--r-card); padding:28px;}
@@ -754,6 +777,94 @@
       <div class="card">
         <div class="card-head">
           <div>
+            <div class="card-title">What a lost lead costs</div>
+            <div class="card-note">A lost lead is not a lost booking. Its value is the booking it would have become, weighted by how often enquiries actually convert — which nobody has measured yet.</div>
+          </div>
+          <span class="tag modeled">Modeled example</span>
+        </div>
+
+        <div class="presets">
+          <span class="p-label">Vehicle segment</span>
+          <button type="button" class="preset seg" data-name="Premium Executive" data-min="700" data-max="1800" data-rate="1250">Premium Executive</button>
+          <button type="button" class="preset seg" data-name="Entry Exotic" data-min="1400" data-max="2500" data-rate="1950">Entry Exotic</button>
+          <button type="button" class="preset seg on" data-name="Supercar" data-min="2500" data-max="4000" data-rate="3000">Supercar</button>
+          <button type="button" class="preset seg" data-name="High Exotic" data-min="3500" data-max="6000" data-rate="4750">High Exotic</button>
+          <button type="button" class="preset seg" data-name="Hypercar" data-min="6000" data-max="15000" data-rate="10500">Hypercar</button>
+        </div>
+
+        <div class="fields-2">
+          <div class="field">
+            <div class="field-top">
+              <label for="rate">Daily rental rate</label>
+              <span class="fv tnum" id="rateVal">AED 3,000</span>
+            </div>
+            <input type="range" id="rate" min="2500" max="4000" step="50" value="3000" aria-describedby="rateNote">
+            <p class="note-line" id="rateNote"><span class="dot"></span><span class="txt"></span></p>
+          </div>
+
+          <div class="field">
+            <div class="field-top">
+              <label for="days">Rental length</label>
+              <span class="fv tnum" id="daysVal">3 days</span>
+            </div>
+            <input type="range" id="days" min="1" max="14" step="1" value="3" aria-describedby="daysNote">
+            <p class="note-line" id="daysNote"><span class="dot"></span><span class="txt"></span></p>
+          </div>
+
+          <div class="field">
+            <div class="field-top">
+              <label for="leads">Leads lost per week</label>
+              <span class="fv tnum" id="leadsVal">10</span>
+            </div>
+            <input type="range" id="leads" min="1" max="100" step="1" value="10" aria-describedby="leadsNote">
+            <p class="note-line" id="leadsNote"><span class="dot"></span><span class="txt"></span></p>
+          </div>
+
+          <div class="field">
+            <div class="field-top">
+              <label for="conv">Enquiry-to-booking conversion</label>
+              <span class="fv tnum" id="convVal">20%</span>
+            </div>
+            <input type="range" id="conv" min="1" max="50" step="1" value="20" aria-describedby="convNote">
+            <p class="note-line" id="convNote"><span class="dot"></span><span class="txt"></span></p>
+          </div>
+        </div>
+
+        <div class="periods">
+          <div class="period">
+            <div class="p-k">Per day</div>
+            <div class="p-v" id="lostDaily">AED 2,571</div>
+          </div>
+          <div class="period">
+            <div class="p-k">Per week</div>
+            <div class="p-v" id="lostWeekly">AED 18,000</div>
+          </div>
+          <div class="period">
+            <div class="p-k">Per month</div>
+            <div class="p-v" id="lostMonthly">AED 78,000</div>
+          </div>
+          <div class="period hero">
+            <div class="p-k">Per year</div>
+            <div class="p-v" id="lostYearly" aria-live="polite">AED 936,000</div>
+          </div>
+        </div>
+
+        <div class="per-lead">
+          <div class="pl-row">
+            <span>Average value of one lost lead</span>
+            <b class="tnum" id="perLead">AED 1,800</b>
+          </div>
+          <div class="pl-row">
+            <span>Value if that lead had booked</span>
+            <b class="tnum" id="grossLead">AED 9,000</b>
+          </div>
+          <p class="pl-explain" id="plExplain"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
             <div class="card-title">Vyra subscription — opportunity range</div>
             <div class="card-note">AED per month. Pricing is a hypothesis, not a tested offer.</div>
           </div>
@@ -935,6 +1046,31 @@
 </div>
 
 <script>
+var VY = {
+  group: function(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); },
+  trim: function(v){ return (Math.round(v*100)/100).toString(); },
+  // Compact form for headline figures: AED 4.8M / AED 48K / AED 900
+  compact: function(n){
+    if(n >= 1e6) return 'AED ' + VY.trim(n/1e6) + 'M';
+    if(n >= 1e3) return 'AED ' + VY.trim(n/1e3) + 'K';
+    return 'AED ' + Math.round(n);
+  },
+  // Full grouped form, falling back to compact once it would get unreadably long.
+  money: function(n){
+    n = Math.round(n);
+    if(n >= 1e7) return 'AED ' + VY.trim(n/1e6) + 'M';
+    return 'AED ' + VY.group(n);
+  },
+  setFill: function(el){
+    var pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--fill', pct + '%');
+  },
+  setNote: function(el, level, text){
+    el.className = 'note-line ' + level;
+    el.querySelector('.txt').textContent = text;
+  }
+};
+
 (function(){
   var ids = ['overview','sizing','pricing','revenue','salaries','opportunity','questions'];
   var sections = ids.map(function(id){ return document.getElementById(id); });
@@ -968,25 +1104,7 @@
   var outShare = document.getElementById('outShare');
   var presets = Array.prototype.slice.call(document.querySelectorAll('.preset'));
 
-  function aed(n){
-    if(n >= 1e6) return 'AED ' + trim(n/1e6) + 'M';
-    if(n >= 1e3) return 'AED ' + trim(n/1e3) + 'K';
-    return 'AED ' + Math.round(n);
-  }
-  function trim(v){
-    return (Math.round(v*100)/100).toString();
-  }
-  function group(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-
-  function fill(el){
-    var pct = (el.value - el.min) / (el.max - el.min) * 100;
-    el.style.setProperty('--fill', pct + '%');
-  }
-
-  function setNote(el, level, text){
-    el.className = 'note-line ' + level;
-    el.querySelector('.txt').textContent = text;
-  }
+  var aed = VY.compact, group = VY.group, fill = VY.setFill, setNote = VY.setNote;
 
   // Operator-count reality check, against the segment estimates elsewhere on this page.
   function opsNote(n){
@@ -1048,6 +1166,100 @@
       update();
     });
   });
+  update();
+})();
+
+/* ---- what a lost lead costs ---- */
+(function(){
+  var rate = document.getElementById('rate');
+  var days = document.getElementById('days');
+  var leads = document.getElementById('leads');
+  var conv = document.getElementById('conv');
+  if(!rate || !days || !leads || !conv) return;
+
+  var segs = Array.prototype.slice.call(document.querySelectorAll('.preset.seg'));
+  var current = segs.find ? segs.find(function(s){ return s.classList.contains('on'); }) : segs[2];
+
+  // The example operator profile documented earlier on this page.
+  var MONTHLY_ENQUIRIES = 1500;
+  var WEEKS_PER_MONTH = 52/12;
+
+  function rateNote(v){
+    var min = +rate.min, max = +rate.max, name = current.dataset.name;
+    var band = 'the ' + name + ' band (AED ' + VY.group(min) + '–' + VY.group(max) + ')';
+    var pos = (v - min) / (max - min);
+    if(pos <= 0.33) return ['ok', 'Lower end of ' + band + '.'];
+    if(pos <= 0.66) return ['ok', 'Mid ' + band + '.'];
+    return ['ok', 'Upper end of ' + band + '.'];
+  }
+
+  function daysNote(d){
+    if(d === 3) return ['ok', 'Matches the 3-day average booking used in the research.'];
+    if(d < 3) return ['ok', d + ' day' + (d>1?'s':'') + ' is shorter than the 3-day average used in the research.'];
+    return ['ok', d + ' days is longer than the 3-day average used in the research.'];
+  }
+
+  function leadsNote(w){
+    var perMonth = w * WEEKS_PER_MONTH;
+    var share = perMonth / MONTHLY_ENQUIRIES * 100;
+    var txt = w + ' a week is about ' + Math.round(perMonth) + ' a month — ' +
+              share.toFixed(share < 10 ? 1 : 0) + '% of the 1,500 monthly enquiries in the example operator profile.';
+    if(share > 100) return ['over', w + ' a week exceeds the example operator\'s entire monthly enquiry volume.'];
+    if(share > 33) return ['stretch', txt + ' That is a large share of all enquiries.'];
+    return ['ok', txt];
+  }
+
+  function convNote(c){
+    if(c > 30) return ['over', c + '% assumes most lost leads were ready to book. Nothing on this page supports a rate that high.'];
+    return ['stretch', c + '% of lost leads would have booked. No conversion rate has been measured for this market — this is the least-supported input here.'];
+  }
+
+  function update(){
+    var r = +rate.value, d = +days.value, w = +leads.value, c = +conv.value / 100;
+
+    [rate, days, leads, conv].forEach(VY.setFill);
+
+    document.getElementById('rateVal').textContent = 'AED ' + VY.group(r);
+    document.getElementById('daysVal').textContent = d + (d === 1 ? ' day' : ' days');
+    document.getElementById('leadsVal').textContent = w;
+    document.getElementById('convVal').textContent = (c*100) + '%';
+
+    var booking = r * d;            // what one converted booking is worth
+    var perLead = booking * c;      // conversion-weighted value of a single lost lead
+    var weekly = perLead * w;
+
+    document.getElementById('lostDaily').textContent   = VY.money(weekly / 7);
+    document.getElementById('lostWeekly').textContent  = VY.money(weekly);
+    document.getElementById('lostMonthly').textContent = VY.money(weekly * WEEKS_PER_MONTH);
+    document.getElementById('lostYearly').textContent  = VY.money(weekly * 52);
+
+    document.getElementById('perLead').textContent = VY.money(perLead);
+    document.getElementById('grossLead').textContent = VY.money(booking);
+
+    var lostBookings = w * WEEKS_PER_MONTH * c;
+    document.getElementById('plExplain').textContent =
+      'At ' + (c*100) + '% conversion, ' + w + ' lost leads a week works out to roughly ' +
+      (Math.round(lostBookings*10)/10) + ' lost bookings a month. Revenue only, before the cost of servicing those rentals.';
+
+    var a = rateNote(r), b = daysNote(d), e = leadsNote(w), f = convNote(+conv.value);
+    VY.setNote(document.getElementById('rateNote'), a[0], a[1]);
+    VY.setNote(document.getElementById('daysNote'), b[0], b[1]);
+    VY.setNote(document.getElementById('leadsNote'), e[0], e[1]);
+    VY.setNote(document.getElementById('convNote'), f[0], f[1]);
+  }
+
+  segs.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      segs.forEach(function(s){ s.classList.remove('on'); });
+      btn.classList.add('on');
+      current = btn;
+      rate.min = btn.dataset.min;
+      rate.max = btn.dataset.max;
+      rate.value = btn.dataset.rate;
+      update();
+    });
+  });
+  [rate, days, leads, conv].forEach(function(el){ el.addEventListener('input', update); });
   update();
 })();
 </script>
