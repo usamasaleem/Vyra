@@ -1,0 +1,744 @@
+<title>Vyra Market Intelligence</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#FFFFFF;
+    --surface:#FFFFFF;
+    --surface-2:#F5F5F2;
+    --ink:#15161B;
+    --ink-dim:#585A63;
+    --ink-faint:#8A8C95;
+    --gold:#3E54D3;
+    --gold-bright:#5B6EE8;
+    --teal:#C98A3E;
+    --rust:#C1503B;
+    --accent-soft:#EEF0FC;
+    --line:rgba(21,22,27,0.10);
+    --line-soft:rgba(21,22,27,0.07);
+    --shadow:0 1px 2px rgba(21,22,27,0.04), 0 20px 48px rgba(21,22,27,0.07);
+    --track:rgba(21,22,27,0.07);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0B0C10;
+      --surface:#15161C;
+      --surface-2:#1C1E25;
+      --ink:#F2F1ED;
+      --ink-dim:#9C9DA6;
+      --ink-faint:#6E6F78;
+      --gold:#7C8CF0;
+      --gold-bright:#98A5F5;
+      --teal:#E0A55C;
+      --rust:#E08064;
+      --accent-soft:rgba(124,140,240,0.14);
+      --line:rgba(242,241,237,0.12);
+      --line-soft:rgba(242,241,237,0.08);
+      --shadow:0 1px 2px rgba(0,0,0,0.35), 0 20px 48px rgba(0,0,0,0.4);
+      --track:rgba(242,241,237,0.09);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0B0C10;
+    --surface:#15161C;
+    --surface-2:#1C1E25;
+    --ink:#F2F1ED;
+    --ink-dim:#9C9DA6;
+    --ink-faint:#6E6F78;
+    --gold:#7C8CF0;
+    --gold-bright:#98A5F5;
+    --teal:#E0A55C;
+    --rust:#E08064;
+    --accent-soft:rgba(124,140,240,0.14);
+    --line:rgba(242,241,237,0.12);
+    --line-soft:rgba(242,241,237,0.08);
+    --shadow:0 1px 2px rgba(0,0,0,0.35), 0 20px 48px rgba(0,0,0,0.4);
+    --track:rgba(242,241,237,0.09);
+  }
+
+  *{box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Manrope',ui-sans-serif,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+  h1,h2,h3,.num-xl,.num-lg{font-family:'Fraunces',Georgia,serif; text-wrap:balance;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,monospace; font-variant-numeric:tabular-nums;}
+
+  a{color:inherit;}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 28px;}
+  @media (max-width:640px){ .wrap{padding:0 18px;} }
+
+  /* ---- top bar ---- */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter:blur(10px) saturate(140%);
+    border-bottom:1px solid var(--line-soft);
+  }
+  .topbar-inner{
+    max-width:1180px; margin:0 auto; padding:0 28px;
+    display:flex; align-items:center; gap:28px; height:64px;
+  }
+  @media (max-width:640px){ .topbar-inner{padding:0 18px; gap:16px;} }
+  .mark{
+    display:flex; align-items:baseline; gap:8px; flex-shrink:0;
+    font-family:'Fraunces',serif; font-weight:600; font-size:19px; letter-spacing:0.01em;
+  }
+  .mark .dot{color:var(--gold);}
+  .crumb{
+    font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--ink-faint); white-space:nowrap; display:none;
+  }
+  @media (min-width:560px){ .crumb{display:inline;} }
+  .pillnav{
+    display:flex; gap:22px; overflow-x:auto; scrollbar-width:none; margin-left:auto;
+  }
+  .pillnav::-webkit-scrollbar{display:none;}
+  .pillnav a{
+    flex-shrink:0; text-decoration:none; font-size:13.5px; font-weight:600; color:var(--ink-dim);
+    padding:4px 0 20px; border-bottom:2px solid transparent; transition:color .15s, border-color .15s;
+    white-space:nowrap; line-height:1;
+  }
+  .pillnav a:hover{color:var(--ink);}
+  .pillnav a.active{color:var(--gold); border-bottom-color:var(--gold);}
+  .progress{height:2px; background:var(--gold); width:0%; transition:width .1s linear;}
+
+  /* ---- hero ---- */
+  .hero{padding:56px 0 0; border-bottom:1px solid var(--line-soft);}
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:'IBM Plex Mono'; font-size:11.5px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--gold); margin-bottom:18px;
+  }
+  .eyebrow::before{content:""; width:16px; height:1.5px; background:var(--gold); display:inline-block;}
+  .hero-grid{display:grid; grid-template-columns:1.05fr 0.95fr; gap:56px; align-items:center; padding-bottom:34px;}
+  @media (max-width:900px){ .hero-grid{grid-template-columns:1fr; gap:40px;} }
+  .hero h1{
+    font-size:clamp(34px,4.2vw,50px); font-weight:600; line-height:1.08; margin:0 0 18px; max-width:13.5ch;
+  }
+  .hero h1 em{font-style:italic;}
+  .hero p{font-size:16.5px; color:var(--ink-dim); max-width:52ch; margin:0 0 8px;}
+  .hero .sub{font-size:13.5px; color:var(--ink-faint); max-width:56ch;}
+
+  .hero-visual{position:relative; padding-bottom:44px;}
+  @media (max-width:900px){ .hero-visual{padding-bottom:0;} }
+  .visual-panel{
+    position:relative; height:300px; border-radius:20px; overflow:hidden;
+    background:linear-gradient(180deg, var(--accent-soft) 0%, var(--surface) 78%);
+    border:1px solid var(--line-soft); box-shadow:var(--shadow);
+  }
+  .visual-panel svg{position:absolute; inset:0; width:100%; height:100%;}
+  .float-card{
+    position:absolute; left:26px; right:26px; bottom:0; transform:translateY(50%);
+    background:var(--surface); border:1px solid var(--line-soft); border-radius:16px;
+    box-shadow:var(--shadow); padding:20px 22px;
+    display:flex; align-items:center; gap:18px;
+  }
+  @media (max-width:900px){ .float-card{position:static; transform:none; margin-top:-40px; margin-left:16px; margin-right:16px;} }
+  .float-card .fc-num{font-family:'Fraunces',serif; font-size:26px; font-weight:600; white-space:nowrap;}
+  .float-card .fc-copy{border-left:1px solid var(--line-soft); padding-left:16px;}
+  .float-card .fc-label{font-size:12.5px; font-weight:600; color:var(--ink);}
+  .float-card .fc-src{font-size:11.5px; color:var(--ink-faint); margin-top:2px;}
+
+  .legend-strip{
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+    padding:22px 0; margin-top:36px; border-top:1px solid var(--line-soft);
+    font-size:12px; color:var(--ink-faint);
+  }
+  .legend-strip .ls-label{font-family:'IBM Plex Mono'; letter-spacing:.04em; text-transform:uppercase; font-size:10.5px;}
+  .legend-strip .tags{display:flex; gap:8px; flex-wrap:wrap;}
+
+  /* ---- kpi strip ---- */
+  .kpi-strip{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line-soft); border:1px solid var(--line-soft); margin-top:0; border-radius:14px; overflow:hidden;}
+  @media (max-width:760px){ .kpi-strip{grid-template-columns:repeat(2,1fr);} }
+  .kpi{background:var(--surface); padding:22px 22px 20px;}
+  .kpi .num-xl{font-size:clamp(26px,3vw,32px); font-weight:600; line-height:1; margin-bottom:8px;}
+  .kpi .label{font-size:12.5px; color:var(--ink-dim); line-height:1.35;}
+  .kpi .tag{margin-top:10px;}
+
+  /* ---- provenance tags ---- */
+  .tag{
+    display:inline-flex; align-items:center; gap:5px; font-family:'IBM Plex Mono'; font-size:10.5px;
+    letter-spacing:.04em; text-transform:uppercase; padding:3px 8px 3px 6px; border-radius:100px;
+    border:1px solid var(--line);
+  }
+  .tag::before{content:""; width:6px; height:6px; border-radius:50%; flex-shrink:0;}
+  .tag.reported{color:var(--teal);} .tag.reported::before{background:var(--teal);}
+  .tag.modeled{color:var(--gold-bright);} .tag.modeled::before{background:var(--gold-bright);}
+  .tag.needs-val{color:var(--rust);} .tag.needs-val::before{background:var(--rust);}
+
+  /* ---- sections ---- */
+  section.block{padding:64px 0; border-bottom:1px solid var(--line-soft);}
+  section.block:last-of-type{border-bottom:none;}
+  .block-head{display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:34px;}
+  .block-head h2{font-size:clamp(24px,3vw,30px); font-weight:600; margin:0;}
+  .block-head .idx{font-family:'IBM Plex Mono'; font-size:12px; color:var(--ink-faint); letter-spacing:.05em;}
+  .block-intro{font-size:15px; color:var(--ink-dim); max-width:68ch; margin:-18px 0 32px;}
+
+  .panel{
+    background:var(--surface); border:1px solid var(--line-soft); border-radius:16px;
+    padding:28px 28px 24px; box-shadow:var(--shadow);
+  }
+  .panel + .panel{margin-top:20px;}
+  .panel-head{display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:22px; flex-wrap:wrap;}
+  .panel-title{font-size:14.5px; font-weight:700; letter-spacing:.01em;}
+  .panel-note{font-size:12.5px; color:var(--ink-faint); margin-top:3px; max-width:44ch;}
+
+  .grid-2{display:grid; grid-template-columns:1.4fr 1fr; gap:20px;}
+  @media (max-width:860px){ .grid-2{grid-template-columns:1fr;} }
+  .grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
+  @media (max-width:860px){ .grid-3{grid-template-columns:1fr;} }
+  .grid-2c{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  @media (max-width:760px){ .grid-2c{grid-template-columns:1fr;} }
+
+  /* ---- range bar rows ---- */
+  .rbar-row{display:grid; grid-template-columns:150px 1fr 110px; align-items:center; gap:14px; padding:11px 0;}
+  .rbar-row + .rbar-row{border-top:1px solid var(--line-soft);}
+  @media (max-width:560px){ .rbar-row{grid-template-columns:100px 1fr 92px; gap:10px;} }
+  .rbar-label{font-size:13px; font-weight:600;}
+  .rbar-track{position:relative; height:10px; background:var(--track); border-radius:6px;}
+  .rbar-fill{position:absolute; top:0; bottom:0; border-radius:6px;}
+  .rbar-fill.gold{background:linear-gradient(90deg, var(--gold) 0%, var(--gold-bright) 100%);}
+  .rbar-fill.teal{background:linear-gradient(90deg, var(--teal) 0%, color-mix(in srgb, var(--teal) 60%, var(--gold-bright)) 100%);}
+  .rbar-fill.open::after{
+    content:""; position:absolute; right:-2px; top:0; bottom:0; width:14px;
+    background:linear-gradient(90deg, transparent, var(--bg) 120%); opacity:.55;
+  }
+  .rbar-val{font-family:'IBM Plex Mono'; font-size:12.5px; text-align:right; color:var(--ink-dim); white-space:nowrap;}
+  .rbar-val b{color:var(--ink); font-weight:600;}
+  .scale-caption{display:flex; justify-content:space-between; font-family:'IBM Plex Mono'; font-size:11px; color:var(--ink-faint); margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);}
+
+  /* ---- stat cards ---- */
+  .stat-card{background:var(--surface); border:1px solid var(--line-soft); border-radius:14px; padding:20px 22px; box-shadow:var(--shadow);}
+  .stat-card .num-lg{font-size:26px; font-weight:600; line-height:1;}
+  .stat-card .label{font-size:12.5px; color:var(--ink-dim); margin-top:8px;}
+  .stat-card .foot{font-size:11.5px; color:var(--ink-faint); margin-top:10px; padding-top:10px; border-top:1px solid var(--line-soft);}
+
+  /* ---- comparison cards (revenue) ---- */
+  .car-card{background:var(--surface); border:1px solid var(--line-soft); border-radius:16px; padding:26px 26px 22px; box-shadow:var(--shadow); position:relative; overflow:hidden;}
+  .car-card::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px;}
+  .car-card.c1::before{background:var(--gold);}
+  .car-card.c2::before{background:var(--teal);}
+  .car-card h3{font-size:20px; font-weight:600; margin:0 0 4px;}
+  .car-card .assump{font-size:12.5px; color:var(--ink-faint); margin-bottom:18px;}
+  .rev-rows{display:flex; flex-direction:column; gap:14px;}
+  .rev-row{display:flex; align-items:baseline; justify-content:space-between; gap:12px;}
+  .rev-row .k{font-size:12.5px; color:var(--ink-dim);}
+  .rev-row .v{font-family:'IBM Plex Mono'; font-size:18px; font-weight:600;}
+  .rev-row.annual .v{color:var(--gold-bright); font-size:22px;}
+  .minibar{height:6px; border-radius:4px; background:var(--track); margin-top:6px; overflow:hidden;}
+  .minibar i{display:block; height:100%; border-radius:4px;}
+
+  /* ---- two column lists ---- */
+  .list-panel h3{font-size:14.5px; font-weight:700; margin:0 0 4px;}
+  .list-panel .sub{font-size:12.5px; color:var(--ink-faint); margin-bottom:16px;}
+  ul.plain{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0;}
+  ul.plain li{display:flex; gap:11px; padding:11px 0; font-size:13.5px; color:var(--ink); align-items:flex-start;}
+  ul.plain li + li{border-top:1px solid var(--line-soft);}
+  ul.plain li svg{flex-shrink:0; margin-top:3px;}
+  ol.qs{list-style:none; margin:0; padding:0; counter-reset:q;}
+  ol.qs li{counter-increment:q; display:flex; gap:14px; padding:12px 0; font-size:13.5px; align-items:flex-start;}
+  ol.qs li + li{border-top:1px solid var(--line-soft);}
+  ol.qs li::before{
+    content:counter(q,decimal-leading-zero); font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--gold-bright);
+    flex-shrink:0; padding-top:1.5px;
+  }
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{
+    font-size:12.5px; font-weight:600; padding:7px 13px; border-radius:100px; border:1px solid var(--line);
+    background:var(--surface-2); color:var(--ink-dim);
+  }
+
+  /* ---- ARR bars ---- */
+  .arr-row{display:grid; grid-template-columns:160px 1fr 130px; align-items:center; gap:16px; padding:14px 0;}
+  @media (max-width:560px){ .arr-row{grid-template-columns:1fr; gap:6px;} .arr-row .arr-val{text-align:left;} }
+  .arr-row + .arr-row{border-top:1px solid var(--line-soft);}
+  .arr-label{font-size:13.5px; font-weight:700;}
+  .arr-label .sub{display:block; font-size:11.5px; font-weight:500; color:var(--ink-faint); margin-top:2px;}
+  .arr-track{height:26px; background:var(--track); border-radius:7px; position:relative; overflow:hidden;}
+  .arr-fill{position:absolute; left:0; top:0; bottom:0; border-radius:7px; display:flex; align-items:center;}
+  .arr-val{font-family:'IBM Plex Mono'; font-size:16px; font-weight:600; text-align:right;}
+
+  footer{padding:44px 0 60px;}
+  .legend{display:flex; flex-wrap:wrap; gap:22px; margin-bottom:26px;}
+  .legend-item{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-dim);}
+  .legend-item .tag{margin:0;}
+  footer .fine{font-size:12px; color:var(--ink-faint); max-width:70ch; line-height:1.6;}
+  footer .fine + .fine{margin-top:10px;}
+
+  svg text{font-family:'IBM Plex Mono'; fill:var(--ink-faint);}
+  .axis-line{stroke:var(--line); stroke-width:1;}
+  .grid-line{stroke:var(--line-soft); stroke-width:1; stroke-dasharray:3 4;}
+</style>
+
+<div class="progress" id="progress"></div>
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="mark">VYRA<span class="dot">.</span></div>
+    <span class="crumb">Knowledge Dashboard / Market Research</span>
+    <nav class="pillnav" id="pillnav">
+      <a href="#overview">Overview</a>
+      <a href="#sizing">Sizing</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#revenue">Revenue</a>
+      <a href="#sales">Sales Economics</a>
+      <a href="#opportunity">Opportunity</a>
+      <a href="#risks">Open Questions</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section class="hero" id="overview">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="eyebrow">Section 01 of the knowledge dashboard</div>
+        <h1>The market Vyra is<br/><em>reading, not guessing</em></h1>
+        <p>Dubai's luxury and exotic car rental scene — sized, priced and stress-tested before a single line of the assistant gets built. Every figure below is tagged by how solid it is.</p>
+        <p class="sub">Source: internal market research pass, compiled from public UAE rental-market reporting and working assumptions discussed with the founding team.</p>
+      </div>
+      <div class="hero-visual">
+        <div class="visual-panel">
+          <svg viewBox="0 0 600 300" preserveAspectRatio="none" role="img" aria-label="Soft curve illustrating the UAE rental market growing from 2025 to 2031">
+            <defs>
+              <linearGradient id="heroFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--gold)" stop-opacity="0.28"/>
+                <stop offset="100%" stop-color="var(--gold)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path fill="url(#heroFill)" d="M0,210 L100,196 L200,178 L300,153 L400,120 L500,78 L600,26 L600,300 L0,300 Z"/>
+            <path fill="none" stroke="var(--gold)" stroke-width="2.5" d="M0,210 L100,196 L200,178 L300,153 L400,120 L500,78 L600,26"/>
+            <circle cx="600" cy="26" r="5" fill="var(--gold-bright)"/>
+          </svg>
+        </div>
+        <div class="float-card">
+          <div class="fc-num mono">AED&nbsp;1.33B</div>
+          <div class="fc-copy">
+            <div class="fc-label">Forecast UAE rental market · 2031</div>
+            <div class="fc-src">13.9% CAGR — reported market data</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi">
+        <div class="num-xl mono">$610M</div>
+        <div class="label">UAE car rental market, 2025</div>
+        <div class="tag reported">Reported</div>
+      </div>
+      <div class="kpi">
+        <div class="num-xl mono">$1.33B</div>
+        <div class="label">Forecast market size, 2031</div>
+        <div class="tag reported">Reported</div>
+      </div>
+      <div class="kpi">
+        <div class="num-xl mono">13.9%</div>
+        <div class="label">Compound annual growth rate</div>
+        <div class="tag reported">Reported</div>
+      </div>
+      <div class="kpi">
+        <div class="num-xl mono">50–150</div>
+        <div class="label">Initial target accounts for Vyra</div>
+        <div class="tag needs-val">Needs validation</div>
+      </div>
+    </div>
+
+    <div class="legend-strip">
+      <span class="ls-label">Every figure below is tagged by confidence</span>
+      <div class="tags">
+        <span class="tag reported">Reported</span>
+        <span class="tag modeled">Modeled</span>
+        <span class="tag needs-val">Needs validation</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="sizing">
+    <div class="block-head"><h2>Market size &amp; segment sizing</h2><span class="idx mono">02</span></div>
+    <p class="block-intro">Dubai's overall rental market is large and well documented. The luxury and exotic slice Vyra actually sells into is much smaller — and, honestly, much fuzzier.</p>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head">
+          <div><div class="panel-title">UAE car rental market, 2025 → 2031</div><div class="panel-note">Path interpolated at the reported 13.9% CAGR between the two published endpoints.</div></div>
+          <span class="tag reported">Reported</span>
+        </div>
+        <svg viewBox="0 0 900 300" width="100%" role="img" aria-label="Area chart of UAE car rental market size growing from 610 million dollars in 2025 to 1.33 billion dollars in 2031">
+          <line class="grid-line" x1="60" y1="149.9" x2="860" y2="149.9"/>
+          <line class="grid-line" x1="60" y1="20" x2="860" y2="20"/>
+          <line class="axis-line" x1="60" y1="260" x2="860" y2="260"/>
+          <text x="52" y="264" font-size="11" text-anchor="end">$0</text>
+          <text x="52" y="153.9" font-size="11" text-anchor="end">$665M</text>
+          <text x="52" y="24" font-size="11" text-anchor="end">$1.33B</text>
+          <defs>
+            <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--gold-bright)" stop-opacity="0.32"/>
+              <stop offset="100%" stop-color="var(--gold-bright)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#areaFill)" d="M60,149.9 L193.3,134.7 L326.7,117.4 L460,97.6 L593.3,75.1 L726.7,49.5 L860,20 L860,260 L60,260 Z"/>
+          <path fill="none" stroke="var(--gold)" stroke-width="2.5" d="M60,149.9 L193.3,134.7 L326.7,117.4 L460,97.6 L593.3,75.1 L726.7,49.5 L860,20"/>
+          <g>
+            <circle cx="60" cy="149.9" r="3.5" fill="var(--gold)"/>
+            <circle cx="193.3" cy="134.7" r="3.5" fill="var(--gold)"/>
+            <circle cx="326.7" cy="117.4" r="3.5" fill="var(--gold)"/>
+            <circle cx="460" cy="97.6" r="3.5" fill="var(--gold)"/>
+            <circle cx="593.3" cy="75.1" r="3.5" fill="var(--gold)"/>
+            <circle cx="726.7" cy="49.5" r="3.5" fill="var(--gold)"/>
+            <circle cx="860" cy="20" r="4.5" fill="var(--gold-bright)"/>
+          </g>
+          <text x="860" y="12" font-size="12" text-anchor="end" fill="var(--gold-bright)" font-weight="600">$1.33B</text>
+          <text x="60" y="278" font-size="11" text-anchor="middle">2025</text>
+          <text x="326.7" y="278" font-size="11" text-anchor="middle">2027</text>
+          <text x="593.3" y="278" font-size="11" text-anchor="middle">2029</text>
+          <text x="860" y="278" font-size="11" text-anchor="middle">2031</text>
+        </svg>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div><div class="panel-title">Dubai rental market, today</div></div>
+          <span class="tag reported">Reported</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:18px;">
+          <div>
+            <div class="num-lg mono" style="font-size:30px;">~3,494</div>
+            <div class="label" style="font-size:12.5px; color:var(--ink-dim);">registered rental companies in Dubai</div>
+          </div>
+          <div style="border-top:1px solid var(--line-soft); padding-top:16px;">
+            <div class="num-lg mono" style="font-size:30px;">~71,040</div>
+            <div class="label" style="font-size:12.5px; color:var(--ink-dim);">rental vehicles in circulation</div>
+          </div>
+          <div style="border-top:1px solid var(--line-soft); padding-top:14px;" class="panel-note">
+            Vyra's addressable slice is the luxury/exotic sliver of this fleet — see the segment breakdown alongside.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Luxury &amp; exotic segment — working estimate</div><div class="panel-note">Public data on exotic-only operators is thin. These ranges are planning estimates, not counted totals.</div></div>
+        <span class="tag needs-val">Needs validation</span>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Luxury-focused operators</div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:60%; width:28.6%;"></div></div>
+        <div class="rbar-val"><b>300</b>–500</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Exotic / supercar operators</div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:20%; width:20%;"></div></div>
+        <div class="rbar-val"><b>100</b>–200</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Serious fleets (20+ cars)</div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:10%; width:10%;"></div></div>
+        <div class="rbar-val"><b>50</b>–100</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Initial Vyra targets</div>
+        <div class="rbar-track"><div class="rbar-fill teal" style="left:10%; width:20%;"></div></div>
+        <div class="rbar-val"><b>50</b>–150</div>
+      </div>
+      <div class="scale-caption"><span>0</span><span>250</span><span>500 operators</span></div>
+    </div>
+  </section>
+
+  <section class="block" id="pricing">
+    <div class="block-head"><h2>What the vehicles actually rent for</h2><span class="idx mono">03</span></div>
+    <p class="block-intro">Five daily-rate tiers span nearly 20x from a Range Rover to a Revuelto — the spread that makes qualification (not just answering) the hard part of the WhatsApp conversation.</p>
+    <div class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Daily rental price by category (AED)</div><div class="panel-note">Hypercar tier is open-ended above AED 15,000/day.</div></div>
+        <span class="tag reported">Reported</span>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Premium Executive<br/><span style="font-weight:400;color:var(--ink-faint);font-size:11.5px;">S-Class, 7 Series, Range Rover</span></div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:4.67%; width:7.33%;"></div></div>
+        <div class="rbar-val"><b>700</b>–1,800</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Entry Exotic<br/><span style="font-weight:400;color:var(--ink-faint);font-size:11.5px;">Porsche 911, Audi R8</span></div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:9.33%; width:7.33%;"></div></div>
+        <div class="rbar-val"><b>1,400</b>–2,500</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Supercar<br/><span style="font-weight:400;color:var(--ink-faint);font-size:11.5px;">Huracan, Ferrari Roma</span></div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:16.67%; width:10%;"></div></div>
+        <div class="rbar-val"><b>2,500</b>–4,000</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">High Exotic<br/><span style="font-weight:400;color:var(--ink-faint);font-size:11.5px;">F8, McLaren, 812</span></div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:23.33%; width:16.67%;"></div></div>
+        <div class="rbar-val"><b>3,500</b>–6,000</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Hypercar<br/><span style="font-weight:400;color:var(--ink-faint);font-size:11.5px;">SF90, SVJ, Revuelto</span></div>
+        <div class="rbar-track"><div class="rbar-fill gold open" style="left:40%; width:60%;"></div></div>
+        <div class="rbar-val"><b>6,000</b>–15,000+</div>
+      </div>
+      <div class="scale-caption"><span>AED 0</span><span>7,500</span><span>15,000+</span></div>
+    </div>
+  </section>
+
+  <section class="block" id="revenue">
+    <div class="block-head"><h2>Revenue economics, per vehicle</h2><span class="idx mono">04</span></div>
+    <p class="block-intro">Two illustrative fleet cars at a modest 15 rental days a month — a useful sanity check on why a single missed enquiry can matter.</p>
+    <div class="grid-2c">
+      <div class="car-card c1">
+        <h3>Lamborghini Huracán</h3>
+        <div class="assump mono">AED 3,000/day · 15 rental days/month</div>
+        <div class="rev-rows">
+          <div class="rev-row">
+            <span class="k">Monthly revenue</span>
+            <span class="v mono">AED 45,000</span>
+          </div>
+          <div class="minibar"><i style="width:60%; background:var(--gold);"></i></div>
+          <div class="rev-row annual">
+            <span class="k">Annualized</span>
+            <span class="v mono">AED 540,000</span>
+          </div>
+        </div>
+        <div class="foot"><span class="tag modeled">Modeled example</span></div>
+      </div>
+      <div class="car-card c2">
+        <h3>Ferrari SF90</h3>
+        <div class="assump mono">AED 5,000/day · 15 rental days/month</div>
+        <div class="rev-rows">
+          <div class="rev-row">
+            <span class="k">Monthly revenue</span>
+            <span class="v mono">AED 75,000</span>
+          </div>
+          <div class="minibar"><i style="width:100%; background:var(--teal);"></i></div>
+          <div class="rev-row annual">
+            <span class="k">Annualized</span>
+            <span class="v mono">AED 900,000</span>
+          </div>
+        </div>
+        <div class="foot"><span class="tag modeled">Modeled example</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="sales">
+    <div class="block-head"><h2>Sales team economics</h2><span class="idx mono">05</span></div>
+    <p class="block-intro">What operators already pay people to do the job Vyra assists with — the baseline any pricing conversation gets compared against.</p>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Dubai rental sales salaries (AED / month)</div></div>
+        <span class="tag reported">Reported</span>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Junior salesperson</div>
+        <div class="rbar-track"><div class="rbar-fill teal" style="left:20%; width:6.67%;"></div></div>
+        <div class="rbar-val"><b>3,000</b>–4,000</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Standard salesperson</div>
+        <div class="rbar-track"><div class="rbar-fill teal" style="left:26.67%; width:13.33%;"></div></div>
+        <div class="rbar-val"><b>4,000</b>–6,000</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Luxury rental salesperson</div>
+        <div class="rbar-track"><div class="rbar-fill teal" style="left:33.33%; width:33.33%;"></div></div>
+        <div class="rbar-val"><b>5,000</b>–10,000</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Senior closer</div>
+        <div class="rbar-track"><div class="rbar-fill teal open" style="left:66.67%; width:33.33%;"></div></div>
+        <div class="rbar-val"><b>10,000</b>–15,000+</div>
+      </div>
+      <div class="scale-caption"><span>AED 0</span><span>7,500</span><span>15,000+</span></div>
+    </div>
+
+    <div class="grid-2c" style="margin-top:20px;">
+      <div class="stat-card">
+        <div class="panel-title" style="margin-bottom:14px;">Small team — 2 people</div>
+        <div class="num-lg mono">AED 10,000<span style="font-size:13px; color:var(--ink-faint); font-weight:500;">/mo</span></div>
+        <div class="minibar" style="margin-top:10px;"><i style="width:33.3%; background:var(--gold);"></i></div>
+        <div class="foot">AED 120,000 / year in base payroll <span class="tag modeled" style="margin-left:6px;">Modeled</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="panel-title" style="margin-bottom:14px;">Medium team — 5 people</div>
+        <div class="num-lg mono">AED 30,000<span style="font-size:13px; color:var(--ink-faint); font-weight:500;">/mo</span></div>
+        <div class="minibar" style="margin-top:10px;"><i style="width:100%; background:var(--teal);"></i></div>
+        <div class="foot">AED 360,000 / year in base payroll <span class="tag modeled" style="margin-left:6px;">Modeled</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="opportunity">
+    <div class="block-head"><h2>The opportunity, worked through</h2><span class="idx mono">06</span></div>
+    <p class="block-intro">From a plausible operator's enquiry volume, to what slow handling might be costing them, to what Vyra could reasonably charge for closing that gap.</p>
+
+    <div class="grid-3">
+      <div class="stat-card"><div class="num-lg mono">50<span style="font-size:14px;color:var(--ink-faint);">/day</span></div><div class="label">Enquiries for an example operator</div></div>
+      <div class="stat-card"><div class="num-lg mono">1,500<span style="font-size:14px;color:var(--ink-faint);">/mo</span></div><div class="label">Monthly enquiry volume</div></div>
+      <div class="stat-card"><div class="num-lg mono">AED 9,000</div><div class="label">Average booking (3-day rental)</div></div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <div class="panel-head">
+        <div><div class="panel-title">Potential lost booking value</div><div class="panel-note">10 missed bookings a month, at the average booking value above.</div></div>
+        <span class="tag modeled">Modeled example</span>
+      </div>
+      <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;">
+        <div class="num-xl mono" style="font-size:40px; color:var(--rust);">AED 90,000</div>
+        <div style="color:var(--ink-dim); font-size:13px;">potential lost rental value / month, from missed or delayed follow-up</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Vyra subscription — opportunity range (AED / month)</div></div>
+        <span class="tag modeled">Modeled example</span>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Small operator</div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:6.67%; width:6.67%;"></div></div>
+        <div class="rbar-val"><b>1,000</b>–2,000</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Growth operator</div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:20%; width:13.33%;"></div></div>
+        <div class="rbar-val"><b>3,000</b>–5,000</div>
+      </div>
+      <div class="rbar-row">
+        <div class="rbar-label">Enterprise fleet</div>
+        <div class="rbar-track"><div class="rbar-fill gold" style="left:53.33%; width:46.67%;"></div></div>
+        <div class="rbar-val"><b>8,000</b>–15,000</div>
+      </div>
+      <div class="scale-caption"><span>AED 0</span><span>7,500</span><span>15,000</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Market opportunity — ARR scenarios</div></div>
+        <span class="tag modeled">Modeled example</span>
+      </div>
+      <div class="arr-row">
+        <div class="arr-label">Conservative<span class="sub">100 operators × AED 4,000/mo</span></div>
+        <div class="arr-track"><div class="arr-fill" style="width:16%; background:linear-gradient(90deg,var(--teal),color-mix(in srgb,var(--teal) 60%,var(--gold-bright)));"></div></div>
+        <div class="arr-val mono">AED 4.8M</div>
+      </div>
+      <div class="arr-row">
+        <div class="arr-label">Growth<span class="sub">500 operators × AED 5,000/mo</span></div>
+        <div class="arr-track"><div class="arr-fill" style="width:100%; background:linear-gradient(90deg,var(--gold),var(--gold-bright));"></div></div>
+        <div class="arr-val mono">AED 30M</div>
+      </div>
+      <div class="scale-caption"><span>AED 0</span><span>15M</span><span>30M ARR</span></div>
+    </div>
+  </section>
+
+  <section class="block" id="risks">
+    <div class="block-head"><h2>What's real, and what's still open</h2><span class="idx mono">07</span></div>
+    <p class="block-intro">The demand-side problems Vyra is meant to fix, and the questions that still need a real operator's answers before any of the above becomes a business plan.</p>
+
+    <div class="grid-2">
+      <div class="panel list-panel">
+        <h3>Business problems in the market</h3>
+        <div class="sub">What luxury operators report struggling with today</div>
+        <ul class="plain">
+          <li><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="var(--rust)" stroke-width="1.4"/><path d="M7 3.8v3.8M7 9.6h.01" stroke="var(--rust)" stroke-width="1.4" stroke-linecap="round"/></svg>Slow responses during busy periods</li>
+          <li><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="var(--rust)" stroke-width="1.4"/><path d="M7 3.8v3.8M7 9.6h.01" stroke="var(--rust)" stroke-width="1.4" stroke-linecap="round"/></svg>Lost enquiries from delayed follow-up</li>
+          <li><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="var(--rust)" stroke-width="1.4"/><path d="M7 3.8v3.8M7 9.6h.01" stroke="var(--rust)" stroke-width="1.4" stroke-linecap="round"/></svg>Sales time lost to repetitive questions</li>
+          <li><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="var(--rust)" stroke-width="1.4"/><path d="M7 3.8v3.8M7 9.6h.01" stroke="var(--rust)" stroke-width="1.4" stroke-linecap="round"/></svg>Difficulty tracking customer interest</li>
+          <li><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="var(--rust)" stroke-width="1.4"/><path d="M7 3.8v3.8M7 9.6h.01" stroke="var(--rust)" stroke-width="1.4" stroke-linecap="round"/></svg>Little visibility into enquiry → booking performance</li>
+        </ul>
+      </div>
+
+      <div class="panel list-panel">
+        <h3>Market validation questions</h3>
+        <div class="sub">Unanswered before any number above can be trusted</div>
+        <ol class="qs">
+          <li>How many luxury operators in Dubai actually match the target profile?</li>
+          <li>How many enquiries does an average operator receive daily?</li>
+          <li>What share of enquiries become bookings?</li>
+          <li>How much revenue is lost to slow responses?</li>
+          <li>What tools are operators using today?</li>
+          <li>What would operators actually pay for this?</li>
+          <li>Which workflows create the most operational pain?</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <div class="panel-head">
+        <div><div class="panel-title">Metrics worth tracking from day one</div></div>
+      </div>
+      <div class="chips">
+        <span class="chip">Incoming enquiries</span>
+        <span class="chip">First response time</span>
+        <span class="chip">Qualification completion rate</span>
+        <span class="chip">Quote requests</span>
+        <span class="chip">Booking conversion rate</span>
+        <span class="chip">Customer acquisition cost</span>
+        <span class="chip">Average rental value</span>
+        <span class="chip">Repeat customer rate</span>
+        <span class="chip">Sales team workload</span>
+        <span class="chip">Revenue per vehicle</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Still commercially unvalidated</div></div>
+        <span class="tag needs-val">Needs validation</span>
+      </div>
+      <div class="chips">
+        <span class="chip">Willingness to pay</span>
+        <span class="chip">Pricing model</span>
+        <span class="chip">Conversion improvement</span>
+        <span class="chip">Revenue impact</span>
+        <span class="chip">Cost savings</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="legend">
+      <div class="legend-item"><span class="tag reported">Reported</span> published or publicly sourced figures</div>
+      <div class="legend-item"><span class="tag modeled">Modeled</span> computed from stated assumptions</div>
+      <div class="legend-item"><span class="tag needs-val">Needs validation</span> planning estimate, unconfirmed</div>
+    </div>
+    <p class="fine">This is the market-research section of Vyra's knowledge dashboard, compiled from internal research notes. It excludes product design and technical implementation, which live in later sections of this dashboard as they're built out.</p>
+    <p class="fine">Figures on customer willingness to pay, conversion uplift and revenue impact remain unvalidated by design — treat every AED figure here as a planning input, not a commitment.</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var sections = ['overview','sizing','pricing','revenue','sales','opportunity','risks'].map(function(id){return document.getElementById(id);});
+  var links = Array.prototype.slice.call(document.querySelectorAll('#pillnav a'));
+  var progress = document.getElementById('progress');
+
+  function onScroll(){
+    var doc = document.documentElement;
+    var scrollTop = doc.scrollTop || document.body.scrollTop;
+    var height = doc.scrollHeight - doc.clientHeight;
+    progress.style.width = (height > 0 ? (scrollTop/height*100) : 0) + '%';
+
+    var current = sections[0];
+    sections.forEach(function(sec){
+      if(sec && sec.getBoundingClientRect().top - 90 <= 0) current = sec;
+    });
+    links.forEach(function(a){
+      a.classList.toggle('active', current && a.getAttribute('href') === '#' + current.id);
+    });
+  }
+  document.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll);
+  onScroll();
+})();
+</script>
