@@ -842,7 +842,7 @@
             <div class="o-num tnum" id="outTotal" aria-live="polite">AED 4.8M</div>
             <div class="o-sub">Illustrative arithmetic · before delivery costs</div>
             <div class="o-row"><span>Per operator, per year</span><b class="tnum" id="outPer">AED 48K</b></div>
-            <div class="o-row"><span>Share of serious fleets</span><b class="tnum" id="outShare">100%</b></div>
+            <div class="o-row"><span>Of the 100 serious fleets estimated</span><b class="tnum" id="outShare">100%</b></div>
           </div>
         </div>
 
@@ -994,7 +994,7 @@
     if(n < 50)  return ['ok', n + ' operators sits below the initial target band of 50–150.'];
     if(n <= 100) return ['ok', n + ' operators is within the estimated pool of serious fleets (50–100) — the most qualified buyers.'];
     if(n <= 200) return ['stretch', n + ' operators requires most or all of the estimated exotic and supercar segment (100–200).'];
-    if(n <= 500) return ['over', n + ' operators exceeds the exotic segment entirely — it assumes broad adoption across luxury-focused operators (300–500).'];
+    if(n <= 500) return ['stretch', n + ' operators goes beyond the exotic segment — it assumes broad adoption across luxury-focused operators (300–500).'];
     return ['over', n + ' operators exceeds every operator-count estimate on this page. Treat the result as arithmetic, not opportunity.'];
   }
 
@@ -1025,9 +1025,8 @@
     outTotal.textContent = total === 0 ? 'AED 0' : aed(total);
     outPer.textContent = aed(p * m);
 
-    // Share of the estimated serious-fleet pool (50-100); midpoint 75 as the denominator.
-    var share = o === 0 ? 0 : Math.round(o / 75 * 100);
-    outShare.textContent = share + '%';
+    // Measured against the upper estimate of serious fleets (100), so 100 operators reads as 100%.
+    outShare.textContent = Math.round(o) + '%';
 
     var a = opsNote(o), b = priceNote(p), c = monthsNote(m);
     setNote(document.getElementById('opsNote'), a[0], a[1]);
