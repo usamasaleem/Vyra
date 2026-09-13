@@ -17,7 +17,7 @@ A visual, shareable-by-link version of the knowledge hub — charts, hierarchy a
 
 The hub link publishes all six pages together, plus `assets/`,, so relative navigation works inside it — share that one rather than the individual pages.
 
-The build plan stores tick state with the artifact `db` capability, which makes the hub artifact organization-internal — it cannot be shared publicly while that is declared. On Netlify there is no `window.claude`, so it falls back to `localStorage` (per browser, not per person).
+On Netlify, the build plan syncs progress between devices through a Netlify Function and a site-wide Netlify Blobs store. Enter the owner's shared access code on each device; it is remembered for that tab's browser session. The repository contains only a SHA-256 verifier for a randomly generated 192-bit code, never the code itself. To rotate access, set `VYRA_PROGRESS_PASSCODE` in the site's Netlify environment and redeploy; that value overrides the verifier. The page keeps a local copy and retries pending saves after connection failures. It imports existing browser ticks when the shared store is first created. If shared progress already exists, it offers a manual import of ticks found only in that browser. Changes from other devices are refreshed when the page regains focus and every 15 seconds while it is open.
 
 Live links are private by default — share from the artifact's own share menu when a page is ready for others to see.
 
