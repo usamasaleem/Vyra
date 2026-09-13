@@ -21,6 +21,23 @@
   # 25, and the difference has not mattered so far.
   NODE_VERSION = "24"
 
+  # Netlify fails a build when an environment variable's value appears in the
+  # build output. That is a good default and it caught a real case on the first
+  # deploy — but these three are not secrets, and their values are in the
+  # repository on purpose:
+  #
+  #   WHATSAPP_API_VERSION            "v26.0". A Meta API version, documented
+  #                                   as the default in the env schema.
+  #   NEXT_PUBLIC_SUPABASE_URL        The project URL, sent to every browser.
+  #   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  #                                   Designed to be visible in a browser; it
+  #                                   grants nothing without a session.
+  #
+  # The variables that ARE secret — the access token, the app secret and the
+  # database URL — are deliberately absent from this list, so the scanner still
+  # fails the build if any of them ever reaches the output.
+  SECRETS_SCAN_OMIT_KEYS = "WHATSAPP_API_VERSION,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
