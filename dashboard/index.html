@@ -60,8 +60,8 @@
   .hero .src{font-size:13px; color:var(--ink-faint); max-width:64ch; line-height:1.5; margin:0;}
 
   /* ================= section cards ================= */
-  .sections{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:44px;}
-  @media (max-width:980px){ .sections{grid-template-columns:1fr;} }
+  .sections{display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:44px;}
+  @media (max-width:860px){ .sections{grid-template-columns:1fr;} }
 
   .sec{
     display:flex; flex-direction:column; text-decoration:none;
@@ -211,6 +211,30 @@
         <p class="blurb">Sixteen weeks and three gates for one builder, ordered by what each stage lets you sell rather than what is easiest to build.</p>
         <ul class="inside">
           <li>Gate 1</li><li>Gate 2</li><li>Gate 3</li><li>Scope</li><li>Calendar risks</li>
+        </ul>
+        <span class="open">Open section <span class="arw">→</span></span>
+      </a>
+
+      <a class="sec" href="build-plan.html">
+        <div class="sec-motif">
+          <svg viewBox="0 0 240 68" role="img" aria-label="A checklist with the first two items ticked.">
+            <rect x="2" y="4" width="15" height="15" rx="5" fill="#00A651"/>
+            <path d="M6.5,11.5 L9,14 L13,8.5" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="25" y="9.5" width="150" height="5" rx="2.5" fill="rgba(13,13,13,0.17)"/>
+            <rect x="2" y="26" width="15" height="15" rx="5" fill="#00A651"/>
+            <path d="M6.5,33.5 L9,36 L13,30.5" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="25" y="31.5" width="118" height="5" rx="2.5" fill="rgba(13,13,13,0.17)"/>
+            <rect x="2.75" y="48.75" width="13.5" height="13.5" rx="4.5" fill="none" stroke="rgba(13,13,13,0.22)" stroke-width="1.5"/>
+            <rect x="25" y="53.5" width="163" height="5" rx="2.5" fill="rgba(13,13,13,0.10)"/>
+          </svg>
+        </div>
+        <div class="sec-top">
+          <h3>Build Plan</h3>
+          <span class="tag live">Live</span>
+        </div>
+        <p class="blurb">Thirty-six development steps in six phases, ordered by dependency. Tick them off as you go — progress is saved and comes back when you return.</p>
+        <ul class="inside">
+          <li>Transport</li><li>Inbox</li><li>Qualification</li><li>Handoff</li><li>Shadow to live</li>
         </ul>
         <span class="open">Open section <span class="arw">→</span></span>
       </a>
