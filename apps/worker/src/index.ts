@@ -1,8 +1,10 @@
 import { parseServerEnv } from '@vyra/contracts'
 import { createClient } from '@vyra/db'
 import { run as runWorker, type Runner } from 'graphile-worker'
+import { dispatchMessage } from './dispatcher.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
+import { createWhatsAppClient } from './whatsapp/client.js'
 
 const env = parseServerEnv()
 const { sql } = createClient(env.DATABASE_URL, { max: 4 })
@@ -19,11 +21,16 @@ const transact: Transactor = (fn) =>
   ) as never
 
 /**
- * Nothing here can send a WhatsApp message yet — the dispatcher is step 11.
- * Passing this explicitly rather than leaving it implicit means the reason a
- * customer gets silence is recorded on every job, instead of being a gap.
+ * The one client that talks to Meta. Section 18.3: the dispatcher is the only
+ * component that sends, including for messages a salesperson typed by hand.
  */
-const DISPATCHER_AVAILABLE = false
+const whatsapp = createWhatsAppClient({
+  apiVersion: env.WHATSAPP_API_VERSION,
+  phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+  accessToken: env.WHATSAPP_ACCESS_TOKEN,
+})
+
+const DISPATCHER_AVAILABLE = true
 
 const IDLE_INTERVAL_MS = 250
 
@@ -56,6 +63,23 @@ const runner: Runner = await runWorker({
   concurrency: 5,
   noHandleSignals: true,
   taskList: {
+    dispatch_outbound: async (payload, helpers) => {
+      const messageId = (payload as { message_id?: unknown } | null)?.message_id
+      if (typeof messageId !== 'string') {
+        log({ event: 'dispatch.skipped', jobId: helpers.job.id, reason: 'no_message_id' })
+        return
+      }
+
+      const result = await dispatchMessage(query, whatsapp, messageId)
+      log({ event: 'dispatch.result', jobId: helpers.job.id, messageId, ...result })
+
+      // Only a retryable failure should make graphile-worker try again. An
+      // unknown outcome must not be retried at all: Meta may have delivered it.
+      if (result.outcome === 'failed' && result.retryable) {
+        throw new Error(`retryable send failure: ${result.error}`)
+      }
+    },
+
     process_inbound_message: async (payload, helpers) => {
       const result = await processInboundMessage(
         query,
@@ -111,7 +135,7 @@ log({
   nodeEnv: env.NODE_ENV,
   aiSendingEnabled: env.AI_SENDING_ENABLED,
   dispatcherAvailable: DISPATCHER_AVAILABLE,
-  tasks: ['process_inbound_message'],
+  tasks: ['process_inbound_message', 'dispatch_outbound'],
 })
 
 await relayLoop()

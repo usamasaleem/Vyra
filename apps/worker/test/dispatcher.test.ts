@@ -1,0 +1,223 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { PGlite } from '@electric-sql/pglite'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { checkEligibility, dispatchMessage, type SendIntent } from '../src/dispatcher.ts'
+import type { QueryRunner } from '../src/relay.ts'
+import { MetaApiError, MetaUnknownOutcomeError, type WhatsAppClient } from '../src/whatsapp/client.ts'
+
+const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','..','packages','db','migrations')
+const OPERATOR = '11111111-1111-1111-1111-111111111111'
+const CONVERSATION = '66666666-6666-6666-6666-666666666666'
+const MEMBERSHIP = '77777777-7777-7777-7777-777777777777'
+const NOW = new Date('2026-09-13T12:00:00.000Z')
+
+let db: PGlite
+let run: QueryRunner
+
+const baseIntent = (overrides: Partial<SendIntent> = {}): SendIntent => ({
+  messageId: 'm1', operatorId: OPERATOR, conversationId: CONVERSATION,
+  body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text',
+  sentByMembershipId: null, revisionAtSend: 0, conversationRevision: 0,
+  handlerMode: 'ai', lastCustomerMessageAt: new Date(NOW.getTime() - 60_000),
+  recipient: '971500000001', optedOutAt: null, phoneNumberId: '111',
+  ...overrides,
+})
+
+describe('eligibility, checked at the moment of sending', () => {
+  it('allows a reply inside the 24-hour window', () => {
+    expect(checkEligibility(baseIntent(), NOW)).toEqual({ allowed: true })
+  })
+
+  it('refuses a reply that crossed the window while queued', () => {
+    const intent = baseIntent({ lastCustomerMessageAt: new Date(NOW.getTime() - 25 * 60 * 60 * 1000) })
+    expect(checkEligibility(intent, NOW)).toEqual({
+      allowed: false, reason: 'outside_customer_service_window',
+    })
+  })
+
+  it('refuses right after the boundary and allows right before it', () => {
+    const justInside = baseIntent({ lastCustomerMessageAt: new Date(NOW.getTime() - (24 * 60 * 60 * 1000 - 1000)) })
+    const justOutside = baseIntent({ lastCustomerMessageAt: new Date(NOW.getTime() - (24 * 60 * 60 * 1000 + 1000)) })
+    expect(checkEligibility(justInside, NOW).allowed).toBe(true)
+    expect(checkEligibility(justOutside, NOW).allowed).toBe(false)
+  })
+
+  /** A channel rule, not an automation rule. */
+  it('applies the window to a salesperson message too', () => {
+    const intent = baseIntent({
+      sentByMembershipId: MEMBERSHIP, handlerMode: 'human',
+      lastCustomerMessageAt: new Date(NOW.getTime() - 25 * 60 * 60 * 1000),
+    })
+    expect(checkEligibility(intent, NOW)).toEqual({
+      allowed: false, reason: 'outside_customer_service_window',
+    })
+  })
+
+  it('suppresses an AI draft once a salesperson has taken over', () => {
+    expect(checkEligibility(baseIntent({ handlerMode: 'human' }), NOW)).toEqual({
+      allowed: false, reason: 'conversation_taken_over',
+    })
+  })
+
+  it('still sends the salesperson own message while they own it', () => {
+    const intent = baseIntent({ handlerMode: 'human', sentByMembershipId: MEMBERSHIP })
+    expect(checkEligibility(intent, NOW)).toEqual({ allowed: true })
+  })
+
+  it('suppresses AI output written against an older revision', () => {
+    expect(checkEligibility(baseIntent({ revisionAtSend: 3, conversationRevision: 4 }), NOW)).toEqual({
+      allowed: false, reason: 'superseded_by_newer_state',
+    })
+  })
+
+  it('does not hold a salesperson message to a stale revision', () => {
+    const intent = baseIntent({ sentByMembershipId: MEMBERSHIP, revisionAtSend: 3, conversationRevision: 9 })
+    expect(checkEligibility(intent, NOW)).toEqual({ allowed: true })
+  })
+
+  it('refuses when the contact has opted out', () => {
+    expect(checkEligibility(baseIntent({ optedOutAt: NOW }), NOW)).toEqual({
+      allowed: false, reason: 'contact_opted_out',
+    })
+  })
+
+  it('refuses an empty body', () => {
+    expect(checkEligibility(baseIntent({ body: '   ' }), NOW).allowed).toBe(false)
+  })
+})
+
+describe('dispatching against the database', () => {
+  const sending = (id = 'wamid.SENT'): WhatsAppClient => ({
+    sendText: vi.fn(async () => ({ providerMessageId: id })),
+  })
+
+  const queueOutbound = async (fields: Record<string, unknown> = {}) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, delivery_state,
+                             revision_at_send, sent_by_membership_id, idempotency_key)
+       values ($1, $2, 'outbound', 'text', $3, 'pending', $4, $5, $6) returning id`,
+      [OPERATOR, CONVERSATION, fields.body ?? 'Here are two options.',
+       fields.revisionAtSend ?? 0, fields.sentBy ?? null, fields.key ?? `turn-${Math.random()}`],
+    )
+    return rows[0]!.id as string
+  }
+
+  const stateOf = async (id: string) =>
+    (await run('select delivery_state, provider_id, error_code, error_detail from messages where id = $1', [id]))[0]!
+
+  beforeEach(async () => {
+    db = await PGlite.create()
+    run = async (t, p) => (await db.query(t, p)).rows as Array<Record<string, unknown>>
+    for (const f of readdirSync(migrationsDir).filter((n) => n.endsWith('.sql')).sort()) {
+      await db.exec(readFileSync(join(migrationsDir, f), 'utf8'))
+    }
+    await db.exec(`
+      insert into operators (id, name) values ('${OPERATOR}', 'Vyra Pilot');
+      insert into whatsapp_accounts (id, operator_id, provider_account_id, phone_number_id)
+      values ('33333333-3333-3333-3333-333333333333', '${OPERATOR}', 'waba', '100000000000001');
+      insert into contacts (id, operator_id, channel_identifier)
+      values ('55555555-5555-5555-5555-555555555555', '${OPERATOR}', '971500000001');
+      insert into conversations (id, operator_id, contact_id, whatsapp_account_id, last_customer_message_at)
+      values ('${CONVERSATION}', '${OPERATOR}', '55555555-5555-5555-5555-555555555555',
+              '33333333-3333-3333-3333-333333333333', now());
+    `)
+  })
+
+  it('sends and records the provider message id', async () => {
+    const id = await queueOutbound()
+    const client = sending('wamid.REAL')
+    const result = await dispatchMessage(run, client, id)
+
+    expect(result).toEqual({ outcome: 'sent', providerMessageId: 'wamid.REAL' })
+    expect(await stateOf(id)).toMatchObject({ delivery_state: 'accepted', provider_id: 'wamid.REAL' })
+    expect(client.sendText).toHaveBeenCalledWith({
+      to: '971500000001', body: 'Here are two options.',
+    })
+  })
+
+  /** A duplicated job must not produce a duplicated WhatsApp message. */
+  it('sends once even when dispatched twice', async () => {
+    const id = await queueOutbound()
+    const client = sending()
+    const first = await dispatchMessage(run, client, id)
+    const second = await dispatchMessage(run, client, id)
+
+    expect(first.outcome).toBe('sent')
+    expect(second).toEqual({ outcome: 'already_handled' })
+    expect(client.sendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels rather than sends when a salesperson took over', async () => {
+    const id = await queueOutbound()
+    await run(`update conversations set handler_mode = 'human', revision = revision + 1 where id = $1`, [CONVERSATION])
+    const client = sending()
+    const result = await dispatchMessage(run, client, id)
+
+    expect(result).toEqual({ outcome: 'suppressed', reason: 'conversation_taken_over' })
+    expect(client.sendText).not.toHaveBeenCalled()
+    expect(await stateOf(id)).toMatchObject({ delivery_state: 'cancelled', error_code: 'conversation_taken_over' })
+  })
+
+  it('cancels a reply that crossed the 24-hour window while queued', async () => {
+    const id = await queueOutbound()
+    await run(`update conversations set last_customer_message_at = now() - interval '25 hours' where id = $1`, [CONVERSATION])
+    const client = sending()
+
+    expect(await dispatchMessage(run, client, id)).toEqual({
+      outcome: 'suppressed', reason: 'outside_customer_service_window',
+    })
+    expect(client.sendText).not.toHaveBeenCalled()
+    expect((await stateOf(id)).delivery_state).toBe('cancelled')
+  })
+
+  /** Meta may have delivered it. Neither retry nor call it failed. */
+  it('records an ambiguous send as unknown', async () => {
+    const id = await queueOutbound()
+    const client: WhatsAppClient = {
+      sendText: vi.fn(async () => { throw new MetaUnknownOutcomeError('socket hang up') }),
+    }
+    const result = await dispatchMessage(run, client, id)
+
+    expect(result).toMatchObject({ outcome: 'unknown' })
+    const state = await stateOf(id)
+    expect(state.delivery_state).toBe('unknown')
+    expect(state.error_detail).toContain('socket hang up')
+  })
+
+  it('does not re-send a message whose outcome is unknown', async () => {
+    const id = await queueOutbound()
+    const client: WhatsAppClient = {
+      sendText: vi.fn(async () => { throw new MetaUnknownOutcomeError('timeout') }),
+    }
+    await dispatchMessage(run, client, id)
+    expect(await dispatchMessage(run, client, id)).toEqual({ outcome: 'already_handled' })
+    expect(client.sendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns a retryable failure to pending', async () => {
+    const id = await queueOutbound()
+    const client: WhatsAppClient = {
+      sendText: vi.fn(async () => { throw new MetaApiError('upstream', 503, null, true) }),
+    }
+    const result = await dispatchMessage(run, client, id)
+
+    expect(result).toMatchObject({ outcome: 'failed', retryable: true })
+    expect((await stateOf(id)).delivery_state).toBe('pending')
+    // And a later attempt can claim it again.
+    expect((await dispatchMessage(run, sending(), id)).outcome).toBe('sent')
+  })
+
+  it('marks a permanent rejection failed and leaves it alone', async () => {
+    const id = await queueOutbound()
+    const client: WhatsAppClient = {
+      sendText: vi.fn(async () => { throw new MetaApiError('Invalid parameter', 400, 100, false) }),
+    }
+    const result = await dispatchMessage(run, client, id)
+
+    expect(result).toMatchObject({ outcome: 'failed', retryable: false })
+    expect(await stateOf(id)).toMatchObject({ delivery_state: 'failed', error_code: '100' })
+    expect((await dispatchMessage(run, sending(), id)).outcome).toBe('already_handled')
+  })
+})

@@ -181,3 +181,72 @@ export async function storeInboundEventOnly(
     eventId: (row?.event_id as string) ?? null,
   }
 }
+
+/**
+ * Applying a delivery receipt to the message it belongs to.
+ *
+ * Provider acceptance, delivery and reading are distinct states, and the
+ * receipts arrive out of order often enough that it matters: a `delivered`
+ * webhook can land after `read`. So the update only ever moves a message
+ * forward, never back. Without that rank check, an out-of-order `sent`
+ * receipt would quietly undo a `read`.
+ *
+ * `failed` is the exception — it is terminal information and always wins,
+ * because a message Meta could not deliver is not delivered no matter what
+ * earlier receipt said.
+ */
+const APPLY_STATUS_SQL = `
+with rank as (
+  select
+    case $2
+      when 'sent' then 3 when 'delivered' then 4 when 'read' then 5
+      else 0
+    end as incoming
+),
+target as (
+  select m.id, m.delivery_state,
+         case m.delivery_state::text
+           when 'pending' then 0 when 'dispatching' then 1 when 'accepted' then 2
+           when 'sent' then 3 when 'delivered' then 4 when 'read' then 5
+           else 0
+         end as current
+  from messages m
+  join whatsapp_accounts a on a.operator_id = m.operator_id
+  where m.provider_id = $1 and a.phone_number_id = $3
+)
+update messages m
+set delivery_state = $2::delivery_state,
+    error_code = case when $2 = 'failed' then coalesce($4, 'provider_failed') else m.error_code end
+from target t, rank r
+where m.id = t.id
+  and ($2 = 'failed' or r.incoming > t.current)
+returning m.id, m.delivery_state
+`
+
+export async function applyMessageStatus(
+  run: QueryRunner,
+  input: {
+    providerMessageId: string
+    status: string
+    phoneNumberId: string
+    errorCode?: string | null
+  },
+): Promise<{ applied: boolean; deliveryState: string | null }> {
+  // Only states our enum knows. An unrecognised status is stored as an event
+  // and otherwise ignored rather than crashing the intake.
+  if (!['sent', 'delivered', 'read', 'failed'].includes(input.status)) {
+    return { applied: false, deliveryState: null }
+  }
+
+  const rows = await run(APPLY_STATUS_SQL, [
+    input.providerMessageId,
+    input.status,
+    input.phoneNumberId,
+    input.errorCode ?? null,
+  ])
+  const row = rows[0]
+  return {
+    applied: row !== undefined,
+    deliveryState: (row?.['delivery_state'] as string) ?? null,
+  }
+}

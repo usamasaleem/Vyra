@@ -1,6 +1,6 @@
 import { queryRunner } from '@/lib/db'
 import { serverEnv } from '@/lib/env'
-import { storeInboundEventOnly, storeInboundMessage } from '@/lib/whatsapp/ingest'
+import { applyMessageStatus, storeInboundEventOnly, storeInboundMessage } from '@/lib/whatsapp/ingest'
 import { toDate, toMessageKind, webhookPayloadSchema } from '@/lib/whatsapp/payload'
 import { isValidSignature, isValidVerifyToken } from '@/lib/whatsapp/signature'
 
@@ -112,7 +112,15 @@ export async function POST(request: Request): Promise<Response> {
             providerEventKey: `status:${status.id}:${status.status}`,
             rawPayload: payload,
           })
-          stored.push({ kind: 'status', status: status.status, ...outcome })
+          // Apply it even when the event is a duplicate: the receipt is
+          // idempotent and a redelivery must still be able to move a message
+          // forward if the first attempt raced with the send.
+          const applied = await applyMessageStatus(run, {
+            providerMessageId: status.id,
+            status: status.status,
+            phoneNumberId,
+          })
+          stored.push({ kind: 'status', status: status.status, ...outcome, ...applied })
         }
       }
     }

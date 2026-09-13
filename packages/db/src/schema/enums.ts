@@ -71,6 +71,14 @@ export const messageKind = pgEnum('message_kind', [
  */
 export const deliveryState = pgEnum('delivery_state', [
   'pending',
+  /** Claimed by the dispatcher. Stops a second worker sending the same row. */
+  'dispatching',
+  /**
+   * Suppressed before it reached Meta — a salesperson took over, the customer
+   * corrected themselves, or policy changed. Section 18.11 requires pending AI
+   * send intents to become cancelled rather than quietly failing.
+   */
+  'cancelled',
   'accepted',
   'sent',
   'delivered',

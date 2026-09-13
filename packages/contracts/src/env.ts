@@ -20,7 +20,13 @@ export const serverEnvSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: required,
   /** Used to verify the X-Hub-Signature-256 HMAC over the raw request body. */
   WHATSAPP_APP_SECRET: required,
-  WHATSAPP_API_VERSION: z.string().default('v21.0'),
+  /**
+   * Pinned deliberately. v26.0 was the newest version Meta accepted when
+   * probed on 13 September 2026; v27.0 and above did not exist. Newest gives
+   * the longest support window, but never inherit this from memory — probe
+   * the real API before changing it.
+   */
+  WHATSAPP_API_VERSION: z.string().default('v26.0'),
 
   /** Pilot-operator channel credentials. Moves to the database — see above. */
   WHATSAPP_ACCESS_TOKEN: required,

@@ -15,6 +15,13 @@
       "when": 1789310994171,
       "tag": "0001_tricky_ricochet",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789312558477,
+      "tag": "0002_oval_magneto",
+      "breakpoints": true
     }
   ]
 }
