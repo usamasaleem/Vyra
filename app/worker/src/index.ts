@@ -2,6 +2,7 @@ import { parseServerEnv } from '@vyra/contracts'
 import { createClient } from '@vyra/db'
 import { run as runWorker, type Runner } from 'graphile-worker'
 import { dispatchMessage } from './dispatcher.js'
+import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
@@ -61,6 +62,14 @@ async function relayLoop(): Promise<void> {
         lastReapAt = Date.now()
         const { reaped } = await reapStaleDispatching(query)
         if (reaped > 0) log({ event: 'dispatch.reaped', count: reaped })
+
+        // Jobs abandoned by a worker that died without shutting down.
+        // graphile-worker would hold these for four hours, and per-conversation
+        // serialisation means that is four hours of silence for one customer.
+        const abandoned = await releaseAbandonedJobs(query)
+        if (abandoned.released > 0) {
+          log({ event: 'jobs.released', count: abandoned.released, tasks: abandoned.tasks })
+        }
       }
     } catch (error) {
       log({ event: 'relay.error', error: messageOf(error) })
