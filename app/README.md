@@ -106,6 +106,7 @@ nothing. Both facts were confirmed against live Meta traffic.
 | 10 · worker task list | Loads context, decides handling, sends nothing |
 | 11 · dispatcher | The only path to Meta. Sends, records receipts, suppresses |
 | 12 · retries and visible failures | Backoff, dead-letter, reaper, retry surface |
+| 14 · tenant isolation | Explicit scoping done and tested. Policies written and tested; the app does not use them yet — see below |
 | 13 · auth and memberships | Supabase Auth for identity, membership for authority |
 | 15 · list and thread | Plus polling so the thread stays current |
 | 16 · manual reply | Through the dispatcher, the same path an AI turn uses |
@@ -127,6 +128,33 @@ Phases 2 and 3 are complete except for step 14's row-level security policies.
 **Not built:** everything in phases 4 onward. The AI
 writes nothing — replies are queued by hand through the same
 `queueOutboundText` path a salesperson will use.
+
+## Row-level security: written, not yet wired
+
+Migration 0005 creates a restricted role (`vyra_app`) and a policy on every
+table scoping rows to the caller's operators, with fourteen tests that enter
+that role and try to reach another operator by every route the application
+offers.
+
+**The application does not use it yet.** The inbox connects as the privileged
+role, so policies are bypassed and the control in force is the explicit
+operator scoping in every query — which is the primary control either way, and
+is separately tested.
+
+Wiring it up means running each request's queries inside one transaction that
+does `set local role vyra_app` and sets `app.current_user_id`. Measured against
+the pilot database:
+
+| | 3 queries |
+|---|---|
+| privileged (today) | 509 ms |
+| scoped, one transaction per request | 1015 ms |
+| scoped, one transaction per query | ~2500 ms |
+
+The +500 ms is almost entirely the extra round trips to `ap-northeast-1`. With
+the database near the application it would be closer to 30 ms. Worth wiring
+before a second operator exists; worth doing after the region question, if that
+is ever revisited.
 
 ## The two processes need different database connections
 
