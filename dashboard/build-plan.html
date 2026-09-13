@@ -30,6 +30,22 @@
   .brand-mark{width:34px; height:34px; border-radius:12px; background:var(--ink); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
   .brand-mark i{width:11px; height:11px; border-radius:50%; background:var(--green); display:block;}
   .brand-name{font-family:'Inter Tight',sans-serif; font-weight:700; font-size:17px; letter-spacing:-0.02em;}
+  .navpills{
+    display:flex; gap:4px; padding:4px; margin:0 auto;
+    background:var(--surface); border-radius:var(--r-pill);
+    overflow-x:auto; scrollbar-width:none; max-width:100%;
+  }
+  .navpills::-webkit-scrollbar{display:none;}
+  .navpills a{
+    flex-shrink:0; text-decoration:none; font-size:13px; font-weight:500; color:var(--ink-dim);
+    padding:8px 14px; border-radius:var(--r-pill); white-space:nowrap;
+    transition:background .16s, color .16s;
+  }
+  .navpills a:hover{color:var(--ink); background:rgba(13,13,13,0.05);}
+  .navpills a.active{background:var(--ink); color:#fff; font-weight:600;}
+  .navpills a:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
+  @media (max-width:900px){ .navpills{display:none;} }
+
   .save-chip{
     display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:auto;
     background:var(--surface-2); border-radius:var(--r-pill); padding:9px 16px 9px 12px;
@@ -42,8 +58,7 @@
 
   /* hero */
   .hero{padding:44px 0 8px;}
-  .eyebrow{display:inline-flex; align-items:center; gap:9px; background:var(--surface-2); border-radius:var(--r-pill); padding:7px 15px 7px 9px; font-size:12px; font-weight:600; color:var(--ink-dim); box-shadow:var(--shadow-sm);}
-  .eyebrow .n{background:var(--ink); color:#fff; border-radius:var(--r-pill); padding:3px 8px; font-size:11px; font-weight:700; letter-spacing:0.02em;}
+  .eyebrow{display:inline-flex; align-items:center; gap:9px; background:var(--surface-2); border-radius:var(--r-pill); padding:7px 16px; font-size:12px; font-weight:600; color:var(--ink-dim); box-shadow:var(--shadow-sm);}
   .hero h1{font-size:clamp(36px,4.8vw,54px); font-weight:800; line-height:1.02; letter-spacing:-0.04em; margin:22px 0 18px; max-width:18ch;}
   .hero .lede{font-size:16px; color:var(--ink-dim); max-width:64ch; line-height:1.55; margin:0 0 12px;}
   .hero .src{font-size:13px; color:var(--ink-faint); max-width:66ch; line-height:1.5; margin:0;}
@@ -60,7 +75,13 @@
   .phase-key{display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-top:22px;}
   @media (max-width:820px){ .phase-key{grid-template-columns:repeat(3,1fr);} }
   @media (max-width:480px){ .phase-key{grid-template-columns:repeat(2,1fr);} }
-  .pk{background:var(--surface); border-radius:14px; padding:13px 14px;}
+  .pk{
+    display:block; text-decoration:none; color:inherit;
+    background:var(--surface); border-radius:14px; padding:13px 14px;
+    transition:background .16s;
+  }
+  .pk:hover{background:rgba(13,13,13,0.09);}
+  .pk:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
   .pk .pk-n{font-size:10.5px; font-weight:700; letter-spacing:0.05em; color:var(--ink-faint); margin-bottom:7px;}
   .pk .pk-c{font-family:'Inter Tight',sans-serif; font-size:16px; font-weight:700; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; margin-bottom:8px;}
   .pk .pk-bar{height:5px; border-radius:var(--r-pill); background:var(--track); overflow:hidden;}
@@ -77,23 +98,25 @@
   .btn:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
 
   /* phases */
-  section.phase{padding:52px 0 0;}
-  .ph-head{display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:18px;}
-  .ph-head h2{font-size:clamp(23px,2.8vw,30px); font-weight:700; margin:14px 0 0;}
+  section.phase{padding:52px 0 0; scroll-margin-top:76px;}
+  .ph-head{display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:18px;}
+  .ph-head h2{font-size:clamp(23px,2.8vw,30px); font-weight:700; margin:9px 0 0;}
+  .ph-kicker{font-size:11px; font-weight:700; letter-spacing:0.05em; color:var(--ink-faint);}
   .ph-count{
     display:inline-flex; align-items:baseline; gap:6px; background:var(--surface-2); box-shadow:var(--shadow-sm);
     border-radius:var(--r-pill); padding:8px 16px; font-size:12.5px; font-weight:600; color:var(--ink-dim);
-    font-variant-numeric:tabular-nums; align-self:flex-end;
+    font-variant-numeric:tabular-nums;
   }
   .ph-count.done{background:var(--ink); color:#fff;}
 
   .steps{background:var(--surface-2); border-radius:var(--r-card); padding:8px 24px; box-shadow:var(--shadow-sm);}
+  @media (max-width:560px){ .steps{padding:6px 18px;} .prog-card{padding:22px;} }
   .step{display:grid; grid-template-columns:26px 34px 1fr; gap:14px; align-items:start; padding:17px 0;}
   .step + .step{border-top:1px solid var(--line-soft);}
   @media (max-width:560px){ .step{grid-template-columns:26px 1fr; gap:12px;} .step .s-n{display:none;} }
 
   .step input[type=checkbox]{
-    -webkit-appearance:none; appearance:none; margin:1px 0 0; cursor:pointer;
+    -webkit-appearance:none; appearance:none; margin:-1px 0 0; cursor:pointer;
     width:22px; height:22px; border-radius:7px; background:var(--surface);
     border:1.5px solid rgba(13,13,13,0.16); flex-shrink:0; position:relative;
     transition:background .16s, border-color .16s;
@@ -106,10 +129,10 @@
   }
   .step input[type=checkbox]:focus-visible{outline:2px solid var(--green); outline-offset:3px;}
 
-  .step .s-n{font-size:11px; font-weight:700; color:var(--ink-faint); background:var(--surface); border-radius:var(--r-pill); padding:4px 0; text-align:center; font-variant-numeric:tabular-nums; margin-top:2px;}
+  .step .s-n{font-size:11px; font-weight:700; color:var(--ink-faint); background:var(--surface); border-radius:var(--r-pill); padding:4px 0; text-align:center; font-variant-numeric:tabular-nums; margin-top:0; transition:background .16s, color .16s;}
   .step label{cursor:pointer; display:block;}
-  .step .s-t{font-size:14.5px; font-weight:600; letter-spacing:-0.01em; line-height:1.4;}
-  .step .s-d{font-size:13px; color:var(--ink-dim); line-height:1.55; margin-top:4px; max-width:78ch;}
+  .step .s-t{display:block; font-size:14.5px; font-weight:600; letter-spacing:-0.012em; line-height:1.35;}
+  .step .s-d{display:block; font-size:13px; color:var(--ink-dim); line-height:1.55; margin-top:5px; max-width:76ch;}
   .step.on .s-t{color:var(--ink-faint); text-decoration:line-through; text-decoration-color:rgba(13,13,13,0.22);}
   .step.on .s-d{color:var(--ink-faint);}
   .step.on .s-n{background:var(--green-soft); color:var(--green-deep);}
@@ -133,13 +156,14 @@
 <div class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="index.html"><span class="brand-mark"><i></i></span><span class="brand-name">Vyra</span></a>
+    <nav class="navpills" id="nav"></nav>
     <div class="save-chip" id="saveChip"><span class="dot"></span><span class="txt" id="saveTxt">Loading</span></div>
   </div>
 </div>
 
 <div class="wrap">
   <section class="hero">
-    <div class="eyebrow"><span class="n">01</span> Build plan</div>
+    <div class="eyebrow">Build plan</div>
     <h1>Sales Agent, step by step.</h1>
     <p class="lede">Thirty-six steps in six phases, ordered by dependency — each phase needs the one before it to exist. Tick them off as you go; your progress is saved.</p>
     <p class="src">Scope follows the Sales Agent MVP and the build order in the full specification. The phases line up with the gates on the build roadmap.</p>
@@ -175,13 +199,13 @@
   "use strict";
 
   var PHASES = [
-    { n:"PHASE 0", title:"Before any code", done:"You know what is reusable, and the clock on Meta verification is already running.", steps:[
+    { n:"PHASE 1", short:"Before code", title:"Before any code", done:"You know what is reusable, and the clock on Meta verification is already running.", steps:[
       ["Start Meta business verification","Calendar time you cannot compress. Begin it before the first migration, and demo on a test number while it clears."],
       ["Audit the prototype","What is reusable in team-hub/app/api/webhook/route.ts, what the Meta app config actually is, and who owns the number. The estimate most likely to move."],
       ["Write the eval set","Twenty real enquiries with the reply you would want, before any prompt exists. This is the test suite for everything downstream."],
       ["Provision services","Supabase project, Render web and worker services, error tracking, and a tunnel so Meta can reach your machine in development."]
     ]},
-    { n:"PHASE 1", title:"Durable transport", done:"A restart mid-processing and a duplicate webhook event each leave exactly one logical message and one reply.", steps:[
+    { n:"PHASE 2", short:"Transport", title:"Durable transport", done:"A restart mid-processing and a duplicate webhook event each leave exactly one logical message and one reply.", steps:[
       ["Schema v1 and migrations","operators, whatsapp_accounts, memberships, contacts, conversations, messages, inbound_events, outbox, audit_events. Put operator_id on every table now — retrofitting tenancy is the most expensive change on this list."],
       ["Webhook GET","Verify the Meta subscription challenge against the configured token."],
       ["Webhook POST with signature verification","Verify against the raw, untouched body. Read it as text before parsing, or the HMAC will not match and you will lose an afternoon."],
@@ -191,7 +215,7 @@
       ["Outbound dispatcher","The single component that calls Meta — including for messages salespeople write by hand. Records the provider message id and later delivery states."],
       ["Retries and visible failures","Bounded exponential backoff with jitter. Terminal failures land somewhere a human can see and retry them."]
     ]},
-    { n:"PHASE 2", title:"The inbox", done:"Two operators cannot reach each other's data by any path, and takeover suppresses an unsent AI draft.", steps:[
+    { n:"PHASE 3", short:"Inbox", title:"The inbox", done:"Two operators cannot reach each other's data by any path, and takeover suppresses an unsent AI draft.", steps:[
       ["Auth and memberships","Supabase Auth plus a membership table, with the role checked on every API call. A browser-supplied operator id is a requested scope, not proof of permission."],
       ["Tenant isolation","Row-level security on exposed tables, plus explicit operator scoping inside the worker — which bypasses RLS because it runs on a service key. This is where a cross-operator leak is most likely to appear."],
       ["Conversation list and thread view","The salesperson's working surface: who is waiting, what was said, what state the enquiry is in."],
@@ -200,7 +224,7 @@
       ["Notes, assignment and filters","Internal notes, reassignment, and filtering by stage, owner and priority."],
       ["The AI kill switch","Stops AI sending instantly while ingestion and staff access keep working."]
     ]},
-    { n:"PHASE 3", title:"AI qualification", done:"The eval set passes, including corrections, ambiguous dates and requests for a human.", steps:[
+    { n:"PHASE 4", short:"Qualification", title:"AI qualification", done:"The eval set passes, including corrections, ambiguous dates and requests for a human.", steps:[
       ["Approved knowledge storage","Versioned operator content with effective dates and an explicit publish step, so an answer can be traced to its source."],
       ["Field extraction with evidence","Every extracted value carries its source message, extraction time and verification state."],
       ["Date normalisation","Relative dates resolved against the operator's timezone using the message time, confirmed with the customer, with the original wording kept alongside."],
@@ -211,13 +235,13 @@
       ["Non-text messages","Voice notes and photos stored, acknowledged honestly, and routed to a person. Never silently dropped."],
       ["Bounded failure","Refusals, timeouts and exhausted tool budgets create a visible human task rather than silence."]
     ]},
-    { n:"PHASE 4", title:"Handoff and the Operations queue", done:"An unaccepted handoff reaches the fallback owner without duplicate replies, and an answer with no time checked cannot reach a customer.", steps:[
+    { n:"PHASE 5", short:"Handoff", title:"Handoff and the Operations queue", done:"An unaccepted handoff reaches the fallback owner without duplicate replies, and an answer with no time checked cannot reach a customer.", steps:[
       ["The handoff packet","Transcript, verified facts, unresolved questions, reason, owner, priority, SLA and next action — plus escalation to a fallback when nobody accepts."],
       ["Operations request queue and console","Vehicle records, rates, and a way for a person to answer with a source and the time it was checked."],
       ["Follow-ups and sending eligibility","Opt-out handling, and the 24-hour window checked at the moment of dispatch rather than when the reply was scheduled."],
       ["The ten MVP metrics","Enquiries, first-response time, qualification rate, handoffs, quote requests, outcomes and lost reasons."]
     ]},
-    { n:"PHASE 5", title:"Shadow to live", done:"Staff can stop the AI instantly, and every failed task is visible and recoverable.", steps:[
+    { n:"PHASE 6", short:"Go live", title:"Shadow to live", done:"Staff can stop the AI instantly, and every failed task is visible and recoverable.", steps:[
       ["Shadow mode","The AI drafts every reply and a salesperson sends each one. No customer receives a message the AI sent."],
       ["Limited automation","Clarifying questions and approved FAQ answers sent automatically, once the eval set passes. Everything else still drafts for a human."],
       ["Supervised live","Qualification handled end to end, with staff watching the inbox and able to stop replies instantly."],
@@ -258,8 +282,10 @@
     PHASES.forEach(function(ph, pi){
       var sec = document.createElement("section");
       sec.className = "phase";
-      var head = '<div class="ph-head"><div><div class="eyebrow"><span class="n">' + (pi + 2 < 10 ? "0" : "") + (pi + 2) + '</span> ' + ph.n +
-                 '</div><h2>' + ph.title + '</h2></div><span class="ph-count" id="cnt' + pi + '">0 / ' + ph.steps.length + '</span></div>';
+      sec.id = "phase" + (pi + 1);
+      var head = '<div class="ph-head"><div><div class="ph-kicker">' + ph.n + ' \u00B7 ' + ph.steps.length + ' STEPS</div>' +
+                 '<h2>' + ph.title + '</h2></div>' +
+                 '<span class="ph-count" id="cnt' + pi + '">0 / ' + ph.steps.length + '</span></div>';
       var rows = ph.steps.map(function(s, si){
         n++;
         var id = idOf(pi, si);
@@ -273,11 +299,16 @@
                       '<div class="donewhen"><span class="tick">✓</span><span><b>Done when</b> ' + ph.done + '</span></div>';
       host.appendChild(sec);
 
-      var pk = document.createElement("div");
-      pk.className = "pk"; pk.id = "pk" + pi;
+      var pk = document.createElement("a");
+      pk.className = "pk"; pk.id = "pk" + pi; pk.href = "#phase" + (pi + 1);
       pk.innerHTML = '<div class="pk-n">' + ph.n + '</div><div class="pk-c tnum" id="pkc' + pi + '">0/' + ph.steps.length +
                      '</div><div class="pk-bar"><i id="pkb' + pi + '"></i></div>';
       key.appendChild(pk);
+
+      var pill = document.createElement("a");
+      pill.href = "#phase" + (pi + 1);
+      pill.textContent = ph.short;
+      document.getElementById("nav").appendChild(pill);
     });
 
     host.addEventListener("change", function(e){
@@ -346,6 +377,18 @@
       });
     }, 500);
   }
+
+  (function scrollSpy(){
+    var links = Array.prototype.slice.call(document.querySelectorAll("#nav a"));
+    var secs = links.map(function(a){ return document.getElementById(a.getAttribute("href").slice(1)); });
+    function sync(){
+      var y = window.scrollY + 150, cur = -1;
+      for (var i = 0; i < secs.length; i++){ if (secs[i] && secs[i].offsetTop <= y) cur = i; }
+      links.forEach(function(a, i){ a.classList.toggle("active", i === cur); });
+    }
+    window.addEventListener("scroll", sync, {passive:true});
+    sync();
+  })();
 
   state = readLocal();
   render();
