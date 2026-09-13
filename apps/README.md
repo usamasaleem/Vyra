@@ -104,10 +104,17 @@ nothing. Both facts were confirmed against live Meta traffic.
 | 7 · signature | Real app secret; forged signatures rejected |
 | 8 · save before acknowledge | One atomic statement; redelivery writes nothing |
 | 9 · outbox relay | Claims, publishes to graphile-worker, backs off, dead-letters |
+| 10 · worker task list | Loads context, decides handling, sends nothing |
 
-**Not built:** the worker task list (10), the dispatcher (11) and visible retry
-controls (12). Nothing sends. A customer messaging the pilot number gets
-silence, which is correct until step 11 exists.
+Per-conversation serialisation was measured rather than assumed: with worker
+concurrency at five, three jobs on one conversation queue never overlapped,
+while jobs on a second conversation ran alongside them. Ordering where it
+matters, throughput where it does not.
+
+**Not built:** the dispatcher (11) and visible retry controls (12). Nothing
+sends. A customer messaging the pilot number gets silence, which is correct
+until step 11 exists — and the worker now records *why* on every job rather
+than leaving it a gap.
 
 Two things carried forward deliberately:
 
