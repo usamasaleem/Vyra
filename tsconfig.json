@@ -9,6 +9,9 @@
     },
     {
       "path": "./app/worker"
+    },
+    {
+      "path": "./app/evals"
     }
   ]
 }

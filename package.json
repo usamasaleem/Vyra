@@ -2,7 +2,7 @@
   "name": "vyra",
   "version": "0.0.0",
   "private": true,
-  "description": "Vyra \u2014 WhatsApp AI sales assistant for Dubai luxury car rental operators",
+  "description": "Vyra — WhatsApp AI sales assistant for Dubai luxury car rental operators",
   "workspaces": [
     "app/*"
   ],
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc -b && npm run build --workspace=app/inbox",
-    "typecheck": "tsc -b --force && tsc -p app/db/tsconfig.test.json && tsc -p app/worker/tsconfig.test.json",
+    "typecheck": "tsc -b --force && tsc -p app/db/tsconfig.test.json && tsc -p app/worker/tsconfig.test.json && tsc -p app/evals/tsconfig.test.json",
     "clean": "tsc -b --clean",
     "dev": "npm run dev --workspace=app/inbox",
     "dev:worker": "npm run dev --workspace=app/worker",
