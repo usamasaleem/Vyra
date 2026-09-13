@@ -220,3 +220,40 @@ export const messages = pgTable(
     index('messages_conversation_created_idx').on(table.conversationId, table.createdAt),
   ],
 )
+
+/**
+ * Internal notes. Never sent to a customer.
+ *
+ * A separate table rather than a flag on `messages`, deliberately. Section
+ * 18.12 requires that internal notes never reach the outbound dispatcher, and
+ * the dispatcher only ever reads `messages` — so a note cannot be sent by
+ * mistake, a misread flag, or a future query that forgets to filter. The
+ * safety property is structural instead of remembered.
+ */
+export const conversationNotes = pgTable(
+  'conversation_notes',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    conversationId: uuid().notNull(),
+    /** Null once the author's membership is removed; the note itself stays. */
+    authorMembershipId: uuid(),
+    body: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId, table.operatorId],
+      foreignColumns: [conversations.id, conversations.operatorId],
+      name: 'conversation_notes_conversation_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.authorMembershipId, table.operatorId],
+      foreignColumns: [memberships.id, memberships.operatorId],
+      name: 'conversation_notes_author_operator_fkey',
+    }),
+    index('conversation_notes_conversation_idx').on(table.conversationId, table.createdAt),
+  ],
+)

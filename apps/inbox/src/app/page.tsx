@@ -21,7 +21,7 @@ function when(date: Date | null): string {
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string; handler?: string }>
+  searchParams: Promise<{ stage?: string; handler?: string; priority?: string; owner?: string }>
 }) {
   const actor = await requireActor()
   const filters = await searchParams
@@ -32,6 +32,10 @@ export default async function InboxPage({
     listConversations(run, actor.operatorId, {
       salesStage: filters.stage ?? null,
       handlerMode: filters.handler ?? null,
+      priority: filters.priority ?? null,
+      // 'mine' resolves to this actor's membership, so the link does not need
+      // to carry an id that the browser could then change to someone else's.
+      owner: filters.owner === 'mine' ? actor.membershipId : (filters.owner ?? null),
     }),
   ])
 
@@ -70,8 +74,11 @@ export default async function InboxPage({
 
       <div style={{ display: 'flex', gap: '0.5rem', margin: '1.5rem 0 1rem', flexWrap: 'wrap' }}>
         <Link className="button secondary" href="/">All</Link>
+        <Link className="button secondary" href="/?owner=mine">Mine</Link>
+        <Link className="button secondary" href="/?owner=unassigned">Unassigned</Link>
         <Link className="button secondary" href="/?handler=human">Human-owned</Link>
         <Link className="button secondary" href="/?handler=ai">AI-owned</Link>
+        <Link className="button secondary" href="/?priority=urgent">Urgent</Link>
         <Link className="button secondary" href="/?stage=qualified">Qualified</Link>
       </div>
 
@@ -102,6 +109,8 @@ export default async function InboxPage({
                   {c.waitingReason !== 'none' && (
                     <span className="tag">{c.waitingReason.replace(/_/g, ' ')}</span>
                   )}
+                  {c.priority !== 'normal' && <span className="tag">{c.priority}</span>}
+                  {c.ownerMembershipId === null && <span className="tag">unassigned</span>}
                   {c.awaitingReply && <span className="tag">awaiting reply</span>}
                 </div>
               </Link>

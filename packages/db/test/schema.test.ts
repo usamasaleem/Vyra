@@ -45,7 +45,7 @@ beforeAll(async () => {
 })
 
 describe('schema v1 applies', () => {
-  it('creates all nine tables', async () => {
+  it('creates every table, and nothing unexpected', async () => {
     const result = await db.query<{ table_name: string }>(
       `select table_name from information_schema.tables
        where table_schema = 'public' order by table_name`,
@@ -53,6 +53,9 @@ describe('schema v1 applies', () => {
     expect(result.rows.map((r) => r.table_name)).toEqual([
       'audit_events',
       'contacts',
+      // Internal notes live apart from messages on purpose: the dispatcher
+      // only reads `messages`, so a note cannot reach a customer.
+      'conversation_notes',
       'conversations',
       'inbound_events',
       'memberships',

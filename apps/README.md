@@ -107,6 +107,12 @@ nothing. Both facts were confirmed against live Meta traffic.
 | 10 · worker task list | Loads context, decides handling, sends nothing |
 | 11 · dispatcher | The only path to Meta. Sends, records receipts, suppresses |
 | 12 · retries and visible failures | Backoff, dead-letter, reaper, retry surface |
+| 13 · auth and memberships | Supabase Auth for identity, membership for authority |
+| 15 · list and thread | Plus polling so the thread stays current |
+| 16 · manual reply | Through the dispatcher, the same path an AI turn uses |
+| 17 · takeover | One statement; cancels unsent AI drafts |
+| 18 · notes, assignment, filters | Notes kept out of the sendable table entirely |
+| 19 · AI kill switch | Per operator, and system-wide via the environment |
 
 Per-conversation serialisation was measured rather than assumed: with worker
 concurrency at five, three jobs on one conversation queue never overlapped,
@@ -118,7 +124,8 @@ customer to Meta to webhook to database to queue to worker to dispatcher to
 Meta to the customer's phone, with delivery receipts coming back and advancing
 the message to `read`.
 
-Phase 2 is complete. **Not built:** everything in phases 3 onward. The AI
+Phases 2 and 3 are complete except for step 14's row-level security policies.
+**Not built:** everything in phases 4 onward. The AI
 writes nothing — replies are queued by hand through the same
 `queueOutboundText` path a salesperson will use.
 

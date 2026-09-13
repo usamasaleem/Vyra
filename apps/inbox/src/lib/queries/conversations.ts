@@ -55,19 +55,36 @@ const LIST_SQL = `
   where v.operator_id = $1
     and ($2::text is null or v.sales_stage::text = $2)
     and ($3::text is null or v.handler_mode::text = $3)
-  order by v.last_customer_message_at desc nulls last
-  limit $4
+    and ($4::text is null or v.priority::text = $4)
+    -- 'unassigned' is a real filter, not the absence of one: the queue of
+    -- conversations nobody has picked up is the one a manager looks at first.
+    and ($5::text is null
+         or ($5 = 'unassigned' and v.owner_membership_id is null)
+         or v.owner_membership_id::text = $5)
+  order by
+    case v.priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end,
+    v.last_customer_message_at desc nulls last
+  limit $6
 `
 
 export async function listConversations(
   run: QueryRunner,
   operatorId: string,
-  filters: { salesStage?: string | null; handlerMode?: string | null; limit?: number } = {},
+  filters: {
+    salesStage?: string | null
+    handlerMode?: string | null
+    priority?: string | null
+    /** A membership id, or the literal 'unassigned'. */
+    owner?: string | null
+    limit?: number
+  } = {},
 ): Promise<ConversationSummary[]> {
   const rows = await run(LIST_SQL, [
     operatorId,
     filters.salesStage ?? null,
     filters.handlerMode ?? null,
+    filters.priority ?? null,
+    filters.owner ?? null,
     filters.limit ?? 50,
   ])
 

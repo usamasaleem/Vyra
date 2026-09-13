@@ -1,10 +1,12 @@
+import { listMembers, listNotes, PRIORITIES } from '@vyra/db'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { handBackToAi, takeOver } from '@/app/actions'
+import { assignTo, changePriority, handBackToAi, takeOver } from '@/app/actions'
 import { LiveRefresh } from '@/app/live-refresh'
 import { permissions, requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
 import { getConversationThread } from '@/lib/queries/conversations'
+import { NoteForm } from './note-form'
 import { ReplyForm } from './reply-form'
 
 export const dynamic = 'force-dynamic'
@@ -29,11 +31,22 @@ export default async function ConversationPage({
 }) {
   const actor = await requireActor()
   const { id } = await params
-  const thread = await getConversationThread(queryRunner(), actor.operatorId, id)
+  const run = queryRunner()
+  const thread = await getConversationThread(run, actor.operatorId, id)
   if (thread === null) notFound()
+
+  const [notes, members] = await Promise.all([
+    listNotes(run, actor.operatorId, thread.id),
+    permissions.canReassign(actor) ? listMembers(run, actor.operatorId) : Promise.resolve([]),
+  ])
 
   const humanOwned = thread.handlerMode === 'human'
   const canReply = permissions.canReply(actor)
+  const memberLabel = (membershipId: string | null) => {
+    if (membershipId === null) return 'unassigned'
+    const member = members.find((m) => m.membershipId === membershipId)
+    return member?.email ?? 'a colleague'
+  }
 
   return (
     <main className="shell">
@@ -55,6 +68,7 @@ export default async function ConversationPage({
           <span className="tag">{thread.waitingReason.replace(/_/g, ' ')}</span>
         )}
         {thread.bookingStatus !== 'none' && <span className="tag">booking {thread.bookingStatus}</span>}
+        <span className="tag">{thread.priority} priority</span>
         {thread.optedOutAt !== null && <span className="tag">opted out</span>}
       </div>
 
@@ -71,6 +85,71 @@ export default async function ConversationPage({
           </span>
         </form>
       ) : null}
+
+      <div className="card stack" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          {permissions.canReassign(actor) ? (
+            <form action={assignTo}>
+              <input type="hidden" name="conversationId" value={thread.id} />
+              <label className="label" htmlFor="assignee">Assigned to</label>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <select
+                  className="input" id="assignee" name="assignee"
+                  defaultValue={thread.ownerMembershipId ?? ''}
+                  style={{ minWidth: '14rem' }}
+                >
+                  <option value="">Nobody</option>
+                  {members.map((m) => (
+                    <option key={m.membershipId} value={m.membershipId}>
+                      {m.email ?? m.membershipId.slice(0, 8)} · {m.role}
+                    </option>
+                  ))}
+                </select>
+                <button className="button secondary" type="submit">Save</button>
+              </div>
+            </form>
+          ) : (
+            <div>
+              <span className="label">Assigned to</span>
+              <div>{memberLabel(thread.ownerMembershipId)}</div>
+            </div>
+          )}
+
+          {canReply ? (
+            <form action={changePriority}>
+              <input type="hidden" name="conversationId" value={thread.id} />
+              <label className="label" htmlFor="priority">Priority</label>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <select className="input" id="priority" name="priority" defaultValue={thread.priority}>
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+                <button className="button secondary" type="submit">Save</button>
+              </div>
+            </form>
+          ) : null}
+        </div>
+      </div>
+
+      {notes.length > 0 && (
+        <section style={{ marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '0.9rem', color: 'var(--muted)', fontWeight: 500 }}>
+            Internal notes
+          </h2>
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            {notes.map((n) => (
+              <article key={n.id} className="card" style={{ borderStyle: 'dashed' }}>
+                <div className="muted" style={{ fontSize: '0.75rem', marginBottom: '0.3rem' }}>
+                  {memberLabel(n.authorMembershipId)} ·{' '}
+                  {n.createdAt.toISOString().replace('T', ' ').slice(0, 16)} · not sent to the customer
+                </div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{n.body}</div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section style={{ display: 'grid', gap: '0.6rem', marginBottom: '2rem' }}>
         {thread.messages.map((m) => {
@@ -115,11 +194,14 @@ export default async function ConversationPage({
         })}
       </section>
 
-      {canReply ? (
-        <ReplyForm conversationId={thread.id} />
-      ) : (
-        <p className="notice">Your role cannot send customer replies.</p>
-      )}
+      <div className="stack">
+        {canReply ? (
+          <ReplyForm conversationId={thread.id} />
+        ) : (
+          <p className="notice">Your role cannot send customer replies, but you can leave a note.</p>
+        )}
+        <NoteForm conversationId={thread.id} />
+      </div>
     </main>
   )
 }
