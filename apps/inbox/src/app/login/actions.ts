@@ -26,10 +26,27 @@ export async function signIn(
   const { error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error !== null) {
-    // Deliberately vague: distinguishing "no such account" from "wrong
-    // password" tells an attacker which emails are real.
+    /**
+     * Vague to the browser, specific to the log.
+     *
+     * Distinguishing "no such account" from "wrong password" in the response
+     * tells an attacker which emails are real. But an operator whose staff
+     * cannot sign in needs a real answer, and a message that hides the cause
+     * from us as well as from an attacker is just a message nobody can act on.
+     */
+    console.log(
+      JSON.stringify({
+        event: 'auth.sign_in_failed',
+        email,
+        code: error.code ?? null,
+        status: error.status ?? null,
+        reason: error.message,
+      }),
+    )
     return { error: 'That email and password did not match.' }
   }
+
+  console.log(JSON.stringify({ event: 'auth.sign_in_succeeded', email }))
 
   redirect('/')
 }

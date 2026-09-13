@@ -44,8 +44,16 @@ export async function currentActor(requestedOperatorId?: string): Promise<Actor 
   const supabase = await createSupabaseServerClient()
   const { data, error } = await supabase.auth.getUser()
   if (error !== null || data.user === null) return null
+  return actorForUser(data.user.id, data.user.email ?? null, requestedOperatorId)
+}
 
-  const rows = await queryRunner()(MEMBERSHIP_SQL, [data.user.id])
+/** Resolves an authenticated user to an actor, or null if they hold no membership. */
+async function actorForUser(
+  userId: string,
+  email: string | null,
+  requestedOperatorId?: string,
+): Promise<Actor | null> {
+  const rows = await queryRunner()(MEMBERSHIP_SQL, [userId])
   if (rows.length === 0) return null
 
   /**
@@ -61,8 +69,8 @@ export async function currentActor(requestedOperatorId?: string): Promise<Actor 
   if (row === undefined) return null
 
   return {
-    userId: data.user.id,
-    email: data.user.email ?? null,
+    userId,
+    email,
     membershipId: row['membership_id'] as string,
     operatorId: row['operator_id'] as string,
     operatorName: row['operator_name'] as string,
@@ -70,10 +78,21 @@ export async function currentActor(requestedOperatorId?: string): Promise<Actor 
   }
 }
 
-/** For pages. Sends an unauthenticated or unauthorised visitor to the login screen. */
+/**
+ * For pages.
+ *
+ * The two failures are deliberately routed differently. Sending a signed-in
+ * user back to /login would loop forever: the middleware sees a valid session
+ * and bounces them straight back. It also tells them the wrong thing — their
+ * credentials were fine, they simply have no access to any operator yet.
+ */
 export async function requireActor(requestedOperatorId?: string): Promise<Actor> {
-  const actor = await currentActor(requestedOperatorId)
-  if (actor === null) redirect('/login')
+  const supabase = await createSupabaseServerClient()
+  const { data, error } = await supabase.auth.getUser()
+  if (error !== null || data.user === null) redirect('/login')
+
+  const actor = await actorForUser(data.user.id, data.user.email ?? null, requestedOperatorId)
+  if (actor === null) redirect('/no-access')
   return actor
 }
 
