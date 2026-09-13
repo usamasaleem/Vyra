@@ -1,4 +1,4 @@
-<title>Technical Architecture</title>
+<title>Sales Agent Architecture</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
@@ -105,10 +105,10 @@
 
 <div class="wrap">
   <section class="hero" id="diagram">
-    <div class="eyebrow">Technical architecture</div>
+    <div class="eyebrow">Sales Agent architecture</div>
     <h1>How the Sales Agent is put together.</h1>
     <p class="lede">Two processes and one datastore. A Next.js application takes the webhook and hosts the sales inbox; a worker does everything slow; PostgreSQL holds the records, the queue and the outbox. Nothing else is required to run the first pilot.</p>
-    <p class="src">This is a proposal. None of it is built — the prototype today is a single webhook route with no durable storage, no ownership model and no handoff.</p>
+    <p class="src">This is the Sales Agent's architecture. Operations appears here only as the thing the worker asks for facts — in the MVP it is an authorised person answering a queue, so it has no stack of its own yet. And this is a proposal: none of it is built. The prototype today is a single webhook route with no durable storage, no ownership model and no handoff.</p>
 
     <figure class="fig-card">
       <div class="fig-scroll">
