@@ -130,6 +130,17 @@ export const conversations = pgTable(
       name: 'conversations_owner_operator_fkey',
     }),
     unique('conversations_id_operator_key').on(table.id, table.operatorId),
+
+    /**
+     * One conversation per contact, per operator.
+     *
+     * The MVP requires reopening the existing conversation when a customer
+     * replies later rather than starting a fresh thread. Without this
+     * constraint, two messages arriving at once would race and create two
+     * conversations for one person; with it, the second upsert reopens the
+     * first. Multiple rental requests belong to `enquiries`, not here.
+     */
+    unique('conversations_operator_contact_key').on(table.operatorId, table.contactId),
     index('conversations_operator_stage_idx').on(table.operatorId, table.salesStage),
     index('conversations_operator_owner_idx').on(table.operatorId, table.ownerMembershipId),
     index('conversations_contact_idx').on(table.contactId),

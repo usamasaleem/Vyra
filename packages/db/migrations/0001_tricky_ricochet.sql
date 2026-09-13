@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD CONSTRAINT "conversations_operator_contact_key" UNIQUE("operator_id","contact_id");
