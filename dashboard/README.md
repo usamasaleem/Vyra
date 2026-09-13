@@ -16,7 +16,7 @@ A visual, shareable-by-link version of the knowledge hub — charts, hierarchy a
 
 The hub link publishes all five pages together, so relative navigation works inside it — share that one rather than the individual pages.
 
-The build plan stores tick state with the artifact  capability, which makes the hub artifact organization-internal — it cannot be shared publicly while that is declared. On Netlify there is no , so it falls back to browser storage.
+The build plan stores tick state with the artifact `db` capability, which makes the hub artifact organization-internal — it cannot be shared publicly while that is declared. On Netlify there is no `window.claude`, so it falls back to `localStorage` (per browser, not per person).
 
 Live links are private by default — share from the artifact's own share menu when a page is ready for others to see.
 
