@@ -1,0 +1,32 @@
+# Configuration for the Vyra staff inbox site.
+#
+# This file is read because the site's "package directory" is set to
+# apps/inbox in the Netlify UI. Netlify searches package directory, then base
+# directory, then the repository root — so this takes precedence over the root
+# netlify.toml, which belongs to the separate dashboard site.
+#
+# The site's "base directory" stays the repository root. Dependencies install
+# and the build runs there, which is what npm workspaces require: installing
+# inside apps/inbox would try to resolve @vyra/db from the registry and fail.
+
+[build]
+  # The root script builds the workspace packages with tsc first, then the
+  # Next application. Running `next build` alone would fail: the app imports
+  # @vyra/db from its compiled dist, which would not exist yet.
+  command = "npm run build"
+  publish = "apps/inbox/.next"
+
+[build.environment]
+  # Matches the engines field. Node 24 is the LTS line; local development runs
+  # 25, and the difference has not mattered so far.
+  NODE_VERSION = "24"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

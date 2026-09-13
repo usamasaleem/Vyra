@@ -1,7 +1,14 @@
+# Configuration for the public dashboard site (veyraagent.netlify.app).
+#
+# The staff inbox is a SEPARATE Netlify site built from the same repository;
+# its configuration lives in apps/inbox/netlify.toml and is selected by that
+# site's "package directory" setting. Changing this file does not affect it.
+
 [build]
   publish = "dashboard"
   # The dashboard is static HTML. The application workspaces at the repository
-  # root must not trigger a build here.
+  # root must not trigger a build here — without an explicit command, Netlify
+  # would detect the Next.js app in apps/inbox and try to build it.
   command = "echo 'static dashboard — nothing to build'"
 
 # index.html is the dashboard hub and serves the site root directly.
