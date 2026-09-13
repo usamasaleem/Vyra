@@ -67,8 +67,13 @@ async function relayLoop(): Promise<void> {
         // graphile-worker would hold these for four hours, and per-conversation
         // serialisation means that is four hours of silence for one customer.
         const abandoned = await releaseAbandonedJobs(query)
-        if (abandoned.released > 0) {
-          log({ event: 'jobs.released', count: abandoned.released, tasks: abandoned.tasks })
+        if (abandoned.released > 0 || abandoned.queuesReleased > 0) {
+          log({
+            event: 'jobs.released',
+            jobs: abandoned.released,
+            queues: abandoned.queuesReleased,
+            tasks: abandoned.tasks,
+          })
         }
       }
     } catch (error) {

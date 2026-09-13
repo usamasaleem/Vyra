@@ -10,20 +10,31 @@ import type { QueryRunner } from '../src/relay.ts'
  */
 describe('releasing abandoned jobs', () => {
   it('reports nothing when no lock is stale', async () => {
-    const run: QueryRunner = vi.fn(async () => [])
-    expect(await releaseAbandonedJobs(run)).toEqual({ released: 0, tasks: [] })
+    const run: QueryRunner = vi.fn(async () => [{ jobs_released: 0, queues_released: 0, tasks: [] }])
+    expect(await releaseAbandonedJobs(run)).toEqual({ released: 0, queuesReleased: 0, tasks: [] })
   })
 
-  it('reports what it released, de-duplicated by task', async () => {
+  it('reports jobs and queues separately', async () => {
     const run: QueryRunner = vi.fn(async () => [
-      { id: '1', task_identifier: 'dispatch_outbound' },
-      { id: '2', task_identifier: 'dispatch_outbound' },
-      { id: '3', task_identifier: 'process_inbound_message' },
+      { jobs_released: 3, queues_released: 2, tasks: ['dispatch_outbound', 'process_inbound_message'] },
     ])
     expect(await releaseAbandonedJobs(run)).toEqual({
       released: 3,
+      queuesReleased: 2,
       tasks: ['dispatch_outbound', 'process_inbound_message'],
     })
+  })
+
+  /**
+   * The bug this file exists to prevent recurring: releasing only the jobs
+   * leaves the queue locked, and the queue is what actually blocks.
+   */
+  it('releases the job queues as well as the jobs', async () => {
+    const calls: string[] = []
+    const run: QueryRunner = async (text) => { calls.push(text); return [] }
+    await releaseAbandonedJobs(run)
+    expect(calls[0]).toMatch(/_private_jobs/)
+    expect(calls[0]).toMatch(/_private_job_queues/)
   })
 
   it('only touches rows that are actually locked', async () => {
