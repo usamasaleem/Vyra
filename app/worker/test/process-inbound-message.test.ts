@@ -8,7 +8,7 @@ import type { QueryRunner } from '../src/relay.ts'
 import { decideHandling, processInboundMessage } from '../src/tasks/process-inbound-message.ts'
 
 const migrationsDir = join(
-  dirname(fileURLToPath(import.meta.url)), '..','..','..','packages','db','migrations',
+  dirname(fileURLToPath(import.meta.url)), '..','..','db','migrations',
 )
 const OPERATOR_A = '11111111-1111-1111-1111-111111111111'
 const OPERATOR_B = '22222222-2222-2222-2222-222222222222'

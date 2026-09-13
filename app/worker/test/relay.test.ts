@@ -13,7 +13,7 @@ import {
 } from '../src/relay.ts'
 
 const migrationsDir = join(
-  dirname(fileURLToPath(import.meta.url)), '..','..','..','packages','db','migrations',
+  dirname(fileURLToPath(import.meta.url)), '..','..','db','migrations',
 )
 const OPERATOR = '11111111-1111-1111-1111-111111111111'
 

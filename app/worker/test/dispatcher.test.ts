@@ -7,7 +7,7 @@ import { checkEligibility, dispatchMessage, type SendIntent } from '../src/dispa
 import type { QueryRunner } from '../src/relay.ts'
 import { MetaApiError, MetaUnknownOutcomeError, type WhatsAppClient } from '../src/whatsapp/client.ts'
 
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','..','packages','db','migrations')
+const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','db','migrations')
 const OPERATOR = '11111111-1111-1111-1111-111111111111'
 const CONVERSATION = '66666666-6666-6666-6666-666666666666'
 const MEMBERSHIP = '77777777-7777-7777-7777-777777777777'

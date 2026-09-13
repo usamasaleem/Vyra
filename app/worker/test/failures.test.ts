@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { listStuckWork, reapStaleDispatching, retryFailedSend, retryOutboxRow } from '../src/failures.ts'
 import type { QueryRunner } from '../src/relay.ts'
 
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','..','packages','db','migrations')
+const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','db','migrations')
 const OPERATOR = '11111111-1111-1111-1111-111111111111'
 const CONVERSATION = '66666666-6666-6666-6666-666666666666'
 

@@ -4,24 +4,22 @@
   "private": true,
   "description": "Vyra \u2014 WhatsApp AI sales assistant for Dubai luxury car rental operators",
   "workspaces": [
-    "packages/*",
-    "apps/*"
+    "app/*"
   ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "build": "tsc -b && npm run build --workspace=apps/inbox",
-    "typecheck": "tsc -b --force && tsc -p packages/db/tsconfig.test.json && tsc -p apps/worker/tsconfig.test.json",
+    "build": "tsc -b && npm run build --workspace=app/inbox",
+    "typecheck": "tsc -b --force && tsc -p app/db/tsconfig.test.json && tsc -p app/worker/tsconfig.test.json",
     "clean": "tsc -b --clean",
-    "dev": "npm run dev --workspace=apps/inbox",
-    "dev:worker": "npm run dev --workspace=apps/worker",
+    "dev": "npm run dev --workspace=app/inbox",
+    "dev:worker": "npm run dev --workspace=app/worker",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
-    "failures": "npm run failures --workspace=apps/worker --",
-    "db:generate": "npm run generate --workspace=packages/db",
-    "db:migrate": "npm run migrate --workspace=packages/db",
-    "failures": "npm run failures --workspace=apps/worker --"
+    "failures": "npm run failures --workspace=app/worker --",
+    "db:generate": "npm run generate --workspace=app/db",
+    "db:migrate": "npm run migrate --workspace=app/db"
   },
   "dependencies": {
     "@netlify/blobs": "^10.0.0"

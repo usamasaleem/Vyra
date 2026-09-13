@@ -3,10 +3,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { queueOutboundText } from '../../../packages/db/src/queries/outbound.ts'
-import type { QueryRunner } from '../../../packages/db/src/runner.ts'
+import { queueOutboundText } from '../../db/src/queries/outbound.ts'
+import type { QueryRunner } from '../../db/src/runner.ts'
 
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','..','packages','db','migrations')
+const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','db','migrations')
 const OPERATOR = '11111111-1111-1111-1111-111111111111'
 const OTHER_OPERATOR = '22222222-2222-2222-2222-222222222222'
 const CONVERSATION = '66666666-6666-6666-6666-666666666666'

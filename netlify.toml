@@ -5,7 +5,7 @@
 # site's "package directory" setting. Changing this file does not affect it.
 
 [build]
-  publish = "dashboard"
+  publish = "knowledge/dashboard"
   # The dashboard is static HTML. The application workspaces at the repository
   # root must not trigger a build here — without an explicit command, Netlify
   # would detect the Next.js app in apps/inbox and try to build it.

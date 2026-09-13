@@ -1,8 +1,14 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/contracts" },
-    { "path": "./packages/db" },
-    { "path": "./apps/worker" }
+    {
+      "path": "./app/contracts"
+    },
+    {
+      "path": "./app/db"
+    },
+    {
+      "path": "./app/worker"
+    }
   ]
 }

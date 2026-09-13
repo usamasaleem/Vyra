@@ -12,20 +12,20 @@ It answers enquiries quickly, qualifies them, explains Operations-approved optio
 
 ## How to read this repository
 
-This is a documentation repository. It contains no application code — the prototype lives in a separate `team-hub` project.
+The repository has two halves. `app/` is the running system; `knowledge/` is everything written about it — specifications, research, roadmap and the published dashboard.
 
 **Start here, in this order:**
 
-1. [docs/PROJECT-CONTEXT.md](docs/PROJECT-CONTEXT.md) — positioning and background
-2. [docs/CURRENT-STATE.md](docs/CURRENT-STATE.md) — what actually exists today
-3. [Whatsapp Agents/Sales Agent/chat sales agent.md](Whatsapp%20Agents/Sales%20Agent/chat%20sales%20agent.md) — the full product specification
-4. [Whatsapp Agents/Sales Agent/sales agent mvp.md](Whatsapp%20Agents/Sales%20Agent/sales%20agent%20mvp.md) — the scoped first version
+1. [knowledge/docs/PROJECT-CONTEXT.md](knowledge/docs/PROJECT-CONTEXT.md) — positioning and background
+2. [knowledge/docs/CURRENT-STATE.md](knowledge/docs/CURRENT-STATE.md) — what actually exists today
+3. [knowledge/Whatsapp Agents/Sales Agent/chat sales agent.md](knowledge/Whatsapp%20Agents/Sales%20Agent/chat%20sales%20agent.md) — the full product specification
+4. [knowledge/Whatsapp Agents/Sales Agent/sales agent mvp.md](knowledge/Whatsapp%20Agents/Sales%20Agent/sales%20agent%20mvp.md) — the scoped first version
 
 ## Which document wins
 
-**The specifications under `Whatsapp Agents/` are authoritative.** Where anything else disagrees with them — a brief, a dashboard page, a summary — the specification is right.
+**The specifications under `knowledge/Whatsapp Agents/` are authoritative.** Where anything else disagrees with them — a brief, a dashboard page, a summary — the specification is right.
 
-The two `WHATSAPP-AGENT-BRIEF.md` files are earlier context, and they are *not* duplicates of each other despite the shared filename: the root copy is the long-form brief, and `docs/WHATSAPP-AGENT-BRIEF.md` is a short condensed summary. They are kept as history, not as requirements.
+The two `WHATSAPP-AGENT-BRIEF.md` files are earlier context, and they are *not* duplicates of each other despite the shared filename: the root copy is the long-form brief, and `knowledge/docs/WHATSAPP-AGENT-BRIEF.md` is a short condensed summary. They are kept as history, not as requirements.
 
 ## The two agents
 
@@ -42,28 +42,28 @@ Everything crossing between them is a structured request and a time-stamped answ
 ## Repository map
 
 ```
-Whatsapp Agents/               AUTHORITATIVE specifications
-  Sales Agent/
-    chat sales agent.md          Full specification, including the technology blueprint
-    sales agent mvp.md           Scoped MVP and acceptance checklist
-    sales agent build plan.md    36 development steps in six phases
-    chat sales agent marketing.md  Customer-facing positioning
-  Operations Agent/
-    operations agent.md          Full specification
-    operations agent mvp.md      Scoped MVP and acceptance checklist
+app/                           APPLICATION CODE
+  inbox/                         Next.js: staff inbox and the Meta webhook
+  worker/                        graphile-worker: conversation turns, dispatch
+  contracts/                     Runtime schemas and shared types
+  db/                            Drizzle schema, migrations, queries
 
-docs/
-  PROJECT-CONTEXT.md           Positioning and background
-  CURRENT-STATE.md             What is actually built
-  WHATSAPP-AGENT-BRIEF.md      Condensed brief (history)
-  Vyra-MARKET-RESEARCH.md      Market sizing and pricing research
-  TECH-STACK.md                Stack analysis and recommendation
-  BUILD-ROADMAP.md             Three commercial gates to a paying pilot
-  GO-TO-MARKET.md              Design partners, outreach motion, pricing
+knowledge/                     EVERYTHING WRITTEN
+  Whatsapp Agents/               AUTHORITATIVE specifications
+    Sales Agent/
+      chat sales agent.md          Full specification, incl. the tech blueprint
+      sales agent mvp.md           Scoped MVP and acceptance checklist
+      sales agent build plan.md    36 development steps in six phases
+      chat sales agent marketing.md  Customer-facing positioning
+    Operations Agent/
+      operations agent.md          Full specification
+      operations agent mvp.md      Scoped MVP and acceptance checklist
+  docs/                          Context, state, roadmap, stack, market, GTM
+  dashboard/                     Visual presentation layer (published site)
+  hub/                           Hub structure notes
+  WHATSAPP-AGENT-BRIEF.md        Long-form brief (history)
 
-dashboard/                     Visual presentation layer (HTML, published as Artifacts)
-knowledge-hub/                 Hub structure notes
-WHATSAPP-AGENT-BRIEF.md        Long-form brief (history)
+netlify/                       Deployment: functions for the dashboard site
 ```
 
 ## Reading the confidence markers
@@ -80,7 +80,7 @@ Preserve these markers when summarising or reusing this material. Presenting an 
 
 If you are an assistant working in this repository:
 
-- Treat `Whatsapp Agents/` as ground truth and everything else as commentary.
+- Treat `knowledge/Whatsapp Agents/` as ground truth and everything else as commentary.
 - Do not convert estimates into claims. If a source says "directional" or "needs validation", carry that forward.
 - The Sales Agent's safety rules are not stylistic preferences. The agent must never promise unverified availability, confirm a booking, approve a discount, verify a payment, approve documents, promise a refund, change operational records, or answer confidently from a missing or conflicting source.
-- `dashboard/` is a presentation layer. Update the source document first, then reflect the change there.
+- `knowledge/dashboard/` is a presentation layer. Update the source document first, then reflect the change there.

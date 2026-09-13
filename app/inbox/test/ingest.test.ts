@@ -11,7 +11,7 @@ import {
 
 const migrationsDir = join(
   dirname(fileURLToPath(import.meta.url)),
-  '..','..','..','packages','db','migrations',
+  '..','..','db','migrations',
 )
 
 const PHONE_NUMBER_ID = '100000000000001'

@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMessageStatus, type QueryRunner } from '../src/lib/whatsapp/ingest.ts'
 
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','..','packages','db','migrations')
+const migrationsDir = join(dirname(fileURLToPath(import.meta.url)),'..','..','db','migrations')
 const OPERATOR = '11111111-1111-1111-1111-111111111111'
 const PHONE_NUMBER_ID = '100000000000001'
 const WAMID = 'wamid.OUTBOUND1'
