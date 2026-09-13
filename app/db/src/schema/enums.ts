@@ -103,3 +103,34 @@ export const outboxStatus = pgEnum('outbox_status', [
 ])
 
 export const actorType = pgEnum('actor_type', ['user', 'ai', 'system', 'customer'])
+
+/**
+ * Provenance for an extracted fact. Section 7 of the full specification.
+ *
+ * `conflicting` is the one that earns its place: when a customer says Friday
+ * and later says Saturday, the earlier value is not deleted. Both are kept and
+ * marked, because section 15 requires summarising the conflict and asking which
+ * is correct rather than silently overwriting.
+ */
+export const verificationState = pgEnum('verification_state', [
+  'unknown',
+  'customer_stated',
+  'system_verified',
+  'human_confirmed',
+  'expired',
+  'conflicting',
+])
+
+/** The fields a rental enquiry is made of. MVP section 3. */
+export const enquiryField = pgEnum('enquiry_field', [
+  'vehicle',
+  'start_at',
+  'end_at',
+  'duration',
+  'delivery_preference',
+  'location',
+  'residency',
+  'driver_age',
+  'budget',
+  'special_requirements',
+])

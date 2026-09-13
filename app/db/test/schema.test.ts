@@ -57,6 +57,11 @@ describe('schema v1 applies', () => {
       // only reads `messages`, so a note cannot reach a customer.
       'conversation_notes',
       'conversations',
+      // A rental request, separate from the conversation: a customer can have
+      // more than one.
+      'enquiries',
+      // Every extracted fact with its source message and extraction time.
+      'field_evidence',
       'inbound_events',
       // Approved operator knowledge, versioned, with a check constraint that
       // makes placeholder content unpublishable.

@@ -207,6 +207,13 @@ export const messages = pgTable(
       name: 'messages_sender_operator_fkey',
     }),
 
+    /**
+     * Target for tenant-consistent composite foreign keys, matching the other
+     * tables. field_evidence references a message this way so an extracted
+     * fact cannot cite a message belonging to another operator.
+     */
+    unique('messages_id_operator_key').on(table.id, table.operatorId),
+
     /** A redelivered webhook cannot create a second message row. */
     uniqueIndex('messages_operator_provider_id_key')
       .on(table.operatorId, table.providerId)
