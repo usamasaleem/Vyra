@@ -37,7 +37,9 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   const { data } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
-  const isPublic = path === '/login' || path.startsWith('/api/webhooks')
+  // The webhook never reaches here — it is excluded at the matcher, so no edge
+  // hop can disturb the bytes its signature is computed over.
+  const isPublic = path === '/login'
 
   if (data.user === null && !isPublic) {
     /**

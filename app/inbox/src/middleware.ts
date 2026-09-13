@@ -8,12 +8,19 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /**
-     * Everything except static assets.
+     * Everything except static assets AND the Meta webhook.
      *
-     * The Meta webhook is matched too, and is allowed through unauthenticated
-     * inside updateSession — it authenticates by HMAC signature, not by
-     * session, and redirecting it to a login page would silently break intake.
+     * The webhook is excluded at the matcher rather than waved through inside
+     * updateSession, because on Netlify the middleware is deployed as an edge
+     * function and the request is then forwarded to the server function. That
+     * hop can re-encode the body, and the signature is an HMAC over the exact
+     * bytes Meta sent — so a request that merely passes through the middleware
+     * arrives with a body that no longer matches its signature. Verified: the
+     * same signed payload was accepted locally and rejected once deployed.
+     *
+     * It costs nothing to exclude. The webhook authenticates by signature and
+     * has no session to refresh.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api/webhooks|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
