@@ -157,12 +157,53 @@ const runner: Runner = await runWorker({
   },
 })
 
+/**
+ * Shutting down without abandoning work.
+ *
+ * A deploy is the ordinary case, not a rare one: every push to main redeploys
+ * this service, so the worker is stopped and restarted constantly during
+ * development. If a job is in flight when that happens and the process exits
+ * before graphile-worker releases it, the job stays locked — and because jobs
+ * are serialised per conversation, that blocks one customer until the lock
+ * recovery sweep catches it.
+ *
+ * So the sequence is logged at every step. The previous version swallowed
+ * errors from stop() and exited regardless, which meant a shutdown that failed
+ * to release its jobs looked exactly like one that succeeded.
+ */
+const SHUTDOWN_BUDGET_MS = 20_000
+
 async function shutdown(signal: string): Promise<void> {
-  log({ event: 'worker.shutdown', signal })
+  const startedAt = Date.now()
+  log({ event: 'worker.shutdown.begin', signal })
   running = false
-  await relayInFlight.catch(() => {})
-  await runner.stop().catch(() => {})
-  await sql.end({ timeout: 5 })
+
+  const withinBudget = async <T>(label: string, work: Promise<T>): Promise<void> => {
+    const remaining = SHUTDOWN_BUDGET_MS - (Date.now() - startedAt)
+    let timer: NodeJS.Timeout | undefined
+    const expired = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), Math.max(remaining, 0))
+    })
+    try {
+      const outcome = await Promise.race([work.then(() => 'done' as const), expired])
+      log({ event: 'worker.shutdown.step', step: label, outcome, ms: Date.now() - startedAt })
+    } catch (error) {
+      // Never silent. A shutdown that failed to release its jobs must not look
+      // like one that succeeded.
+      log({ event: 'worker.shutdown.step', step: label, outcome: 'error', error: messageOf(error) })
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
+
+  await withinBudget('relay', relayInFlight)
+  // stop() is graphile-worker's clean shutdown: it waits for running jobs and
+  // releases their locks. Worth the wait — the alternative is a blocked
+  // conversation.
+  await withinBudget('jobs', runner.stop('deploy or restart'))
+  await withinBudget('database', sql.end({ timeout: 5 }))
+
+  log({ event: 'worker.shutdown.complete', signal, ms: Date.now() - startedAt })
   process.exit(0)
 }
 
