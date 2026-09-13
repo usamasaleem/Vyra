@@ -57,32 +57,7 @@ export async function POST(request: Request): Promise<Response> {
     header: request.headers.get('x-hub-signature-256'),
     appSecret: serverEnv().WHATSAPP_APP_SECRET,
   })
-  if (!valid) {
-    /**
-     * TEMPORARY diagnostic — remove once the deployed signature check passes.
-     *
-     * A signature accepted locally is rejected on Netlify, so something
-     * between Meta and this handler differs. This reports enough to tell which
-     * without revealing anything usable: lengths, and SHA-256 prefixes of the
-     * body and of the app secret. A hash prefix of a 128-bit secret gives an
-     * attacker nothing, and comparing it against the same hash computed
-     * locally settles whether the two environments hold the same value.
-     */
-    const { createHash } = await import('node:crypto')
-    const diagnostic = {
-      bodyLength: rawBody.byteLength,
-      bodySha256: createHash('sha256').update(rawBody).digest('hex').slice(0, 16),
-      receivedSignature: (request.headers.get('x-hub-signature-256') ?? '').slice(0, 20),
-      contentType: request.headers.get('content-type'),
-      contentEncoding: request.headers.get('content-encoding'),
-      transferEncoding: request.headers.get('transfer-encoding'),
-      secretSha256: createHash('sha256').update(serverEnv().WHATSAPP_APP_SECRET).digest('hex').slice(0, 16),
-      secretLength: serverEnv().WHATSAPP_APP_SECRET.length,
-      buildMarker: 'diag-1',
-    }
-    log({ event: 'whatsapp.webhook.signature_rejected', ...diagnostic })
-    return Response.json({ error: 'Forbidden', diagnostic }, { status: 403 })
-  }
+  if (!valid) return forbidden()
 
   let payload: unknown
   try {

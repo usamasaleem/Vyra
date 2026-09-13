@@ -10,16 +10,17 @@ export const config = {
     /**
      * Everything except static assets AND the Meta webhook.
      *
-     * The webhook is excluded at the matcher rather than waved through inside
-     * updateSession, because on Netlify the middleware is deployed as an edge
-     * function and the request is then forwarded to the server function. That
-     * hop can re-encode the body, and the signature is an HMAC over the exact
-     * bytes Meta sent — so a request that merely passes through the middleware
-     * arrives with a body that no longer matches its signature. Verified: the
-     * same signed payload was accepted locally and rejected once deployed.
+     * The webhook authenticates by HMAC signature and has no session to
+     * refresh, so running session middleware on it does nothing but add a hop.
+     * On Netlify that hop is a separate edge function, so excluding the path
+     * also keeps the request that carries a byte-exact signature on the
+     * shortest route to the handler.
      *
-     * It costs nothing to exclude. The webhook authenticates by signature and
-     * has no session to refresh.
+     * Note for anyone reading the history: this exclusion was originally made
+     * to fix a signature failure on Netlify. That failure turned out to be a
+     * broken test command, not a platform problem — the deployed webhook was
+     * verifying signatures correctly the whole time. The change is kept
+     * because it is right on its own terms, not because it fixed anything.
      */
     '/((?!api/webhooks|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
