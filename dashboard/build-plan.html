@@ -187,14 +187,8 @@
       <div class="phase-key" id="phaseKey"></div>
       <div class="actions">
         <button class="btn" id="resetBtn" type="button">Clear all progress</button>
-        <form class="sync-form" id="syncForm">
-          <label for="syncCode">Access code for shared progress</label>
-          <input id="syncCode" type="password" autocomplete="current-password" required>
-          <button class="btn" type="submit">Connect</button>
-        </form>
         <button class="btn" id="importBtn" type="button" hidden>Import this browser's ticks</button>
-        <button class="btn" id="disconnectBtn" type="button" hidden>Disconnect shared progress</button>
-        <p class="sync-note" id="syncNote" role="status">Connect to keep this checklist in sync across devices.</p>
+        <p class="sync-note" id="syncNote" role="status">Loading shared progress…</p>
       </div>
     </div>
   </section>
@@ -266,13 +260,11 @@
 
   var TOTAL = PHASES.reduce(function(a,p){ return a + p.steps.length; }, 0);
   var LOCAL_KEY = "vyra-build-plan-v1";
-  var ACCESS_KEY = "vyra-build-plan-access-v1";
   var PENDING_KEY = "vyra-build-plan-pending-v1";
   var API = "/.netlify/functions/build-progress";
 
   var state = {};
-  var accessCode = "";
-  var connected = false;
+  var connected = true;
   var connecting = false;
   var saving = false;
   var stateRevision = 0;
@@ -387,7 +379,6 @@
     else if (done > 0) label = (TOTAL - done) + " steps remaining";
     document.getElementById("progLabel").textContent = label;
     document.getElementById("resetBtn").disabled = connecting;
-    document.querySelector("#syncForm button").disabled = connecting;
   }
 
   /* ---------- shared persistence ---------- */
@@ -407,14 +398,14 @@
     return steps;
   }
 
-  function requestProgress(method, body, code){
+  function requestProgress(method, body){
     var controller = new AbortController();
     var timeout = setTimeout(function(){ controller.abort(); }, 12000);
     return fetch(API, {
       method:method,
       signal:controller.signal,
       cache:"no-store",
-      headers:{ "Authorization":"Bearer " + (code || accessCode), "Content-Type":"application/json" },
+      headers:{ "Content-Type":"application/json" },
       body:body ? JSON.stringify(body) : undefined
     }).then(function(response){
       return response.json().then(function(data){
@@ -441,7 +432,7 @@
         setChip("cloud", "Synced");
         setNote(Object.keys(importCandidate).length ?
           "Shared progress loaded. You can import ticks that exist only in this browser." :
-          "Progress is shared across devices using this access code.");
+          "Progress is shared across devices automatically.");
         return;
       }
       requestProgress("POST", pending[0]).then(function(data){
@@ -467,19 +458,14 @@
 
   function disconnect(message){
     stateRevision++;
-    connected = false;
+    connected = true;
     connecting = false;
-    accessCode = "";
-    try { sessionStorage.removeItem(ACCESS_KEY); } catch (e) {}
-    document.getElementById("syncForm").hidden = false;
-    document.getElementById("disconnectBtn").hidden = true;
-    document.getElementById("importBtn").hidden = true;
     setChip("", "Saved in this browser");
-    setNote(message || "Progress is saved in this browser until you reconnect.", Boolean(message));
+    setNote(message || "Shared progress is temporarily unavailable. Changes will retry automatically.", Boolean(message));
     render();
   }
 
-  function connect(code){
+  function connect(){
     if (connecting) return;
     connecting = true;
     stateRevision++;
@@ -488,32 +474,28 @@
     setChip("saving", "Connecting");
     setNote("Loading shared progress…");
     var browserSteps = Object.assign({}, state);
-    return requestProgress("GET", null, code).then(function(data){
-      if (!data.exists) return requestProgress("POST", { action:"import", steps:browserSteps }, code);
+    return requestProgress("GET", null).then(function(data){
+      if (!data.exists) return requestProgress("POST", { action:"import", steps:browserSteps });
       importCandidate = {};
       Object.keys(browserSteps).forEach(function(id){
         if (browserSteps[id] === true && !data.steps[id]) importCandidate[id] = true;
       });
       return data;
     }).then(function(data){
-      accessCode = code;
       connected = true;
       connecting = false;
-      try { sessionStorage.setItem(ACCESS_KEY, code); } catch (e) {}
       state = data.steps || {};
       pending.forEach(function(action){ state = applyAction(state, action); });
       render();
       writeLocal();
-      document.getElementById("syncForm").hidden = true;
-      document.getElementById("disconnectBtn").hidden = false;
       document.getElementById("importBtn").hidden = !Object.keys(importCandidate).length;
       setChip("cloud", "Synced");
       setNote(Object.keys(importCandidate).length ?
         "Shared progress loaded. You can import ticks that exist only in this browser." :
-        "Progress is shared across devices using this access code.");
+        "Progress is shared across devices automatically.");
       flushPending();
     })["catch"](function(error){
-      disconnect(error.message || "Could not connect to shared progress.");
+      disconnect(error.message || "Could not load shared progress.");
     });
   }
 
@@ -527,22 +509,10 @@
       writeLocal();
       setChip("cloud", "Synced");
     })["catch"](function(error){
-      if (error.status === 401) disconnect("Access code changed. Reconnect to sync.");
-      else setChip("", "Saved in this browser");
+      setChip("", "Saved in this browser");
     });
   }
 
-  document.getElementById("syncForm").addEventListener("submit", function(event){
-    event.preventDefault();
-    connect(document.getElementById("syncCode").value.trim());
-  });
-  document.getElementById("disconnectBtn").addEventListener("click", function(){
-    if (saving || pending.length) {
-      setNote("Please wait for the current save to finish before disconnecting.");
-      return;
-    }
-    disconnect();
-  });
   document.getElementById("importBtn").addEventListener("click", function(){
     var steps = importCandidate;
     importCandidate = {};
@@ -575,9 +545,6 @@
   if (!Array.isArray(pending)) pending = [];
   render();
   setChip("", "Saved in this browser");
-  try {
-    var rememberedCode = sessionStorage.getItem(ACCESS_KEY);
-    if (rememberedCode) connect(rememberedCode);
-  } catch (e) {}
+  connect();
 })();
 </script>

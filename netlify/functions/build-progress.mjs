@@ -1,12 +1,8 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE = "vyra-build-plan";
 const KEY = "shared-progress-v1";
 const STEP_COUNTS = [4, 8, 7, 9, 4, 4];
-// Verifier for a generated 192-bit access code. The access code is never published.
-// A Netlify environment override lets the owner rotate it without editing code.
-const DEFAULT_PASSCODE_HASH = "17ffed9c93f5970f3c6339120088497c2eadaf1d10a1335edf4a6417f8eb2ebc";
 
 function json(data, status = 200) {
   return Response.json(data, {
@@ -27,15 +23,6 @@ function cleanSteps(input) {
   );
 }
 
-function authorized(request) {
-  const supplied = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
-  const actual = createHash("sha256").update(supplied).digest();
-  const secret = process.env.VYRA_PROGRESS_PASSCODE
-    ? createHash("sha256").update(process.env.VYRA_PROGRESS_PASSCODE).digest()
-    : Buffer.from(DEFAULT_PASSCODE_HASH, "hex");
-  return timingSafeEqual(actual, secret);
-}
-
 function payload(entry) {
   return {
     exists: entry !== null,
@@ -45,7 +32,6 @@ function payload(entry) {
 }
 
 export default async function handler(request) {
-  if (!authorized(request)) return json({ error: "Incorrect access code." }, 401);
   if (request.method !== "GET" && request.method !== "POST") {
     return json({ error: "Method not allowed." }, 405);
   }
