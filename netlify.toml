@@ -1,4 +1,7 @@
 [build]
   publish = "dashboard"
+  # The dashboard is static HTML. The application workspaces at the repository
+  # root must not trigger a build here.
+  command = "echo 'static dashboard — nothing to build'"
 
 # index.html is the dashboard hub and serves the site root directly.

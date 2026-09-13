@@ -1,3 +1,24 @@
 .DS_Store
+
+# dependencies
 node_modules/
+
+# build output
+dist/
+.next/
+*.tsbuildinfo
+
+# netlify local state
 .netlify/
+
+# secrets — never commit these
+.env
+.env.*
+!.env.example
+
+# test and tooling caches
+coverage/
+.vitest/
+
+# next
+next-env.d.ts

@@ -1,7 +1,34 @@
 {
-  "name": "vyra-dashboard",
+  "name": "vyra",
+  "version": "0.0.0",
   "private": true,
+  "description": "Vyra \u2014 WhatsApp AI sales assistant for Dubai luxury car rental operators",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -b && npm run build --workspace=apps/inbox",
+    "typecheck": "tsc -b --force && tsc -p packages/db/tsconfig.test.json && tsc -p apps/worker/tsconfig.test.json",
+    "clean": "tsc -b --clean",
+    "dev": "npm run dev --workspace=apps/inbox",
+    "dev:worker": "npm run dev --workspace=apps/worker",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest --passWithNoTests",
+    "failures": "npm run failures --workspace=apps/worker --",
+    "db:generate": "npm run generate --workspace=packages/db",
+    "db:migrate": "npm run migrate --workspace=packages/db"
+  },
   "dependencies": {
     "@netlify/blobs": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
   }
 }

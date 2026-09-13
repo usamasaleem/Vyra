@@ -1,0 +1,122 @@
+import { sql } from 'drizzle-orm'
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
+import { membershipRole } from './enums.js'
+
+/** A rental business. The tenant boundary for everything else in this schema. */
+export const operators = pgTable('operators', {
+  id: uuid().primaryKey().defaultRandom(),
+  name: text().notNull(),
+
+  /**
+   * IANA zone, used to interpret "tomorrow" and "this weekend" against the
+   * time a message was sent. Stored timestamps stay UTC.
+   */
+  timezone: text().notNull().default('Asia/Dubai'),
+
+  /** Opening hours, for honest out-of-hours replies rather than invented ones. */
+  serviceHours: jsonb().$type<ServiceHours | null>(),
+
+  /** What the operator tells customers to expect. Never an invented callback time. */
+  responseExpectation: text(),
+
+  policyVersion: integer().notNull().default(1),
+
+  /**
+   * Per-operator AI kill switch. False until that operator's shadow-mode
+   * drafts have been reviewed. The env-level switch stops every operator at once.
+   */
+  aiSendingEnabled: boolean().notNull().default(false),
+
+  /** Retention window for conversations, contacts and uploads. */
+  retentionDays: integer().notNull().default(730),
+
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})
+
+export type ServiceHours = {
+  /** 0 = Sunday. Absent day means closed. */
+  [dayOfWeek: string]: { open: string; close: string } | undefined
+}
+
+/**
+ * The trusted channel routing table.
+ *
+ * Section 18.4: resolve the operator from the receiving phone number id, never
+ * from text inside the message. A customer can write anything; the number that
+ * received the webhook is the only trustworthy routing key.
+ */
+export const whatsappAccounts = pgTable(
+  'whatsapp_accounts',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'restrict' }),
+
+    /** WhatsApp Business Account id. */
+    providerAccountId: text().notNull(),
+    /** The receiving number's id. This is the routing key from the webhook. */
+    phoneNumberId: text().notNull(),
+    displayPhoneNumber: text(),
+
+    /**
+     * A pointer into secret storage — never the access token itself.
+     * Section 18.5: secrets stay in server-side secret storage.
+     */
+    secretRef: text(),
+
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** One receiving number belongs to exactly one operator, globally. */
+    uniqueIndex('whatsapp_accounts_phone_number_id_key').on(table.phoneNumberId),
+    /** Target for tenant-consistent composite foreign keys. */
+    unique('whatsapp_accounts_id_operator_key').on(table.id, table.operatorId),
+    index('whatsapp_accounts_operator_idx').on(table.operatorId),
+  ],
+)
+
+/**
+ * Staff access. Authentication alone does not establish tenant authorization —
+ * section 18.7. A browser-supplied operator id is a requested scope, and this
+ * table is what decides whether the scope is granted.
+ *
+ * `userId` refers to Supabase `auth.users`. The foreign key is added in the
+ * migration that wires Supabase Auth (build plan step 13), because the auth
+ * schema is not managed by this package.
+ */
+export const memberships = pgTable(
+  'memberships',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    userId: uuid().notNull(),
+    role: membershipRole().notNull(),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('memberships_operator_user_key').on(table.operatorId, table.userId),
+    /** Target for tenant-consistent composite foreign keys. */
+    unique('memberships_id_operator_key').on(table.id, table.operatorId),
+    index('memberships_user_idx').on(table.userId),
+    index('memberships_operator_active_idx')
+      .on(table.operatorId)
+      .where(sql`active`),
+  ],
+)

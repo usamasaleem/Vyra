@@ -1,0 +1,17 @@
+{
+  "name": "@vyra/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "graphile-worker": "^0.18.0",
+    "@vyra/contracts": "*",
+    "@vyra/db": "*"
+  }
+}
