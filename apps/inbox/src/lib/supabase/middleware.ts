@@ -40,6 +40,14 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   const isPublic = path === '/login' || path.startsWith('/api/webhooks')
 
   if (data.user === null && !isPublic) {
+    /**
+     * Redirecting a fetch to an HTML login page gives the caller a 200 full of
+     * markup, which a polling client cannot distinguish from real data. API
+     * routes get a status code they can act on instead.
+     */
+    if (path.startsWith('/api/')) {
+      return NextResponse.json({ error: 'not signed in' }, { status: 401 })
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', path)

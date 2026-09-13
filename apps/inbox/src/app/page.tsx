@@ -1,5 +1,6 @@
 import { getOperatorStatus } from '@vyra/db'
 import Link from 'next/link'
+import { LiveRefresh } from './live-refresh'
 import { signOut } from './login/actions'
 import { toggleAiSending } from './actions'
 import { permissions, requireActor } from '@/lib/auth'
@@ -38,6 +39,7 @@ export default async function InboxPage({
 
   return (
     <main className="shell">
+      <LiveRefresh />
       <div className="topbar">
         <div>
           <h1>{status?.name ?? 'Inbox'}</h1>
