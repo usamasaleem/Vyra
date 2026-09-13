@@ -6,7 +6,7 @@ Detailed product and handoff brief · Updated 9 September 2026
 
 This brief consolidates the product discussion into portable context for designers, developers, business collaborators and future AI chats. It separates user requirements, proposed workflows and verified implementation facts. It is not a claim that the proposed product is already operational.
 
-Read this document before advancing the WhatsApp product. Read [PROJECT-CONTEXT.md](./PROJECT-CONTEXT.md) for broader positioning and historical research. Where older material describes an agency-first offer, the current direction is a product for rental operators: sales assistance, inventory management and insights.
+Read this document before advancing the WhatsApp product. Read [PROJECT-CONTEXT.md](./docs/PROJECT-CONTEXT.md) for broader positioning and historical research. Where older material describes an agency-first offer, the current direction is a product for rental operators: sales assistance, inventory management and insights.
 
 Evidence basis: the current conversation, existing project context and inspection of the local webhook on 9 September 2026. External account settings and deployments were not rechecked while writing this brief. Provider policies, eligibility, prices and model capabilities must be verified when implementing them.
 
