@@ -128,6 +128,24 @@ Phases 2 and 3 are complete except for step 14's row-level security policies.
 writes nothing — replies are queued by hand through the same
 `queueOutboundText` path a salesperson will use.
 
+## The two processes need different database connections
+
+This is not a workaround. Supabase offers two poolers and each process wants a
+different one:
+
+| Process | Connection | Port | Why |
+|---|---|---|---|
+| `inbox` (Netlify) | Transaction pooler | 6543 | Short stateless queries from a serverless function. `createClient` sets `prepare: false`, which transaction mode requires |
+| `worker` (Render) | Session pooler | 5432 | Long-lived. graphile-worker uses named prepared statements and LISTEN/NOTIFY, neither of which transaction pooling supports |
+
+Pointing the worker at 6543 fails with `prepared statement
+"get_job/graphile_worker" already exists`, because transaction pooling hands
+each transaction a different backend connection and the name collides on the
+second one. The worker keeps restarting and processes nothing.
+
+The direct connection (`db.<ref>.supabase.co`) is IPv6-only, so neither host
+can be assumed to reach it. Both use the pooler hostname; only the port differs.
+
 ## Finding stuck work
 
 ```bash
