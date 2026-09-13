@@ -2,6 +2,7 @@ import { parseServerEnv } from '@vyra/contracts'
 import { createClient } from '@vyra/db'
 import { run as runWorker, type Runner } from 'graphile-worker'
 import { dispatchMessage } from './dispatcher.js'
+import { reapStaleDispatching } from './failures.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient } from './whatsapp/client.js'
@@ -34,6 +35,15 @@ const DISPATCHER_AVAILABLE = true
 
 const IDLE_INTERVAL_MS = 250
 
+/**
+ * A worker killed between claiming a send and hearing back from Meta leaves
+ * the row in `dispatching` forever. Sweep those into `unknown` so a person can
+ * see them — never back to `pending`, because we cannot tell whether Meta
+ * accepted it, and guessing risks sending the customer the same message twice.
+ */
+const REAP_INTERVAL_MS = 60_000
+let lastReapAt = 0
+
 let running = true
 let relayInFlight: Promise<unknown> = Promise.resolve()
 
@@ -45,6 +55,12 @@ async function relayLoop(): Promise<void> {
       if (result.claimed > 0) {
         log({ event: 'relay.pass', ...result })
         continue
+      }
+
+      if (Date.now() - lastReapAt > REAP_INTERVAL_MS) {
+        lastReapAt = Date.now()
+        const { reaped } = await reapStaleDispatching(query)
+        if (reaped > 0) log({ event: 'dispatch.reaped', count: reaped })
       }
     } catch (error) {
       log({ event: 'relay.error', error: messageOf(error) })

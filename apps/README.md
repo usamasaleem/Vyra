@@ -106,6 +106,7 @@ nothing. Both facts were confirmed against live Meta traffic.
 | 9 · outbox relay | Claims, publishes to graphile-worker, backs off, dead-letters |
 | 10 · worker task list | Loads context, decides handling, sends nothing |
 | 11 · dispatcher | The only path to Meta. Sends, records receipts, suppresses |
+| 12 · retries and visible failures | Backoff, dead-letter, reaper, retry surface |
 
 Per-conversation serialisation was measured rather than assumed: with worker
 concurrency at five, three jobs on one conversation queue never overlapped,
@@ -117,9 +118,25 @@ customer to Meta to webhook to database to queue to worker to dispatcher to
 Meta to the customer's phone, with delivery receipts coming back and advancing
 the message to `read`.
 
-**Not built:** visible retry controls (12) and everything in phases 3 onward.
-The AI writes nothing — replies are queued by hand through the same
+Phase 2 is complete. **Not built:** everything in phases 3 onward. The AI
+writes nothing — replies are queued by hand through the same
 `queueOutboundText` path a salesperson will use.
+
+## Finding stuck work
+
+```bash
+npm run failures              # everything stuck, newest first
+npm run failures -- reap      # sweep interrupted dispatches into `unknown`
+npm run failures -- retry <id>
+```
+
+The inbox will render the same queries in phase 3. Until then this is the
+surface, because a failure that only exists in a table nobody opens is
+indistinguishable from a message that never arrived.
+
+`retry` refuses a send whose outcome is `unknown`. Meta may already have
+delivered it, and a retry button sitting next to the others would send a
+customer the same message twice.
 
 Two things carried forward deliberately:
 

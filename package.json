@@ -20,7 +20,8 @@
     "test:watch": "vitest --passWithNoTests",
     "failures": "npm run failures --workspace=apps/worker --",
     "db:generate": "npm run generate --workspace=packages/db",
-    "db:migrate": "npm run migrate --workspace=packages/db"
+    "db:migrate": "npm run migrate --workspace=packages/db",
+    "failures": "npm run failures --workspace=apps/worker --"
   },
   "dependencies": {
     "@netlify/blobs": "^10.0.0"
