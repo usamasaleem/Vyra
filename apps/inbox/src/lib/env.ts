@@ -1,6 +1,6 @@
-import { parseServerEnv, type ServerEnv } from '@vyra/contracts'
+import { parseWebEnv, type WebEnv } from '@vyra/contracts'
 
-let cached: ServerEnv | undefined
+let cached: WebEnv | undefined
 
 /**
  * Resolved lazily and memoised.
@@ -9,7 +9,7 @@ let cached: ServerEnv | undefined
  * build, where these variables are absent, and a build must not fail for the
  * lack of a runtime secret.
  */
-export function serverEnv(): ServerEnv {
-  cached ??= parseServerEnv()
+export function serverEnv(): WebEnv {
+  cached ??= parseWebEnv()
   return cached
 }

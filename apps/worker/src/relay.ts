@@ -14,13 +14,8 @@
  * commit and acknowledgement.
  */
 
-export type QueryRunner = (
-  text: string,
-  params: unknown[],
-) => Promise<Array<Record<string, unknown>>>
-
-/** Runs a function inside a database transaction. */
-export type Transactor = <T>(fn: (tx: QueryRunner) => Promise<T>) => Promise<T>
+export type { QueryRunner, Transactor } from '@vyra/db'
+import type { QueryRunner, Transactor } from '@vyra/db'
 
 export type OutboxRow = {
   id: string

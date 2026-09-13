@@ -6,11 +6,8 @@
  * exercises a different query than production is not a test of production.
  */
 
-/** Minimal driver contract: postgres.js and PGlite both satisfy it. */
-export type QueryRunner = (
-  text: string,
-  params: unknown[],
-) => Promise<Array<Record<string, unknown>>>
+export type { QueryRunner } from '@vyra/db'
+import type { QueryRunner } from '@vyra/db'
 
 export type IngestOutcome = {
   /** False when no active whatsapp_account matches the receiving number. */

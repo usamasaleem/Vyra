@@ -1,4 +1,4 @@
-import type { QueryRunner } from './relay.js'
+import type { QueryRunner } from '../runner.js'
 
 /**
  * Creating a send intent — section 18.4 step 10.

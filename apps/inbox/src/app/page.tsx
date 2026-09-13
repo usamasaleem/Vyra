@@ -1,8 +1,112 @@
-export default function Home() {
+import { getOperatorStatus } from '@vyra/db'
+import Link from 'next/link'
+import { signOut } from './login/actions'
+import { toggleAiSending } from './actions'
+import { permissions, requireActor } from '@/lib/auth'
+import { queryRunner } from '@/lib/db'
+import { listConversations } from '@/lib/queries/conversations'
+
+export const dynamic = 'force-dynamic'
+
+function when(date: Date | null): string {
+  if (date === null) return '—'
+  const minutes = Math.round((Date.now() - date.getTime()) / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h ago`
+  return `${Math.round(minutes / 1440)}d ago`
+}
+
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ stage?: string; handler?: string }>
+}) {
+  const actor = await requireActor()
+  const filters = await searchParams
+  const run = queryRunner()
+
+  const [status, conversations] = await Promise.all([
+    getOperatorStatus(run, actor.operatorId),
+    listConversations(run, actor.operatorId, {
+      salesStage: filters.stage ?? null,
+      handlerMode: filters.handler ?? null,
+    }),
+  ])
+
+  const aiOn = status?.aiSendingEnabled === true
+
   return (
-    <main>
-      <h1>Vyra Inbox</h1>
-      <p>Nothing here yet. The conversation list arrives in phase 3.</p>
+    <main className="shell">
+      <div className="topbar">
+        <div>
+          <h1>{status?.name ?? 'Inbox'}</h1>
+          <span className="who">
+            {actor.email} · {actor.role}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+          {permissions.canControlAi(actor) ? (
+            <form action={toggleAiSending}>
+              <input type="hidden" name="enabled" value={String(!aiOn)} />
+              <button className="button secondary" type="submit">
+                {aiOn ? 'Pause AI replies' : 'Resume AI replies'}
+              </button>
+            </form>
+          ) : null}
+          <form action={signOut}>
+            <button className="button secondary" type="submit">Sign out</button>
+          </form>
+        </div>
+      </div>
+
+      <p className={aiOn ? 'muted' : 'notice'} style={{ marginTop: 0 }}>
+        {aiOn
+          ? 'AI replies are enabled for this operator.'
+          : 'AI replies are paused. Messages are still being received and stored, and staff can reply.'}
+      </p>
+
+      <div style={{ display: 'flex', gap: '0.5rem', margin: '1.5rem 0 1rem', flexWrap: 'wrap' }}>
+        <Link className="button secondary" href="/">All</Link>
+        <Link className="button secondary" href="/?handler=human">Human-owned</Link>
+        <Link className="button secondary" href="/?handler=ai">AI-owned</Link>
+        <Link className="button secondary" href="/?stage=qualified">Qualified</Link>
+      </div>
+
+      {conversations.length === 0 ? (
+        <p className="card muted">No conversations yet.</p>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.6rem' }}>
+          {conversations.map((c) => (
+            <li key={c.id}>
+              <Link
+                href={`/conversations/${c.id}`}
+                className="card"
+                style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                  <strong>{c.contactName ?? c.channelIdentifier}</strong>
+                  <span className="muted" style={{ fontSize: '0.8rem' }}>
+                    {when(c.lastCustomerMessageAt)}
+                  </span>
+                </div>
+                <p className="muted" style={{ margin: '0.35rem 0 0.6rem', fontSize: '0.9rem' }}>
+                  {c.lastMessageDirection === 'outbound' ? 'You: ' : ''}
+                  {c.lastMessageBody ?? <em>no readable message</em>}
+                </p>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <span className="tag">{c.salesStage.replace(/_/g, ' ')}</span>
+                  <span className="tag">{c.handlerMode === 'human' ? 'salesperson' : 'AI'}</span>
+                  {c.waitingReason !== 'none' && (
+                    <span className="tag">{c.waitingReason.replace(/_/g, ' ')}</span>
+                  )}
+                  {c.awaitingReply && <span className="tag">awaiting reply</span>}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   )
 }

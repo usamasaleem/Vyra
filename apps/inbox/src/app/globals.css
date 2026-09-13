@@ -1,0 +1,79 @@
+:root {
+  --bg: #fbfaf9;
+  --surface: #ffffff;
+  --border: #e5e1dc;
+  --text: #1c1b19;
+  --muted: #6b6660;
+  --accent: #b4520f;
+  --accent-soft: #fdf3ec;
+  --danger: #9a2c2c;
+  --ok: #2f6b4f;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171614;
+    --surface: #1f1e1b;
+    --border: #322f2b;
+    --text: #f0ede8;
+    --muted: #a09a92;
+    --accent: #e08a4e;
+    --accent-soft: #2a201a;
+    --danger: #d98080;
+    --ok: #7fb99a;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); }
+
+.shell { max-width: 60rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+.topbar {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 2rem;
+}
+.topbar h1 { font-size: 1.15rem; margin: 0; letter-spacing: -0.01em; }
+.topbar .who { color: var(--muted); font-size: 0.85rem; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1.25rem;
+}
+
+.label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
+.input {
+  width: 100%; padding: 0.55rem 0.7rem; font: inherit;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px;
+}
+.input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.button {
+  font: inherit; font-weight: 500; cursor: pointer;
+  padding: 0.55rem 0.95rem; border-radius: 7px;
+  background: var(--accent); color: #fff; border: 1px solid transparent;
+}
+.button.secondary { background: transparent; color: var(--text); border-color: var(--border); }
+.button:hover { filter: brightness(1.05); }
+
+.notice { border-left: 3px solid var(--danger); padding: 0.6rem 0.85rem; background: var(--surface); border-radius: 0 7px 7px 0; font-size: 0.9rem; }
+.muted { color: var(--muted); }
+.stack > * + * { margin-top: 0.9rem; }
+.tag {
+  display: inline-block; font-size: 0.72rem; letter-spacing: 0.04em;
+  text-transform: uppercase; padding: 0.15rem 0.45rem; border-radius: 4px;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border);
+}

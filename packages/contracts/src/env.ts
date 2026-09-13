@@ -44,6 +44,35 @@ export const serverEnvSchema = z.object({
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>
 
+/**
+ * Extra configuration the staff inbox needs and the worker does not.
+ *
+ * Kept separate so the worker is not made to carry variables it has no use
+ * for — a worker that refuses to boot for the lack of a browser key would be
+ * a confusing failure.
+ *
+ * The publishable key is designed to be visible in a browser. It is not a
+ * secret, and it grants nothing on its own: authorisation is decided by the
+ * session and the membership row behind it.
+ */
+export const webEnvSchema = serverEnvSchema.extend({
+  NEXT_PUBLIC_SUPABASE_URL: z.string().min(1),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
+})
+
+export type WebEnv = z.infer<typeof webEnvSchema>
+
+export function parseWebEnv(source: NodeJS.ProcessEnv = process.env): WebEnv {
+  const result = webEnvSchema.safeParse(source)
+  if (!result.success) {
+    const problems = result.error.issues
+      .map((issue) => `  ${issue.path.join('.')}: ${issue.message}`)
+      .join('\n')
+    throw new Error(`Invalid environment configuration:\n${problems}`)
+  }
+  return result.data
+}
+
 export function parseServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
   const result = serverEnvSchema.safeParse(source)
   if (!result.success) {

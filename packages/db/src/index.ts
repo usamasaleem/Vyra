@@ -1,2 +1,6 @@
 export * from './client.js'
+export * from './runner.js'
+export * from './queries/outbound.js'
+export * from './queries/takeover.js'
+export * from './queries/operator-controls.js'
 export * as schema from './schema/index.js'
