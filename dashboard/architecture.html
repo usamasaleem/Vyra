@@ -1,0 +1,207 @@
+<title>Sales Agent Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg:#DFDFDF; --surface:#F1F1F1; --surface-2:#FFFFFF;
+    --ink:#0D0D0D; --ink-dim:#6B6B6B; --ink-faint:#9B9B9B;
+    --green:#00A651; --green-deep:#008A43; --green-soft:#D9F2E3;
+    --amber:#D9822B; --red:#C8412F;
+    --line:rgba(13,13,13,0.08); --line-soft:rgba(13,13,13,0.05); --track:rgba(13,13,13,0.08);
+    --shadow-sm:0 1px 3px rgba(0,0,0,0.04); --shadow-md:0 4px 18px rgba(0,0,0,0.06); --shadow-lg:0 14px 44px rgba(0,0,0,0.11);
+    --r-card:24px; --r-inner:16px; --r-pill:999px;
+    color-scheme: light;
+  }
+  *{box-sizing:border-box;}
+  html{background:var(--bg); scroll-behavior:smooth;}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; font-size:15px; line-height:1.5;}
+  h1,h2,h3{font-family:'Inter Tight','Inter',sans-serif; letter-spacing:-0.032em; text-wrap:balance; margin:0;}
+  figure{margin:0;}
+  a{color:inherit;}
+  .wrap{max-width:1220px; margin:0 auto; padding:0 24px;}
+  @media (max-width:640px){ .wrap{padding:0 16px;} }
+
+  .topbar{position:sticky; top:0; z-index:60; background:color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter:blur(14px) saturate(160%);}
+  .topbar-inner{max-width:1220px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; gap:16px;}
+  @media (max-width:640px){ .topbar-inner{padding:12px 16px;} }
+  .brand{display:flex; align-items:center; gap:9px; flex-shrink:0; text-decoration:none; color:inherit;}
+  .brand:focus-visible{outline:2px solid var(--green); outline-offset:4px; border-radius:var(--r-pill);}
+  .brand-mark{width:34px; height:34px; border-radius:12px; background:var(--ink); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .brand-mark i{width:11px; height:11px; border-radius:50%; background:var(--green); display:block;}
+  .brand-name{font-family:'Inter Tight',sans-serif; font-weight:700; font-size:17px; letter-spacing:-0.02em;}
+  .navpills{display:flex; gap:4px; padding:4px; margin:0 auto; background:var(--surface); border-radius:var(--r-pill); overflow-x:auto; scrollbar-width:none; max-width:100%;}
+  .navpills::-webkit-scrollbar{display:none;}
+  .navpills a{flex-shrink:0; text-decoration:none; font-size:13px; font-weight:500; color:var(--ink-dim); padding:8px 14px; border-radius:var(--r-pill); white-space:nowrap; transition:background .16s, color .16s;}
+  .navpills a:hover{color:var(--ink); background:rgba(13,13,13,0.05);}
+  .navpills a.active{background:var(--ink); color:#fff; font-weight:600;}
+  .navpills a:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
+  @media (max-width:820px){ .navpills{display:none;} }
+  .loc-chip{display:none; align-items:center; gap:8px; flex-shrink:0; margin-left:auto; background:var(--surface-2); border-radius:var(--r-pill); padding:9px 16px 9px 12px; font-size:12.5px; color:var(--ink-dim); box-shadow:var(--shadow-sm); white-space:nowrap;}
+  @media (min-width:900px){ .loc-chip{display:flex;} }
+  .loc-chip .pin{width:7px; height:7px; border-radius:50%; background:var(--amber); flex-shrink:0;}
+
+  .hero{padding:44px 0 8px;}
+  .eyebrow{display:inline-flex; align-items:center; gap:9px; background:var(--surface-2); border-radius:var(--r-pill); padding:7px 16px; font-size:12px; font-weight:600; color:var(--ink-dim); box-shadow:var(--shadow-sm);}
+  .hero h1{font-size:clamp(36px,4.8vw,54px); font-weight:800; line-height:1.02; letter-spacing:-0.04em; margin:22px 0 18px; max-width:19ch;}
+  .hero .lede{font-size:16px; color:var(--ink-dim); max-width:66ch; line-height:1.55; margin:0 0 12px;}
+  .hero .src{font-size:13px; color:var(--ink-faint); max-width:68ch; line-height:1.5; margin:0;}
+
+  .fig-card{background:var(--surface-2); border-radius:var(--r-card); padding:22px; box-shadow:var(--shadow-md); margin-top:32px;}
+  .fig-scroll{overflow-x:auto; border-radius:var(--r-inner);}
+  .fig-scroll img{display:block; width:100%; min-width:860px; height:auto; border-radius:var(--r-inner);}
+  figcaption{font-size:12.5px; color:var(--ink-faint); line-height:1.55; margin-top:16px; max-width:88ch;}
+  figcaption b{color:var(--ink-dim); font-weight:600;}
+  .scroll-hint{display:none; font-size:11.5px; color:var(--ink-faint); margin-top:10px;}
+  @media (max-width:900px){ .scroll-hint{display:block;} }
+
+  section.block{padding:58px 0 0;}
+  .block-head{margin-bottom:24px;}
+  .block-head h2{font-size:clamp(24px,3vw,32px); font-weight:700; margin:14px 0 10px;}
+  .block-head .intro{font-size:15px; color:var(--ink-dim); max-width:68ch; line-height:1.55; margin:0;}
+
+  .card{background:var(--surface-2); border-radius:var(--r-card); padding:26px; box-shadow:var(--shadow-sm);}
+  .card-soft{background:var(--surface); box-shadow:none;}
+  .grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+  @media (max-width:860px){ .grid-3{grid-template-columns:1fr;} }
+  .card h3{font-size:18px; font-weight:700; letter-spacing:-0.028em; margin-bottom:10px;}
+  .card p{font-size:13.5px; color:var(--ink-dim); line-height:1.6; margin:0;}
+  .card p + p{margin-top:10px;}
+
+  ol.path{list-style:none; margin:0; padding:0; counter-reset:s;}
+  ol.path li{counter-increment:s; display:grid; grid-template-columns:30px 1fr; gap:14px; padding:15px 0; align-items:start;}
+  ol.path li + li{border-top:1px solid var(--line-soft);}
+  ol.path li::before{
+    content:counter(s,decimal-leading-zero); font-size:11px; font-weight:700; color:var(--ink-faint);
+    background:var(--surface); border-radius:var(--r-pill); padding:4px 0; text-align:center;
+    font-variant-numeric:tabular-nums;
+  }
+  ol.path .t{font-size:14px; font-weight:600; letter-spacing:-0.01em; display:block;}
+  ol.path .d{font-size:13px; color:var(--ink-dim); line-height:1.55; display:block; margin-top:4px; max-width:78ch;}
+
+  .alert-card{background:var(--ink); color:#fff; border-radius:var(--r-card); padding:30px 32px; display:flex; align-items:center; gap:30px; flex-wrap:wrap; margin-top:14px;}
+  .alert-card .a-title{font-family:'Inter Tight',sans-serif; font-size:clamp(21px,2.7vw,28px); font-weight:700; letter-spacing:-0.03em; line-height:1.2; color:#fff; max-width:20ch;}
+  .alert-card .a-copy{font-size:14px; color:rgba(255,255,255,0.72); max-width:52ch; line-height:1.55;}
+
+  footer{margin-top:58px; padding:34px 0 60px;}
+  .foot-card{background:var(--surface); border-radius:var(--r-card); padding:28px;}
+  .fine{font-size:12.5px; color:var(--ink-faint); max-width:78ch; line-height:1.6; margin:0;}
+  .fine + .fine{margin-top:10px;}
+  .fine b{color:var(--ink-dim); font-weight:600;}
+  @media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important; scroll-behavior:auto !important;} }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="index.html"><span class="brand-mark"><i></i></span><span class="brand-name">Vyra</span></a>
+    <nav class="navpills" id="nav">
+      <a href="#diagram">Diagram</a>
+      <a href="#path">One message</a>
+      <a href="#decisions">Decisions</a>
+      <a href="#notshown">Not shown</a>
+    </nav>
+    <div class="loc-chip"><span class="pin"></span>Proposed · not built</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <section class="hero" id="diagram">
+    <div class="eyebrow">Architecture</div>
+    <h1>How the Sales Agent is put together.</h1>
+    <p class="lede">Two processes and one datastore. A Next.js application takes the webhook and hosts the sales inbox; a worker does everything slow; PostgreSQL holds the records, the queue and the outbox. Nothing else is required to run the first pilot.</p>
+    <p class="src">This is a proposal. None of it is built — the prototype today is a single webhook route with no durable storage, no ownership model and no handoff.</p>
+
+    <figure class="fig-card">
+      <div class="fig-scroll">
+        <img src="assets/architecture.svg" alt="Proposed Vyra Sales Agent architecture. A customer messages on WhatsApp; Meta's Cloud API delivers it to a webhook in the Next.js application, which verifies the signature and stores the message before acknowledging. A graphile-worker process picks the job up from PostgreSQL, runs the AI turn against the OpenAI Responses API, requests availability from Operations, and dispatches the reply back through Meta. Supabase provides the single PostgreSQL datastore, which also holds the job queue and outbox, plus auth and file storage.">
+      </div>
+      <div class="scroll-hint">Scroll the diagram sideways to see the whole system.</div>
+      <figcaption><b>The proposed architecture, end to end.</b> Solid arrows carry a request; grey arrows carry a result or a status back. The green channel at the top is the only path to the customer, and the worker is the only component that uses it — including for messages a salesperson types by hand.</figcaption>
+    </figure>
+  </section>
+
+  <section class="block" id="path">
+    <div class="block-head">
+      <h2>One message, arrival to reply</h2>
+      <p class="intro">The order matters more than the components. Each step exists because of a specific way the naive version loses messages or says something it should not.</p>
+    </div>
+    <div class="card">
+      <ol class="path">
+        <li><span><span class="t">Authenticate before trusting anything</span><span class="d">The webhook verifies Meta's signature against the raw, untouched body, and resolves which operator this is from the receiving phone number — never from text inside the message.</span></span></li>
+        <li><span><span class="t">Save before acknowledging</span><span class="d">One transaction writes the inbound event, the deduplication record and an outbox row. Success is returned only after that commits, so a crash cannot swallow a customer's message.</span></span></li>
+        <li><span><span class="t">Schedule the work</span><span class="d">A relay turns the outbox row into a job. If the queue is unavailable the row is still there, and publishing the same job twice is harmless.</span></span></li>
+        <li><span><span class="t">Load the real state</span><span class="d">The worker reads operator policy, who currently owns the reply, recent messages, the structured enquiry and any open approvals.</span></span></li>
+        <li><span><span class="t">Interpret, then ask for facts</span><span class="d">The model extracts what the customer wants. Availability and rates are requested from Operations — the Sales Agent never reads or writes fleet records directly.</span></span></li>
+        <li><span><span class="t">Check the state again before sending</span><span class="d">A short transaction rejects the draft if the customer corrected something or a salesperson took over while the model was generating. Long model calls run outside transactions; this is what makes takeover trustworthy.</span></span></li>
+        <li><span><span class="t">Dispatch through one door</span><span class="d">Channel eligibility and ownership are checked at the moment of sending — not when the reply was queued, because a delayed job can cross the 24-hour window.</span></span></li>
+        <li><span><span class="t">Record what actually happened</span><span class="d">Provider acceptance, delivery and read are three different things. A send whose response was lost is marked unknown rather than guessed at in either direction.</span></span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="block" id="decisions">
+    <div class="block-head">
+      <h2>Three decisions this encodes</h2>
+      <p class="intro">Each one is visible in the drawing, and each removes a category of failure rather than adding a feature.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <h3>The queue lives in PostgreSQL</h3>
+        <p>The outbox table is required anyway, so the queue rides on it via <b>graphile-worker</b>. That removes Redis — one less service to run, one less place state can diverge, one less thing to be down at 2am.</p>
+      </div>
+      <div class="card">
+        <h3>One component talks to Meta</h3>
+        <p>The dispatcher is the only sender, including for messages salespeople write. That is what makes the sending window, opt-outs and reply ownership enforceable in one place instead of three.</p>
+      </div>
+      <div class="card">
+        <h3>The model proposes, the backend authorises</h3>
+        <p>Amounts, dates, expiry and booking status are rendered from validated records; the model only phrases the language around them. A hallucinated price is structurally impossible for the fields that carry money.</p>
+      </div>
+    </div>
+    <div class="alert-card">
+      <div class="a-title">The worker asks Operations. It never writes fleet records.</div>
+      <div class="a-copy">This is the boundary the whole product rests on. Sales sends a structured request and displays the answer it gets back, with the time that answer was checked. If it could update inventory itself, nothing would stop a fluent reply from becoming an unbacked promise.</div>
+    </div>
+  </section>
+
+  <section class="block" id="notshown">
+    <div class="block-head">
+      <h2>What the diagram leaves out</h2>
+      <p class="intro">Deliberately, because they are states and rules rather than boxes — but they are not optional.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card card-soft">
+        <h3>Tenant isolation</h3>
+        <p>Row-level security covers the browser path. The worker runs on a service key and bypasses it, so every worker query needs explicit operator scoping. This is the likeliest place for a cross-operator leak, and it will not show up in testing through the interface.</p>
+      </div>
+      <div class="card card-soft">
+        <h3>Per-conversation ordering</h3>
+        <p>Two rapid messages from one customer must not be processed at once. That needs a per-conversation lock or job key — a global concurrency setting does not serialise anything useful.</p>
+      </div>
+      <div class="card card-soft">
+        <h3>The Operations console</h3>
+        <p>In the MVP a person answers the availability requests, in their own queue. The automated Operations Agent comes later; the request contract is the same either way.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="foot-card">
+      <p class="fine"><b>Proposed, not deployed.</b> The prototype today is a single Next.js webhook route with no signature verification, no durable storage, no deduplication, no conversation memory and no ownership model. Read this diagram as the target, and <b>docs/CURRENT-STATE.md</b> for what exists.</p>
+      <p class="fine">The full reasoning — layer-by-layer assessment, the simplifications against the original proposal, and the traps worth knowing before you start — is in <b>docs/TECH-STACK.md</b>. The specification it comments on is section 18 of the Sales Agent document under <b>Whatsapp Agents/</b>, which remains authoritative.</p>
+    </div>
+  </footer>
+</div>
+
+<script>
+  (function(){
+    var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+    var secs = links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); });
+    function sync(){
+      var y = window.scrollY + 150, cur = 0;
+      for (var i = 0; i < secs.length; i++){ if (secs[i] && secs[i].offsetTop <= y) cur = i; }
+      links.forEach(function(a, i){ a.classList.toggle('active', i === cur); });
+    }
+    window.addEventListener('scroll', sync, {passive:true});
+    sync();
+  })();
+</script>

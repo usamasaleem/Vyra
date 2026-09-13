@@ -75,6 +75,14 @@
     background:var(--surface); border-radius:var(--r-inner); padding:18px 20px; margin-bottom:20px;
   }
   .sec-motif svg{display:block; width:100%; height:auto;}
+  .sec-motif img{display:block; width:100%; height:auto; border-radius:10px;}
+
+  .sec.wide{grid-column:1 / -1;}
+  @media (min-width:861px){
+    .sec.wide{flex-direction:row; align-items:stretch; gap:26px;}
+    .sec.wide .sec-motif{flex:0 0 48%; margin-bottom:0; display:flex; align-items:center; padding:14px;}
+    .sec.wide .sec-body{flex:1; display:flex; flex-direction:column; min-width:0;}
+  }
   .sec-top{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:11px;}
   .sec h3{font-size:22px; font-weight:700; letter-spacing:-0.035em;}
   .sec .blurb{font-size:13.5px; color:var(--ink-dim); line-height:1.55; margin:0 0 18px;}
@@ -144,6 +152,21 @@
     <p class="src">Each section is a single page. The written specifications in <b>Whatsapp Agents/</b> and <b>docs/</b> remain the source of truth; these pages present that material, they do not replace it.</p>
 
     <div class="sections">
+
+      <a class="sec wide" href="architecture.html">
+        <div class="sec-motif"><img src="assets/architecture.svg" alt=""></div>
+        <div class="sec-body">
+          <div class="sec-top">
+            <h3>Architecture</h3>
+            <span class="tag planned">Proposed</span>
+          </div>
+          <p class="blurb">How the Sales Agent is put together: two processes and one datastore, the path a single message takes from arrival to reply, and the three decisions that shape it. Nothing here is built yet.</p>
+          <ul class="inside">
+            <li>Diagram</li><li>One message</li><li>Decisions</li><li>Not shown</li>
+          </ul>
+          <span class="open">Open section <span class="arw">→</span></span>
+        </div>
+      </a>
 
       <a class="sec" href="market-research.html">
         <div class="sec-motif">

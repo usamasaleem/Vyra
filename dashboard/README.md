@@ -7,6 +7,7 @@ A visual, shareable-by-link version of the knowledge hub — charts, hierarchy a
 | File | Live link | Status |
 | --- | --- | --- |
 | [index.html](./index.html) | https://claude.ai/code/artifact/1485c888-e5f8-4130-b204-82e6c45ddc35 | Live — hub |
+| [architecture.html](./architecture.html) | _in the hub artifact_ | Live |
 | [market-research.html](./market-research.html) | https://claude.ai/code/artifact/2aa41b71-5b88-4b40-acae-77bb08e84856 | Live |
 | [agents.html](./agents.html) | https://claude.ai/code/artifact/3d6078c4-c4db-4afd-b737-a5b99212ca3d | Live |
 | [roadmap.html](./roadmap.html) | https://claude.ai/code/artifact/e8010af9-4100-4978-93ec-20a1b096dfb2 | Live |
@@ -14,7 +15,7 @@ A visual, shareable-by-link version of the knowledge hub — charts, hierarchy a
 | Product / handoff brief | — | Not started |
 | Implementation status | — | Not started |
 
-The hub link publishes all five pages together, so relative navigation works inside it — share that one rather than the individual pages.
+The hub link publishes all six pages together, plus `assets/`,, so relative navigation works inside it — share that one rather than the individual pages.
 
 The build plan stores tick state with the artifact `db` capability, which makes the hub artifact organization-internal — it cannot be shared publicly while that is declared. On Netlify there is no `window.claude`, so it falls back to `localStorage` (per browser, not per person).
 

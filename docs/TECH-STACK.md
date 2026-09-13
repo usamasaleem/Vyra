@@ -4,6 +4,14 @@ Analysis and recommendation · September 2026
 
 This document reviews the stack proposed in section 18 of the [Sales Agent specification](../Whatsapp%20Agents/Sales%20Agent/chat%20sales%20agent.md), compares it against what actually exists, and records a recommendation for a solo build. The specification remains authoritative; this is commentary on it.
 
+## 0. The proposed architecture
+
+![Proposed Vyra Sales Agent architecture: a customer on WhatsApp reaches a Next.js webhook through Meta's Cloud API; the message is stored before acknowledgement and picked up by a graphile-worker process, which runs the AI turn, requests availability from Operations, and dispatches the reply back through Meta. Supabase provides the single PostgreSQL datastore, holding records, the job queue and the outbox.](../dashboard/assets/architecture.svg)
+
+Two processes and one datastore. Solid arrows carry a request, grey arrows carry a result or status back. The green channel at the top is the only path to the customer, and the worker is the only component that uses it — including for messages a salesperson types by hand.
+
+Every component in the diagram is marked **Proposed**. None of it is built.
+
 ## 1. What exists today
 
 The prototype is a **single Next.js route handler** — `team-hub/app/api/webhook/route.ts`, in a separate project from this repository.
