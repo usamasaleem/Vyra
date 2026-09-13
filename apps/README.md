@@ -90,18 +90,28 @@ Check `node_modules/next/dist/docs/` before trusting a remembered API.
 
 ## Status
 
-Build plan steps 1-7, less the prototype audit.
+Build plan steps 1-9, less the prototype audit and the eval set.
 
-Working and tested: schema v1, the webhook verification challenge, and
-`X-Hub-Signature-256` verification over the untouched request body. The GET
-handshake and both signature outcomes have been exercised over real HTTP
-against a running server, not only in unit tests.
+Proven end to end against real infrastructure, not only in tests: a WhatsApp
+message sent from a phone is signature-verified, stored durably in Supabase and
+queued for processing roughly two seconds later. A redelivered webhook writes
+nothing. Both facts were confirmed against live Meta traffic.
 
-**The webhook acknowledges without storing anything.** That is step 8, and until
-it lands this endpoint would lose every message it accepted. Meta must not be
-pointed at it. The route file says so at the handler.
+| Step | State |
+|---|---|
+| 5 · schema v1 | Applied to Supabase. RLS on every table, no policies yet — fail closed |
+| 6 · webhook GET | Verified by Meta against a real challenge |
+| 7 · signature | Real app secret; forged signatures rejected |
+| 8 · save before acknowledge | One atomic statement; redelivery writes nothing |
+| 9 · outbox relay | Claims, publishes to graphile-worker, backs off, dead-letters |
 
-**Not built:** save-before-acknowledge (8), outbox relay (9), worker task list
-(10), dispatcher (11), retries (12), and all of phases 3 onward. The migration
-has never been applied to a real database — there is no Supabase project yet,
-which is what blocks step 8.
+**Not built:** the worker task list (10), the dispatcher (11) and visible retry
+controls (12). Nothing sends. A customer messaging the pilot number gets
+silence, which is correct until step 11 exists.
+
+Two things carried forward deliberately:
+
+- `WHATSAPP_ACCESS_TOKEN` is still a placeholder. It is first needed at step 11.
+- The pilot database is in `ap-northeast-1`, roughly 170ms from the development
+  machine. Step 8 is one statement partly for that reason. Cheap to move while
+  the database holds almost nothing.

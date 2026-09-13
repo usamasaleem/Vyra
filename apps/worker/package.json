@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx --env-file-if-exists=../inbox/.env.local watch src/index.ts",
     "build": "tsc -b",
     "clean": "tsc -b --clean",
-    "start": "node dist/index.js"
+    "start": "node --env-file-if-exists=../inbox/.env.local dist/index.js"
   },
   "dependencies": {
     "graphile-worker": "^0.18.0",
