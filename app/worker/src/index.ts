@@ -78,6 +78,30 @@ const runner: Runner = await runWorker({
   // does not serialise a conversation.
   concurrency: 5,
   noHandleSignals: true,
+
+  /**
+   * How quickly a lock held by a dead worker is released.
+   *
+   * This matters more here than in most queues because jobs are serialised per
+   * conversation. A worker that dies holding a job does not just delay that
+   * job — it blocks every later message from the same customer behind it. On
+   * the default schedule that conversation is stuck for hours, and the symptom
+   * is silence rather than an error.
+   *
+   * Observed in the pilot: a worker died after dispatching, and the next
+   * inbound message for that conversation sat unclaimed for over an hour.
+   *
+   * A minute of delay after a crash is acceptable; an hour is not.
+   */
+  minResetLockedInterval: 30_000,
+  maxResetLockedInterval: 60_000,
+
+  /**
+   * Keep the worker's own pool small. It runs beside the postgres.js pool this
+   * process already opens, and both hold real backend connections on the
+   * session pooler.
+   */
+  maxPoolSize: 4,
   taskList: {
     dispatch_outbound: async (payload, helpers) => {
       const messageId = (payload as { message_id?: unknown } | null)?.message_id
