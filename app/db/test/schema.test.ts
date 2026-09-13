@@ -58,6 +58,9 @@ describe('schema v1 applies', () => {
       'conversation_notes',
       'conversations',
       'inbound_events',
+      // Approved operator knowledge, versioned, with a check constraint that
+      // makes placeholder content unpublishable.
+      'knowledge_entries',
       'memberships',
       'messages',
       'operators',
