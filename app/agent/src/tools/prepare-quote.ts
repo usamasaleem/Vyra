@@ -96,7 +96,10 @@ export async function prepareQuote(
   const vehicleRows = await ctx.run(
     `select id from vehicles
      where operator_id = $1 and active and provenance = 'operator_confirmed'
-       and (make || ' ' || model || ' ' || coalesce(variant, '')) ilike '%' || $2 || '%'
+       -- Folded, for the same reason the fleet search is: the enquiry records
+       -- the customer's own wording, accents and all or neither.
+       and public.vyra_fold(make || ' ' || model || ' ' || coalesce(variant, ''))
+           like '%' || public.vyra_fold($2) || '%'
      limit 2`,
     [ctx.operatorId, value('vehicle') ?? ''],
   )

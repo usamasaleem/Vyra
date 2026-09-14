@@ -90,10 +90,13 @@ const SEARCH_SQL = `
     and (
       $2::text[] is null
       or cardinality($2::text[]) = 0
-      or (
+      -- Folded on both sides: a customer typing "Huracan" must find the
+      -- "Huracán" in the fleet. They did not, once, and were told we did not
+      -- have the car.
+      or public.vyra_fold(
         v.make || ' ' || v.model || ' ' || coalesce(v.variant, '') || ' ' ||
         v.colour || ' ' || v.category::text || ' ' || v.year::text
-      ) ilike all ($2::text[])
+      ) like all (array(select public.vyra_fold(unnest($2::text[]))))
     )
   -- Dearest first, so "what is the most expensive car you have" is answered by
   -- the order of the result rather than by the model comparing numbers.

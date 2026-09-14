@@ -347,6 +347,29 @@ describe('search_vehicles with a fleet', () => {
     expect((result as { data: { fleet: unknown[] } }).data.fleet).toHaveLength(1)
   })
 
+  /**
+   * Regression, and a live one. A customer asked for a "Huracan"; the fleet
+   * holds "Huracán"; ilike matched nothing and the agent replied that we did
+   * not have that car. It was there, with a confirmed rate.
+   *
+   * Nobody types the accent. Both directions are covered because the fleet may
+   * hold either spelling.
+   */
+  it.each([
+    ['Huracan', 'Huracán'],
+    ['Huracán', 'Huracan'],
+    ['huracan evo', 'Huracán'],
+    ['lamborghini huracan', 'Huracán'],
+  ])('finds %j when the fleet says %j', async (query, stored) => {
+    await addVehicle({
+      make: 'Lamborghini', model: stored, variant: 'EVO Spyder',
+      colour: 'Arancio Borealis (orange)', plate: 'Dubai B 2', chassis: 'VIN-LB',
+    })
+    const result = await search(query)
+    expect(result).toMatchObject({ status: 'ok' })
+    expect((result as { data: { fleet: unknown[] } }).data.fleet).toHaveLength(1)
+  })
+
   it.each(['yellow lamborghini', 'red ferrari', 'ferrari convertible saloon'])(
     'still finds nothing for "%s"',
     async (query) => {
