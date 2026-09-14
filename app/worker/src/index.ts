@@ -104,6 +104,27 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 
 const runner: Runner = await runWorker({
   connectionString: env.DATABASE_URL,
+
+  /**
+   * Named prepared statements off, because the database is behind a pooler.
+   *
+   * graphile-worker exposes this as `noPreparedStatements`. Its own guidance:
+   * "Set false if you use software (e.g. some
+   * Postgres pools) that don't support them." Supabase is exactly that
+   * software. Its reset-locked maintenance query is issued as a prepared
+   * statement named `clear_stale_locks/graphile_worker`, and on Render it
+   * failed on a loop — "Failed to reset locked; we'll try again in 49922ms" —
+   * on every instance, across restarts.
+   *
+   * Only the maintenance query failed, never job fetching, which fits a pooler
+   * handing a recycled backend to an occasional query while long-lived worker
+   * connections keep theirs. Our own statements were unaffected: postgres.js
+   * is configured with prepare: false for this same reason.
+   *
+   * The cost is a little planning time per query. The thing it buys is the
+   * routine that recovers jobs from a dead worker actually running.
+   */
+  noPreparedStatements: true,
   // Per-conversation ordering comes from the queue name on each job, not from
   // this number. Section 18.10 is explicit that a global concurrency setting
   // does not serialise a conversation.
