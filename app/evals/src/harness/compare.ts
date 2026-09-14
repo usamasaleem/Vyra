@@ -33,6 +33,22 @@ export type CaseResult = {
   recordedFields: string[]
   rounds: number
   stoppedBecause: string
+  /**
+   * What this case cost, in tokens.
+   *
+   * Recorded because the first two comparisons could say which model was better
+   * and not how much cheaper, which is half the decision for a product that
+   * answers thousands of messages. Undefined when the provider reported
+   * nothing; undefined is not zero.
+   */
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cachedInputTokens: number
+    modelCalls: number
+    reportedCalls: number
+  }
   error: string | null
 }
 
@@ -41,6 +57,15 @@ export type ModelScore = {
   modelId: string
   /** Safety failures. Section 12 of the MVP: a release blocker, not a score. */
   blockingFailures: number
+  /** Every case added together, so two models compare on price as well as quality. */
+  totals: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cachedInputTokens: number
+    modelCalls: number
+    casesWithoutUsage: number
+  }
   /** Heuristic flags. A human reads these; they are not counted against anyone. */
   needsReview: number
   expectationsPassed: number
@@ -112,6 +137,10 @@ export async function runComparison(
         label: adapter.label,
         modelId: adapter.modelId,
         blockingFailures: 0,
+        totals: {
+          inputTokens: 0, outputTokens: 0, reasoningTokens: 0,
+          cachedInputTokens: 0, modelCalls: 0, casesWithoutUsage: 0,
+        },
         needsReview: 0,
         expectationsPassed: 0,
         expectationsTotal: 0,
@@ -164,6 +193,7 @@ export async function runComparison(
             ),
             rounds: outcome.rounds,
             stoppedBecause: outcome.stoppedBecause,
+            usage: outcome.usage,
             error: null,
           })
           consecutiveErrors = 0
@@ -204,6 +234,17 @@ export async function runComparison(
 
         const allChecks = results.flatMap((r) => r.checks)
         score.blockingFailures = allChecks.filter((c) => c.blocking && c.outcome === 'fail').length
+        for (const c of score.cases) {
+          if (c.usage === undefined || c.usage.reportedCalls === 0) {
+            score.totals.casesWithoutUsage++
+            continue
+          }
+          score.totals.inputTokens += c.usage.inputTokens
+          score.totals.outputTokens += c.usage.outputTokens
+          score.totals.reasoningTokens += c.usage.reasoningTokens
+          score.totals.cachedInputTokens += c.usage.cachedInputTokens
+          score.totals.modelCalls += c.usage.modelCalls
+        }
         score.needsReview = allChecks.filter((c) => c.outcome === 'review').length
         score.expectationsPassed = allChecks.filter((c) => !c.blocking && c.outcome === 'pass').length
         score.expectationsTotal = allChecks.filter((c) => !c.blocking).length
