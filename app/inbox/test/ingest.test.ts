@@ -200,3 +200,39 @@ describe('storing a status event', () => {
     expect(await count('inbound_events')).toBe(3)
   })
 })
+
+/**
+ * Build plan step 25 — the half of the revision check that lives at ingestion.
+ *
+ * The accept-time check compares the revision a turn started at against the
+ * revision now, and can only ever fire if something moves that number. Takeover
+ * moved it; a customer sending another message did not, which is the case the
+ * mechanism is mostly for: "Friday" — model starts writing — "sorry, Saturday".
+ */
+describe('a new customer message invalidates work in flight', () => {
+  it('moves the conversation revision', async () => {
+    await storeInboundMessage(run, message())
+    const [first] = await run(`select revision from conversations`, [])
+    expect(Number(first!['revision'])).toBe(0)
+
+    await storeInboundMessage(run, message({
+      providerEventKey: 'message:wamid.TEST2',
+      providerMessageId: 'wamid.TEST2',
+      body: 'sorry I meant Saturday',
+    }))
+    const [second] = await run(`select revision from conversations`, [])
+    expect(Number(second!['revision'])).toBe(1)
+  })
+
+  /**
+   * Deduplication has to win. Meta retries webhooks, and a retry that bumped
+   * the revision would discard a perfectly good turn for a message the customer
+   * only sent once.
+   */
+  it('does not move on a redelivered webhook', async () => {
+    await storeInboundMessage(run, message())
+    await storeInboundMessage(run, message())
+    const [row] = await run(`select revision from conversations`, [])
+    expect(Number(row!['revision'])).toBe(0)
+  })
+})

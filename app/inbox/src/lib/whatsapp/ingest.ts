@@ -78,7 +78,19 @@ conversation as (
   select c.operator_id, c.id, e.whatsapp_account_id, $6::timestamptz
   from contact c join event e on e.operator_id = c.operator_id
   on conflict (operator_id, contact_id) do update
+    -- A new customer message moves the revision, which is what invalidates any
+    -- turn already in flight for this conversation (build plan step 25). The
+    -- schema calls revision "incremented by takeover, by a customer correction,
+    -- and by any change that invalidates work in flight" — this is the second
+    -- of those, and it was the one nothing implemented.
+    --
+    -- Every inbound message, not only the ones that look like corrections:
+    -- telling a correction from an addition needs a model, and the model is
+    -- precisely what is mid-flight and cannot be asked. Discarding a turn costs
+    -- one more model call; accepting a stale one sends a customer an answer to
+    -- a question they withdrew.
     set last_customer_message_at = excluded.last_customer_message_at,
+        revision = conversations.revision + 1,
         updated_at = now()
   returning id, operator_id
 ),
