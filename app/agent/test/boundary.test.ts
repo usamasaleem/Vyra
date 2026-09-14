@@ -370,12 +370,21 @@ describe('search_vehicles with a fleet', () => {
     expect((result as { data: { fleet: unknown[] } }).data.fleet).toHaveLength(1)
   })
 
+  /**
+   * The word filter still refuses to over-match: a yellow Ferrari is not a red
+   * one. What changed is what happens next — the tool says the words matched
+   * nothing and shows what the operator actually has, rather than asserting the
+   * car does not exist. Deciding whether one of them is what the customer meant
+   * is the model's job, and it is better at it than a LIKE.
+   */
   it.each(['yellow lamborghini', 'red ferrari', 'ferrari convertible saloon'])(
-    'still finds nothing for "%s"',
+    'does not pretend "%s" matched something',
     async (query) => {
       await addVehicle()
       const result = await search(query)
-      expect(result).toMatchObject({ status: 'ok', data: { fleet: [] } })
+      expect(result).toMatchObject({ status: 'ok' })
+      expect((result as { data: { guidance: string } }).data.guidance)
+        .toContain('did not match anything')
     },
   )
 
@@ -396,19 +405,36 @@ describe('search_vehicles with a fleet', () => {
     expect(result).toMatchObject({ status: 'refused', reason: 'no_trusted_source' })
   })
 
-  it('does not return a car that is off the road', async () => {
+  /**
+   * The safety property, restated for the catalogue.
+   *
+   * A search that matches nothing now returns the operator's whole fleet so the
+   * model can decide what the customer meant. An off-road car must not appear
+   * in that list either — the guarantee is about which cars exist to be
+   * mentioned, not about how the list was narrowed.
+   */
+  it('never shows a car that is off the road, even in the whole-fleet fallback', async () => {
     await addVehicle()
     await addVehicle({ make: 'Lamborghini', model: 'Huracán', plate: 'Dubai P 41785',
                        chassis: 'ZHWUT4ZF0PLA14872', active: false })
+
     const result = await search('lamborghini')
-    expect(result).toMatchObject({ status: 'ok', data: { fleet: [] } })
+    const { fleet } = (result as { data: { fleet: Array<{ make: string }> } }).data
+    expect(fleet.map((v) => v.make)).not.toContain('Lamborghini')
   })
 
-  it('tells the model to say so rather than invent, when nothing matches', async () => {
+  /**
+   * Nothing matched the words, so the model is handed the fleet instead of a
+   * verdict. It must still not invent: what it sees is exactly what exists.
+   */
+  it('shows the whole fleet rather than claiming the car does not exist', async () => {
     await addVehicle()
     const result = await search('bugatti')
-    expect(result).toMatchObject({ status: 'ok', data: { fleet: [] } })
-    expect(JSON.stringify(result)).toContain('do not invent a car')
+
+    const data = (result as { data: { fleet: Array<{ make: string }>; guidance: string } }).data
+    expect(data.fleet.map((v) => v.make)).toEqual(['Ferrari'])
+    expect(data.guidance).toContain('ENTIRE fleet')
+    expect(data.guidance).toContain('nothing here fits')
   })
 
   async function answerWith(opts: {

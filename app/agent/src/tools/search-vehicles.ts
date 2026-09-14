@@ -70,6 +70,25 @@ export type VehicleSearchResult = {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
+ * How many cars can simply be handed to the model.
+ *
+ * Under this, the whole fleet goes back on every search and the model decides
+ * what the customer meant. Above it, the words still narrow first, because a
+ * few hundred cars in every result is a bill rather than a feature.
+ *
+ * The reason for doing this at all: SQL is the wrong thing to be matching
+ * "Huracan" against "Huracán", "the orange one" against "Arancio Borealis", or
+ * "something loud" against a V10. A model is good at that and was never given
+ * the chance — it asked a string comparison, got no rows, and told a customer
+ * we did not have a car that was sitting in the fleet with a confirmed rate.
+ *
+ * The safety property is untouched. The model still only ever sees cars this
+ * operator has confirmed, so it cannot invent one; it just gets to read the
+ * list instead of being handed a verdict.
+ */
+const FLEET_SMALL_ENOUGH_TO_READ = 40
+
+/**
  * Mandatory check (section 18.8): validated dates and a trusted inventory source.
  *
  * Both checks run. The first is implemented; the second currently refuses.
@@ -134,7 +153,26 @@ export async function searchVehicles(
     )
   }
 
-  const fleet = found.matches.map((v) => ({
+  /**
+   * The whole fleet, when there is little enough of it to read.
+   *
+   * Fetched in addition to the filtered matches, not instead: the filter still
+   * decides which single vehicle an availability answer is about, because
+   * "is it free" needs one car and the catalogue is many.
+   */
+  const catalogue = found.fleetSize <= FLEET_SMALL_ENOUGH_TO_READ && args.vehicle !== null
+    ? await searchFleet(ctx.run, ctx.operatorId, null)
+    : null
+
+  /**
+   * The catalogue is a fallback, not the default. When the words did match, the
+   * customer asked about a specific car and should hear about that one — a
+   * result padded with every other car invites a reply that lists the fleet at
+   * somebody who named one model.
+   */
+  const visible = found.matches.length > 0 ? found.matches : (catalogue?.matches ?? [])
+
+  const fleet = visible.map((v) => ({
     make: v.make,
     model: v.model,
     variant: v.variant,
@@ -150,8 +188,10 @@ export async function searchVehicles(
   if (found.matches.length === 0) {
     return ok({
       fleet,
-      guidance:
-        'No car in the fleet matches that description. Say so plainly and offer to check what else might suit — do not invent a car.',
+      guidance: catalogue === null
+        // Too many cars to list, so the words are all there is to go on.
+        ? 'No car in the fleet matches that description. Say so plainly and offer to check what else might suit — do not invent a car.'
+        : 'The words they used did not match anything, but this is the operator\'s ENTIRE fleet — every car they have. Read it and decide for yourself whether one of these is what they meant: spelling and accents ("Huracan" is the Huracán), nicknames, a colour in another language ("the orange one" is the Arancio Borealis), or a description like "something loud". If one of them fits, answer about that car and use its exact make and model in any further tool call. Only say the operator does not have it once you have looked at this list and nothing here fits.',
     })
   }
 
