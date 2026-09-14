@@ -226,6 +226,79 @@ describe('a promise the turn did not keep', () => {
   })
 })
 
+/**
+ * The commercial decision reaches a person even when the model does not send it
+ * there. Taken from the eval run: asked "can you do 3000 for the weekend
+ * instead?", the agent replied "I'll check what we can do for AED 3,000" and
+ * called no tool — a negotiation opened with nobody informed.
+ */
+describe('a customer asking for a discount', () => {
+  // Read `context` when called, not when the file loads: beforeEach builds it.
+  const askForDiscount = async (body: string) => {
+    const [message] = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.discount.${Math.random()}`],
+    )
+    return {
+      ...context,
+      message: { ...context.message, id: message!['id'] as string, body },
+    }
+  }
+
+  it('raises a handoff even when the model called nothing', async () => {
+    const ctx = await askForDiscount('can you do 3000 for the weekend instead?')
+    const result = await turn(
+      [{ toolCalls: [], reply: 'I’ll check what we can do for AED 3,000. Which car?' }],
+      'send',
+      ctx,
+    )
+    expect(result).toMatchObject({ outcome: 'queued' })
+
+    const [handoff] = await run(
+      `select reason::text as reason, priority::text as priority, summary
+       from handoffs where conversation_id = $1`, [CONV],
+    )
+    // The enum value has existed since the queue was built and nothing wrote it.
+    expect(handoff).toMatchObject({ reason: 'discount_requested', priority: 'high' })
+    expect(handoff!['summary']).toContain('can you do 3000')
+  })
+
+  it('still lets the agent reply, because acknowledging is useful work', async () => {
+    const ctx = await askForDiscount('any discount for a week?')
+    await turn([{ toolCalls: [], reply: 'Let me put that to the team and come back to you.' }], 'send', ctx)
+
+    const messages = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(messages).toHaveLength(1)
+  })
+
+  /**
+   * One ask, one handoff. The reply also promises a person, and two tasks for
+   * one sentence is how a queue stops being read.
+   */
+  it('raises one handoff, not two, when the reply also promises a person', async () => {
+    const ctx = await askForDiscount('can you do 3000 instead?')
+    await turn(
+      [{ toolCalls: [], reply: 'I’ll get a salesperson to confirm what we can do.' }],
+      'send',
+      ctx,
+    )
+
+    const handoffs = await run(`select id from handoffs where conversation_id = $1`, [CONV])
+    expect(handoffs).toHaveLength(1)
+  })
+
+  it('leaves an ordinary price question alone', async () => {
+    const ctx = await askForDiscount('what is your cheapest car?')
+    await turn([{ toolCalls: [], reply: 'The Ferrari 488 Spider is AED 5,000 per day.' }], 'send', ctx)
+
+    const handoffs = await run(`select id from handoffs where conversation_id = $1`, [CONV])
+    expect(handoffs).toHaveLength(0)
+  })
+})
+
 describe('handing over to a person', () => {
   const HANDOFF = [
     {

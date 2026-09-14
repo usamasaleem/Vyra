@@ -1,3 +1,4 @@
+import { detectDiscountRequest } from '@vyra/contracts'
 import {
   classifyTurnEnd,
   promiseMadeIn,
@@ -373,7 +374,37 @@ export async function runConversationTurn(
      * fix. A salesperson who picks it up takes over explicitly, as they would
      * with any other handoff.
      */
-    const promised = items.length === 0 ? promiseMadeIn(end.reply) : null
+    /**
+     * A discount asked for is a handoff, whatever the model decided.
+     *
+     * MVP section 8 lists it as a trigger and section 12 forbids the agent
+     * approving one — two halves of the same rule, and the model satisfied
+     * neither. Asked "can you do 3000 for the weekend instead?" it replied
+     * "I'll check what we can do for AED 3,000" and called nothing, which is a
+     * negotiation opened on the operator's behalf with nobody informed.
+     *
+     * Detected from the customer's message rather than the reply, because what
+     * makes this a handoff is what they asked for. The agent still answers:
+     * acknowledging and capturing the context is the useful half, and section
+     * 17.5 asks for it. What is guaranteed is that a person gets the decision.
+     *
+     * Raised before the promise check so a discount ask that also promised a
+     * person produces one handoff rather than two.
+     */
+    const discount = detectDiscountRequest(context.message.body)
+    if (discount !== null) {
+      await raiseHandoff(deps.run, {
+        operatorId: context.operator.id,
+        conversationId: context.conversation.id,
+        reason: 'discount_requested',
+        summary: `${discount.reason} — "${discount.matched}". Only a manager can approve one.`,
+        triggerMessageId: context.message.id,
+      })
+    }
+
+    const promised = discount === null && items.length === 0
+      ? promiseMadeIn(end.reply)
+      : null
 
     if (promised === 'person') {
       await raiseHandoff(deps.run, {
