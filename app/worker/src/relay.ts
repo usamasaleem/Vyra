@@ -134,21 +134,60 @@ export async function relayOnce(
  * `job_key` is the outbox row id, so publishing the same row twice replaces
  * one job rather than creating two.
  */
+/**
+ * Build plan step 26 — the collection window.
+ *
+ * People do not type in paragraphs. They send "can you give me another car",
+ * "maybe a ferrari", "in yellow?", "for this thursday" across fifteen seconds,
+ * and without this each one starts its own turn. In a live conversation that
+ * produced two replies six seconds apart saying nearly the same thing, which
+ * reads as a bot talking over itself.
+ *
+ * Section 18.10 proposes one to two seconds. Two, because the cost of waiting
+ * is two seconds added to a reply that already takes about seven, and the cost
+ * of not waiting is the customer watching the agent answer half a question.
+ *
+ * The mechanism is graphile-worker's own: a job key that is the conversation
+ * rather than the outbox row, and `job_key_mode = 'replace'`, which is the
+ * default and resets `run_at` as well as the payload. Each new message replaces
+ * the pending turn and pushes it two seconds further out, so the turn fires two
+ * seconds after the customer stops typing rather than two seconds after they
+ * start.
+ *
+ * The revision check is not made redundant by this. It caught two of the four
+ * turns in that burst, and it still covers the case this cannot: a message that
+ * lands while a turn is already running.
+ */
+const COLLECTION_WINDOW = '2 seconds'
+
 export const publishToGraphileWorker: Publisher = async (tx, row) => {
   const conversationId = row.payload['conversation_id']
+  const isInboundTurn = row.event_type === 'process_inbound_message'
+
+  /**
+   * Only inbound turns collapse. A dispatch job must never be replaced by a
+   * later one — two outbound messages are two messages a customer is owed, and
+   * collapsing them would silently drop a send.
+   */
+  const jobKey = isInboundTurn && typeof conversationId === 'string'
+    ? `turn:${conversationId}`
+    : `outbox:${row.id}`
+
   await tx(
     `select graphile_worker.add_job(
        identifier => $1,
        payload    => $2::json,
        queue_name => $3,
        job_key    => $4,
+       run_at     => case when $5 then now() + interval '${COLLECTION_WINDOW}' else now() end,
        max_attempts => 5
      )`,
     [
       row.event_type,
       JSON.stringify({ ...row.payload, operator_id: row.operator_id, outbox_id: row.id }),
       typeof conversationId === 'string' ? `conversation:${conversationId}` : null,
-      `outbox:${row.id}`,
+      jobKey,
+      isInboundTurn,
     ],
   )
 }

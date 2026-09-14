@@ -271,9 +271,37 @@
   var pending = [];
   var importCandidate = {};
 
+  /**
+   * What the repository actually shows as built, on 14 September 2026.
+   *
+   * The board's ticks live in localStorage, so an empty browser shows nothing
+   * done and a stale browser shows whatever was last clicked. Neither is the
+   * truth. This seeds a first visit from the code, and is only applied when
+   * there is no saved state — it never overwrites someone's own toggles.
+   *
+   * Deliberately excluded, because they are not finished rather than not
+   * ticked:
+   *   1  Meta business verification — never confirmed as started
+   *   2  Prototype audit — partial
+   *   14 Tenant isolation — policies exist and are tested, but the app still
+   *      connects privileged and bypasses them
+   * Everything from 29 on is untouched.
+   */
+  var DEFAULT_DONE = [
+    "p0s2", "p0s3",
+    "p1s0", "p1s1", "p1s2", "p1s3", "p1s4", "p1s5", "p1s6", "p1s7",
+    "p2s0", "p2s2", "p2s3", "p2s4", "p2s5", "p2s6",
+    "p3s0", "p3s1", "p3s2", "p3s3", "p3s4", "p3s5", "p3s6", "p3s7", "p3s8"
+  ];
+
   function readLocal(){
-    try { var raw = localStorage.getItem(LOCAL_KEY); return raw ? (JSON.parse(raw) || {}) : {}; }
-    catch (e) { return {}; }
+    try {
+      var raw = localStorage.getItem(LOCAL_KEY);
+      if (raw) return JSON.parse(raw) || {};
+    } catch (e) { return {}; }
+    var seeded = {};
+    DEFAULT_DONE.forEach(function(id){ seeded[id] = true; });
+    return seeded;
   }
   function writeLocal(){
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch (e) {}

@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
 import { loadConversationContext, type ConversationContext } from '../src/context.ts'
-import { runConversationTurn } from '../src/turn.ts'
+import { handleNonTextMessage, runConversationTurn } from '../src/turn.ts'
 import type { QueryRunner, Transactor } from '../../db/src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'db', 'migrations')
@@ -330,6 +330,78 @@ describe('a turn that fails', () => {
       { toolCalls: [], reply: "I'll confirm the deposit and come back to you." },
     ])
     expect(result).toMatchObject({ outcome: 'queued' })
+  })
+})
+
+/**
+ * Build plan step 27. decideHandling always held these, and the comment beside
+ * it claimed they were "stored and acknowledged, never silently dropped". Two
+ * of three were true: nothing acknowledged and nothing routed, so a voice note
+ * was answered with silence by a system that had correctly decided a person
+ * was needed.
+ */
+describe('a message the agent cannot read', () => {
+  async function nonText(kind: string): Promise<ConversationContext> {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, provider_id, media)
+       values ($1, $2, 'inbound', $3::message_kind, $4, '{"id":"media-1"}'::jsonb) returning id`,
+      [OP, CONV, kind, `wamid.${kind}.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  it('says something honest rather than nothing', async () => {
+    const ctx = await nonText('audio')
+    const result = await handleNonTextMessage({ run, transact, destination: 'send' }, ctx)
+    expect(result).toMatchObject({ outcome: 'needs_a_person', reason: 'non_text_message' })
+
+    const [message] = await run(
+      `select body, delivery_state::text as state from messages
+       where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(message!['body']).toContain("can't listen to voice notes")
+    expect(message).toMatchObject({ state: 'pending' })
+  })
+
+  it('never guesses what was in it', async () => {
+    const ctx = await nonText('image')
+    await handleNonTextMessage({ run, transact, destination: 'send' }, ctx)
+    const [message] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    // Honest about the limit, and makes no claim about the contents.
+    expect(message!['body']).toContain("can't view images")
+  })
+
+  it('puts it in front of a person', async () => {
+    const ctx = await nonText('audio')
+    await handleNonTextMessage({ run, transact, destination: 'send' }, ctx)
+    const [conversation] = await run(
+      `select handler_mode::text as mode, next_action from conversations where id = $1`, [CONV],
+    )
+    expect(conversation).toMatchObject({ mode: 'human' })
+    expect(conversation!['next_action']).toContain('audio')
+  })
+
+  it('acknowledges once, however many times the job is retried', async () => {
+    const ctx = await nonText('document')
+    await handleNonTextMessage({ run, transact, destination: 'send' }, ctx)
+    await handleNonTextMessage({ run, transact, destination: 'send' }, ctx)
+    const messages = await run(
+      `select id from messages where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(messages).toHaveLength(1)
+  })
+
+  it('writes a note instead of sending, in shadow mode', async () => {
+    const ctx = await nonText('video')
+    await handleNonTextMessage({ run, transact, destination: 'draft' }, ctx)
+    const messages = await run(
+      `select id from messages where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(messages).toHaveLength(0)
+    const notes = await run(`select body from conversation_notes`, [])
+    expect(notes[0]!['body']).toContain("can't watch videos")
   })
 })
 

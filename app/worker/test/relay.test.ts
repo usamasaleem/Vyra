@@ -148,7 +148,7 @@ describe('when publishing fails', () => {
 })
 
 describe('the graphile-worker publisher', () => {
-  it('serialises jobs per conversation and keys them by outbox row', async () => {
+  it('serialises inbound turns per conversation and collapses them', async () => {
     const calls: Array<{ text: string; params: unknown[] }> = []
     const capturing: QueryRunner = async (text, params) => { calls.push({ text, params }); return [] }
 
@@ -158,14 +158,44 @@ describe('the graphile-worker publisher', () => {
     })
 
     expect(calls[0]!.text).toContain('graphile_worker.add_job')
-    const [identifier, payload, queueName, jobKey] = calls[0]!.params as string[]
+    const [identifier, payload, queueName, jobKey, delayed] = calls[0]!.params as [
+      string, string, string, string, boolean,
+    ]
     expect(identifier).toBe('process_inbound_message')
     // Per-conversation serialisation: a global concurrency limit cannot do this.
     expect(queueName).toBe('conversation:conv-9')
-    expect(jobKey).toBe('outbox:outbox-1')
-    expect(JSON.parse(payload!)).toMatchObject({
+    /**
+     * Build plan step 26. Keyed by conversation rather than outbox row, so a
+     * second message two seconds later replaces the pending turn instead of
+     * starting a competing one. Keyed by outbox row, four messages in a burst
+     * produced four turns and the customer got overlapping replies.
+     */
+    expect(jobKey).toBe('turn:conv-9')
+    expect(delayed).toBe(true)
+    expect(calls[0]!.text).toContain("interval '2 seconds'")
+    expect(JSON.parse(payload)).toMatchObject({
       conversation_id: 'conv-9', message_id: 'msg-1', operator_id: OPERATOR, outbox_id: 'outbox-1',
     })
+  })
+
+  /**
+   * Sends must never collapse. Two outbound messages are two messages a
+   * customer is owed, and a conversation-scoped key would silently drop one.
+   */
+  it('keeps every outbound dispatch distinct, and does not delay it', async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = []
+    const capturing: QueryRunner = async (text, params) => { calls.push({ text, params }); return [] }
+
+    for (const id of ['outbox-1', 'outbox-2']) {
+      await publishToGraphileWorker(capturing, {
+        id, operator_id: OPERATOR, event_type: 'dispatch_outbound',
+        aggregate_id: 'msg', payload: { conversation_id: 'conv-9', message_id: `m-${id}` }, attempts: 0,
+      })
+    }
+
+    const keys = calls.map((c) => (c.params as string[])[3])
+    expect(keys).toEqual(['outbox:outbox-1', 'outbox:outbox-2'])
+    expect(calls.every((c) => (c.params as unknown[])[4] === false)).toBe(true)
   })
 
   it('omits the queue when there is no conversation to serialise on', async () => {

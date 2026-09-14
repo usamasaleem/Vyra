@@ -8,7 +8,7 @@ import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor }
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient } from './whatsapp/client.js'
 import { openaiModel, type ModelAdapter } from '@vyra/agent'
-import { runConversationTurn } from './turn.js'
+import { handleNonTextMessage, runConversationTurn } from './turn.js'
 
 const env = parseServerEnv()
 const { sql } = createClient(env.DATABASE_URL, { max: 4 })
@@ -220,6 +220,27 @@ const runner: Runner = await runWorker({
         action: handling.action,
         reason: handling.reason,
       })
+
+      /**
+       * A voice note or photo: acknowledged honestly and put in front of a
+       * person. Section 17 forbids treating it as though the customer said
+       * nothing, which is what happened while this branch simply returned.
+       */
+      if (handling.reason === 'non_text_needs_a_person') {
+        const routed = await handleNonTextMessage(
+          { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
+          context,
+        )
+        log({
+          event: 'turn.completed',
+          jobId: helpers.job.id,
+          conversation: context.conversation.id,
+          messageKind: context.message.kind,
+          autosend: env.AI_AUTOSEND_ENABLED,
+          ...routed,
+        })
+        return
+      }
 
       if (handling.action !== 'draft') return
 

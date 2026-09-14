@@ -7,6 +7,7 @@ import {
 import {
   acceptTurnOutput,
   ensureEnquiry,
+  requestHandoff,
   recordOutstandingWork,
   recordRejectedTurn,
   recordTurnFailure,
@@ -38,7 +39,64 @@ export type TurnResult =
   | { outcome: 'drafted'; noteId: string | null }
   | { outcome: 'rejected'; reason: string }
   | { outcome: 'failed'; kind: string; detail: string }
+  | { outcome: 'needs_a_person'; reason: 'non_text_message' }
   | { outcome: 'skipped'; reason: 'no_model_configured' | 'no_enquiry' | 'no_message_body' }
+
+/** What a customer hears when they send something the agent cannot read. */
+const NON_TEXT_ACKNOWLEDGEMENT: Record<string, string> = {
+  audio: "Thanks — I can't listen to voice notes, so I'm passing this to a colleague who will.",
+  image: "Thanks for the photo — I can't view images, so a colleague will take a look and come back to you.",
+  video: "Thanks — I can't watch videos, so a colleague will take a look and come back to you.",
+  document: "Thanks for the file — I can't open documents, so a colleague will review it and come back to you.",
+}
+
+const DEFAULT_ACKNOWLEDGEMENT =
+  "Thanks — I can't read that kind of message, so a colleague will take a look and come back to you."
+
+/**
+ * Build plan step 27 — a voice note is stored, acknowledged and routed.
+ *
+ * `decideHandling` has always held non-text messages with the reason
+ * `non_text_needs_a_person`, and the comment beside it said they were
+ * "stored and acknowledged, never silently dropped". Two of those three were
+ * true. Nothing acknowledged anything and nothing routed anywhere: next_action
+ * stayed null, the handler stayed AI, and the customer's voice note was
+ * answered with silence by a system that had correctly decided a person was
+ * needed.
+ *
+ * Section 17 is explicit that it must never be treated as though the customer
+ * said nothing. So this sends one honest sentence — no guess at the contents —
+ * and puts the conversation in front of someone.
+ */
+export async function handleNonTextMessage(
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  context: ConversationContext,
+): Promise<TurnResult> {
+  const body = NON_TEXT_ACKNOWLEDGEMENT[context.message.kind] ?? DEFAULT_ACKNOWLEDGEMENT
+
+  await requestHandoff(deps.run, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    reason: `Customer sent a ${context.message.kind} the agent cannot read — review it and reply.`,
+  })
+
+  /**
+   * Queued after the handoff, and allowed through by the same rule that lets a
+   * handoff acknowledgement past: the conversation is human-owned but unowned,
+   * so this one message at the post-handoff revision still sends.
+   */
+  await acceptTurnOutput(deps.transact, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    revisionAtTurnStart: context.conversation.revision,
+    body,
+    idempotencyKey: `non-text:${context.message.id}`,
+    destination: deps.destination,
+    ownHandoff: true,
+  })
+
+  return { outcome: 'needs_a_person', reason: 'non_text_message' }
+}
 
 export type TurnDependencies = {
   run: QueryRunner
