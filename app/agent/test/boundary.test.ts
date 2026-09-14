@@ -213,6 +213,86 @@ describe('search_vehicles', () => {
   })
 })
 
+describe('search_vehicles with a fleet', () => {
+  async function addVehicle(overrides: Record<string, unknown> = {}) {
+    const v = {
+      make: 'Ferrari', model: '488', variant: 'Spider', year: 2022,
+      colour: 'Giallo Modena (yellow)', category: 'exotic',
+      plate: 'Dubai K 20933', chassis: 'ZFF80AMA9N0273641',
+      provenance: 'operator_confirmed', operator: OP, active: true, ...overrides,
+    }
+    await run(
+      `insert into vehicles (operator_id, make, model, variant, year, colour, category,
+                             plate, chassis_number, engine, power_hp, seats, doors,
+                             active, provenance, confirmed_by)
+       values ($1,$2,$3,$4,$5,$6,$7::vehicle_category,$8,$9,'3.9 L twin-turbo V8',661,2,2,
+               $10,$11::fleet_provenance,'Owner')`,
+      [v.operator, v.make, v.model, v.variant, v.year, v.colour, v.category,
+       v.plate, v.chassis, v.active, v.provenance],
+    )
+  }
+
+  const search = (vehicle: string | null) =>
+    createToolBoundary(ctx).call('search_vehicles', {
+      vehicle, startDate: '2026-09-20', endDate: '2026-09-23',
+    })
+
+  it('describes the car, and refuses to say it is available', async () => {
+    await addVehicle()
+    const result = await search('ferrari')
+    expect(result).toMatchObject({
+      status: 'ok',
+      data: {
+        availabilityChecked: false,
+        fleet: [{ make: 'Ferrari', model: '488', colour: 'Giallo Modena (yellow)', powerHp: 661 }],
+      },
+    })
+    const detail = JSON.stringify(result)
+    expect(detail).toContain('NOT say any of them is available')
+  })
+
+  /** The model has no use for an identifier and every opportunity to misuse one. */
+  it('never hands the model a plate or a chassis number', async () => {
+    await addVehicle()
+    const result = JSON.stringify(await search('ferrari'))
+    expect(result).not.toContain('Dubai K 20933')
+    expect(result).not.toContain('ZFF80AMA9N0273641')
+  })
+
+  /**
+   * The fleet equivalent of the unpublished knowledge rule. A car nobody has
+   * confirmed exists is a car the agent must not describe.
+   */
+  it('does not return a car whose provenance is still placeholder', async () => {
+    await addVehicle({ provenance: 'placeholder' })
+    const result = await search('ferrari')
+    expect(result).toMatchObject({ status: 'refused', reason: 'no_trusted_source' })
+  })
+
+  it('does not return a car that is off the road', async () => {
+    await addVehicle()
+    await addVehicle({ make: 'Lamborghini', model: 'Huracán', plate: 'Dubai P 41785',
+                       chassis: 'ZHWUT4ZF0PLA14872', active: false })
+    const result = await search('lamborghini')
+    expect(result).toMatchObject({ status: 'ok', data: { fleet: [] } })
+  })
+
+  it('tells the model to say so rather than invent, when nothing matches', async () => {
+    await addVehicle()
+    const result = await search('bugatti')
+    expect(result).toMatchObject({ status: 'ok', data: { fleet: [] } })
+    expect(JSON.stringify(result)).toContain('do not invent a car')
+  })
+
+  it('still refuses a date in the past before it looks at the fleet', async () => {
+    await addVehicle()
+    const result = await createToolBoundary(ctx).call('search_vehicles', {
+      vehicle: 'ferrari', startDate: '2026-09-01', endDate: null,
+    })
+    expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
+  })
+})
+
 describe('prepare_quote', () => {
   it('refuses an enquiry that is not the one being discussed', async () => {
     const result = await createToolBoundary(ctx).call('prepare_quote', {

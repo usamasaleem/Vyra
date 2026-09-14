@@ -64,6 +64,20 @@
       "when": 1789332075609,
       "tag": "0008_opposite_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789383924078,
+      "tag": "0009_cute_harpoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789383944025,
+      "tag": "0010_rls_for_later_tables",
+      "breakpoints": true
     }
   ]
 }

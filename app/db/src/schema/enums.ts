@@ -134,3 +134,25 @@ export const enquiryField = pgEnum('enquiry_field', [
   'budget',
   'special_requirements',
 ])
+
+/** Broad classes a Dubai customer actually asks for. */
+export const vehicleCategory = pgEnum('vehicle_category', [
+  'exotic',
+  'luxury',
+  'suv',
+  'sports',
+  'convertible',
+  'sedan',
+])
+
+/**
+ * Whether a fleet record describes a real car.
+ *
+ * Same guard as knowledge_entries, for the same reason: a plausible invented
+ * Ferrari is harder to spot than an obviously wrong one, and the agent quoting
+ * a chassis number for a car that does not exist is worse than saying nothing.
+ */
+export const fleetProvenance = pgEnum('fleet_provenance', [
+  'placeholder',
+  'operator_confirmed',
+])
