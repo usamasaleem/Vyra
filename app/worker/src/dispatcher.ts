@@ -193,6 +193,31 @@ export async function dispatchMessage(
        where id = $1`,
       [messageId, providerMessageId],
     )
+
+    /**
+     * The reporting timestamps, set here because this is the moment the
+     * customer actually received something.
+     *
+     * Both columns have existed since schema v1 and nothing wrote them, so
+     * first-response time and time-to-salesperson — two of the ten measures
+     * section 15 asks for — had no input at all. Queueing a reply is not
+     * answering a customer; Meta accepting it is.
+     *
+     * `first_response_at` uses coalesce so it records the first reply and never
+     * moves. A "first response" that updates on every message is just the last
+     * message's time wearing a misleading name.
+     */
+    await run(
+      `update conversations
+       set first_response_at = coalesce(first_response_at, now()),
+           last_staff_response_at = case
+             when $2::uuid is not null then now() else last_staff_response_at
+           end,
+           updated_at = now()
+       where id = $1 and operator_id = $3`,
+      [intent.conversationId, intent.sentByMembershipId, intent.operatorId],
+    )
+
     return { outcome: 'sent', providerMessageId }
   } catch (error) {
     if (error instanceof MetaUnknownOutcomeError) {

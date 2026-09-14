@@ -102,6 +102,7 @@ export default async function InboxPage({
         >
           Operations{openRequests.length > 0 ? ` (${openRequests.length})` : ''}
         </Link>
+        <Link className="button secondary" href="/reports">Reports</Link>
         <Link className="button secondary" href="/?handler=human">Human-owned</Link>
         <Link className="button secondary" href="/?handler=ai">AI-owned</Link>
         <Link className="button secondary" href="/?priority=urgent">Urgent</Link>
