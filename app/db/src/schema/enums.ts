@@ -222,3 +222,15 @@ export const quoteState = pgEnum('quote_state', [
   'superseded',
   'rejected',
 ])
+
+/**
+ * `needs_a_person` is a real outcome, not a failure state. A follow-up that
+ * falls outside the 24-hour window cannot be sent free-form at all, and the MVP
+ * requires a task rather than a silently dropped message.
+ */
+export const followUpState = pgEnum('follow_up_state', [
+  'scheduled',
+  'sent',
+  'cancelled',
+  'needs_a_person',
+])

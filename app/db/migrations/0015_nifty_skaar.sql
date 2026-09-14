@@ -1,0 +1,1 @@
+ALTER TABLE "operators" ADD COLUMN "follow_up_after_minutes" integer DEFAULT 240 NOT NULL;

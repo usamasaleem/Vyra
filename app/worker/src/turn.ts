@@ -10,6 +10,7 @@ import {
   requestHandoff,
   recordOutstandingWork,
   recordRejectedTurn,
+  scheduleFollowUp,
   recordTurnFailure,
   raiseHandoff,
   type TurnDestination,
@@ -305,6 +306,28 @@ export async function runConversationTurn(
         messageId: context.message.id,
       })
     }
+  }
+
+  /**
+   * The agent has replied, so the ball is with the customer. Schedule a chase
+   * in case it stays there.
+   *
+   * Not scheduled when the turn handed off — a person owns that conversation
+   * and does not need the agent chasing beside them. Every other stop condition
+   * is inside `scheduleFollowUp`'s own predicate rather than checked here, so
+   * no future caller can skip them.
+   */
+  if (!ownHandoff) {
+    const [operator] = await deps.run(
+      `select follow_up_after_minutes from operators where id = $1`,
+      [context.operator.id],
+    )
+    await scheduleFollowUp(deps.run, {
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+      reason: 'awaiting_customer',
+      afterMinutes: Number(operator?.['follow_up_after_minutes'] ?? 240),
+    })
   }
 
   return accepted.destination === 'draft'

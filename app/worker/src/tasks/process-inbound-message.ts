@@ -1,5 +1,5 @@
 import { detectOptOut } from '@vyra/contracts'
-import { recordOptOut } from '@vyra/db'
+import { cancelFollowUps, recordOptOut } from '@vyra/db'
 import { loadConversationContext, type ConversationContext } from '../context.js'
 import type { QueryRunner } from '../relay.js'
 
@@ -110,6 +110,19 @@ export async function processInboundMessage(
   ) {
     return { outcome: 'operator_mismatch' }
   }
+
+  /**
+   * The customer replied, so stop chasing them.
+   *
+   * Section 11: reopen a lead when the customer replies. A scheduled chase that
+   * survives a reply is the message that arrives an hour after the customer
+   * already answered, asking whether they are still interested.
+   */
+  await cancelFollowUps(run, {
+    operatorId: context.operator.id,
+    conversationId: context.conversation.id,
+    reason: 'customer_replied',
+  })
 
   /**
    * Opt-out is checked here, before anything else looks at the message, and

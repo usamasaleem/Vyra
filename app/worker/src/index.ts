@@ -5,6 +5,7 @@ import { dispatchMessage } from './dispatcher.js'
 import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
 import { escalateOverdueHandoffs } from '@vyra/db'
+import { sendDueFollowUps } from './follow-ups.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient } from './whatsapp/client.js'
@@ -108,6 +109,13 @@ async function relayLoop(): Promise<void> {
               ? 'no fallback owner configured for this operator'
               : undefined,
           })
+        }
+
+        // Chases that have come due. On the same sweep as the escalation check
+        // because both are the system keeping a promise on a timer.
+        const chased = await sendDueFollowUps(query, log)
+        if (chased.sent > 0 || chased.raisedForAPerson > 0) {
+          log({ event: 'followups.swept', ...chased })
         }
 
         const abandoned = await releaseAbandonedJobs(query)

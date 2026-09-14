@@ -37,12 +37,25 @@ cancelled as (
     and m.sent_by_membership_id is null
   returning m.id
 ),
+chased as (
+  -- Section 11: stop automation after human takeover. A salesperson who has
+  -- taken a conversation does not want the agent chasing beside them.
+  update follow_ups f
+  set state = 'cancelled', cancelled_reason = 'taken_over', cancelled_at = now(),
+      updated_at = now()
+  from taken t
+  where f.conversation_id = t.id and f.operator_id = t.operator_id and f.state = 'scheduled'
+  returning f.id
+),
 audited as (
   insert into audit_events (
     operator_id, actor_type, actor_id, action, subject_type, subject_id, subject_version, data
   )
   select t.operator_id, 'user', $3, 'conversation.takeover', 'conversation', t.id, t.revision,
-         jsonb_build_object('cancelled_drafts', (select count(*) from cancelled))
+         jsonb_build_object(
+           'cancelled_drafts', (select count(*) from cancelled),
+           'cancelled_follow_ups', (select count(*) from chased)
+         )
   from taken t
   returning id
 )

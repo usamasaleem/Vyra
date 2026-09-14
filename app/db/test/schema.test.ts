@@ -62,6 +62,7 @@ describe('schema v1 applies', () => {
       'enquiries',
       // Every extracted fact with its source message and extraction time.
       'field_evidence',
+      'follow_ups',
       'handoffs',
       'inbound_events',
       // Approved operator knowledge, versioned, with a check constraint that

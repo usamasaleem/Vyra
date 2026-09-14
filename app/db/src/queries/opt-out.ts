@@ -54,6 +54,19 @@ cancelled as (
     )
   returning m.id
 ),
+chased as (
+  -- Stop every scheduled chase. Continuing to follow up someone who asked for
+  -- silence is the precise behaviour that gets a business number reported.
+  update follow_ups f
+  set state = 'cancelled', cancelled_reason = 'opted_out', cancelled_at = now(),
+      updated_at = now()
+  from opted o
+  where f.operator_id = o.operator_id and f.state = 'scheduled'
+    and f.conversation_id in (
+      select id from conversations where contact_id = o.id and operator_id = o.operator_id
+    )
+  returning f.id
+),
 audited as (
   insert into audit_events (
     operator_id, actor_type, action, subject_type, subject_id, subject_version, data
