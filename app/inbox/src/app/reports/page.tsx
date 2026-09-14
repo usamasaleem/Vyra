@@ -30,7 +30,7 @@ const LOST_REASON_LABEL: Record<string, string> = {
 
 function Measure({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="card" style={{ minWidth: '9rem' }}>
+    <div className="card">
       <div className="muted" style={{ fontSize: '0.78rem', letterSpacing: '0.03em' }}>{label}</div>
       <div style={{ fontSize: '1.6rem', fontWeight: 600, marginTop: '0.2rem' }}>{value}</div>
       {note !== undefined && (
@@ -53,7 +53,7 @@ export default async function ReportsPage({
   const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%`)
 
   return (
-    <main className="wrap">
+    <main className="shell">
       <h1>Reporting</h1>
       <p className="muted">
         The ten sales measures. Fleet, utilisation, payments and maintenance belong to Operations,
@@ -67,7 +67,7 @@ export default async function ReportsPage({
         <Link className="button secondary" href="/">Conversations</Link>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1.2rem' }}>
+      <div className="measures">
         <Measure label="ENQUIRIES" value={String(m.enquiries)} />
         <Measure
           label="FIRST RESPONSE"

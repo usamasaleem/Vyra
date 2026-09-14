@@ -65,6 +65,9 @@ a { color: var(--accent); }
   font: inherit; font-weight: 500; cursor: pointer;
   padding: 0.55rem 0.95rem; border-radius: 7px;
   background: var(--accent); color: #fff; border: 1px solid transparent;
+  /* Anchors carry .button too; without these a link-button renders
+     underlined and sits on the text baseline instead of as a box. */
+  display: inline-block; text-decoration: none; line-height: 1.2;
 }
 .button.secondary { background: transparent; color: var(--text); border-color: var(--border); }
 .button:hover { filter: brightness(1.05); }
@@ -77,3 +80,11 @@ a { color: var(--accent); }
   text-transform: uppercase; padding: 0.15rem 0.45rem; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border);
 }
+
+/* Reporting tiles. auto-fit keeps every tile the same width and lets the row
+   reflow on a narrow screen without any media query. */
+.measures {
+  display: grid; gap: 0.6rem; margin-bottom: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+}
+.measures .card { padding: 0.9rem 1rem; }

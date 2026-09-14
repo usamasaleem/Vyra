@@ -45,7 +45,7 @@ export default async function HandoffsPage({
   })
 
   return (
-    <main className="wrap">
+    <main className="shell">
       <h1>Handoff queue</h1>
       <p className="muted">
         Conversations the agent could not finish. Accepting one assigns the conversation to you.

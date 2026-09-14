@@ -241,7 +241,7 @@ describe('entering a rate', () => {
   /** A vehicle with no rate must be visible, not absent. */
   it('lists a vehicle that has no rate', async () => {
     const [row] = await listRates(run, OP)
-    expect(row).toMatchObject({ vehicleLabel: 'Ferrari 488 (Giallo)', dailyRateMinor: null })
+    expect(row).toMatchObject({ vehicleLabel: 'Ferrari 488 · Giallo', dailyRateMinor: null })
 
     await setVehicleRate(run, {
       operatorId: OP, vehicleId, confirmedBy: 'sara@example.com',

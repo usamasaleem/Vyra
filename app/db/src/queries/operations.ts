@@ -229,7 +229,7 @@ export async function listOpenOperationsRequests(
             extract(epoch from now() - r.created_at)::int / 60 as waiting_minutes,
             case when v.id is null then null
                  else v.make || ' ' || v.model || coalesce(' ' || v.variant, '') ||
-                      ' (' || v.colour || ')' end as vehicle_label,
+                      ' · ' || v.colour end as vehicle_label,
             c.display_name, c.channel_identifier
      from operations_requests r
      left join vehicles v on v.id = r.vehicle_id and v.operator_id = r.operator_id

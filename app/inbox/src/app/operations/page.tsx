@@ -26,7 +26,7 @@ export default async function OperationsPage() {
   ])
 
   return (
-    <main className="wrap">
+    <main className="shell">
       <h1>Operations requests</h1>
       <p className="muted">
         Questions the agent could not answer. A customer is waiting on each of these, and the

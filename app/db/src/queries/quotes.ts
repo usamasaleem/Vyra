@@ -341,7 +341,7 @@ export async function listRates(run: QueryRunner, operatorId: string): Promise<R
   const rows = await run(
     `select v.id as vehicle_id,
             v.make || ' ' || v.model || coalesce(' ' || v.variant, '') ||
-              ' (' || v.colour || ')' as vehicle_label,
+              ' · ' || v.colour as vehicle_label,
             r.id as rate_id, coalesce(r.currency, 'AED') as currency,
             r.daily_rate_minor, r.weekly_rate_minor, r.monthly_rate_minor, r.minimum_days,
             r.included_km_per_day, r.extra_km_rate_minor, r.deposit_minor,

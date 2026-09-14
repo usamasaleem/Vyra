@@ -75,7 +75,7 @@ describe('asking Operations', () => {
     // "the yellow one" is how the person checking knows they have the right car.
     expect(item).toMatchObject({
       requestedVehicle: 'the yellow one',
-      vehicleLabel: 'Ferrari 488 (Giallo)',
+      vehicleLabel: 'Ferrari 488 · Giallo',
       customerName: 'Layla',
       startDate: '2026-09-17',
     })

@@ -20,7 +20,7 @@ export default async function RatesPage() {
   const unpriced = rates.filter((r) => r.dailyRateMinor === null).length
 
   return (
-    <main className="wrap">
+    <main className="shell">
       <h1>Rates</h1>
       <p className="muted">
         The agent prices from these and from nothing else. A vehicle with no rate cannot be

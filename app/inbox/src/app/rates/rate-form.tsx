@@ -44,13 +44,14 @@ export function RateForm({
     <label style={{ fontSize: '0.82rem', display: 'block' }}>
       {label}
       <input
+        className="input"
         name={name}
         type="number"
         min={0}
         step={opts.step ?? '0.01'}
         required={opts.required}
         defaultValue={value}
-        style={{ width: '100%', marginTop: '0.15rem' }}
+        style={{ marginTop: '0.2rem' }}
       />
     </label>
   )
