@@ -380,7 +380,9 @@ describe('a message the agent cannot read', () => {
       `select handler_mode::text as mode, next_action from conversations where id = $1`, [CONV],
     )
     expect(conversation).toMatchObject({ mode: 'human' })
-    expect(conversation!['next_action']).toContain('audio')
+    // Words, not the enum. "Customer sent a audio" reached a real queue.
+    expect(conversation!['next_action']).toContain('a voice note')
+    expect(conversation!['next_action']).not.toContain('a audio')
   })
 
   it('acknowledges once, however many times the job is retried', async () => {

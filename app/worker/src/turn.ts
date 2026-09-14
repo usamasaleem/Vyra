@@ -42,6 +42,24 @@ export type TurnResult =
   | { outcome: 'needs_a_person'; reason: 'non_text_message' }
   | { outcome: 'skipped'; reason: 'no_model_configured' | 'no_enquiry' | 'no_message_body' }
 
+/**
+ * What a salesperson reads in the queue.
+ *
+ * The message kind is a database enum, and interpolating it into a sentence
+ * produced "Customer sent a audio the agent cannot read" — which a person
+ * reads, in a list of things asking for their attention, and which looks
+ * broken. "a image" and "a video" were queued up behind it.
+ */
+const NON_TEXT_DESCRIPTION: Record<string, string> = {
+  audio: 'a voice note',
+  image: 'a photo',
+  video: 'a video',
+  document: 'a document',
+  sticker: 'a sticker',
+  location: 'a location',
+  contacts: 'a contact card',
+}
+
 /** What a customer hears when they send something the agent cannot read. */
 const NON_TEXT_ACKNOWLEDGEMENT: Record<string, string> = {
   audio: "Thanks — I can't listen to voice notes, so I'm passing this to a colleague who will.",
@@ -77,7 +95,7 @@ export async function handleNonTextMessage(
   await requestHandoff(deps.run, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
-    reason: `Customer sent a ${context.message.kind} the agent cannot read — review it and reply.`,
+    reason: `Customer sent ${NON_TEXT_DESCRIPTION[context.message.kind] ?? `a ${context.message.kind} message`} the agent cannot read — review it and reply.`,
   })
 
   /**
