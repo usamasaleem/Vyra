@@ -21,6 +21,104 @@
  */
 export type ReplyButton = { id: string; title: string }
 
+/**
+ * A tappable list, for the one question three buttons cannot hold: which car.
+ *
+ * Meta's limits, verified against the current documentation rather than
+ * recalled: ten rows across at most ten sections, row title 24 characters, row
+ * description 72, the button text that opens the list 20. Every one is enforced
+ * here rather than trusted, because the failure is a rejected send.
+ */
+export type ReplyList = {
+  button: string
+  rows: Array<{ id: string; title: string; description?: string }>
+}
+
+export const LIST_LIMITS = {
+  rows: 10,
+  rowTitle: 24,
+  rowDescription: 72,
+  buttonText: 20,
+  rowId: 200,
+} as const
+
+/**
+ * The prefix that marks a row as naming a vehicle, so a tap comes back as a
+ * sentence about that car rather than as a bare id.
+ */
+const VEHICLE_ROW = 'vehicle:'
+
+/**
+ * A list of cars to choose from, or null to describe them in prose.
+ *
+ * Null whenever there is nothing to choose between: one car is an answer, not a
+ * menu, and a fleet too large to list is described the way a salesperson would
+ * describe it. Structure where there is a genuine choice, prose everywhere
+ * else — a list attached to every reply is the flow-builder product this one is
+ * deliberately not.
+ */
+export function vehicleList(
+  vehicles: Array<{
+    make: string
+    model: string
+    variant: string | null
+    colour: string
+    engine: string | null
+    dayRate: string | null
+  }>,
+): ReplyList | null {
+  if (vehicles.length < 2 || vehicles.length > LIST_LIMITS.rows) return null
+
+  return {
+    button: 'See the cars',
+    rows: vehicles.map((v) => {
+      const name = `${v.make} ${v.model}`
+      // Colour first because it is what a customer recognises, then the engine,
+      // then the price. Truncated on a word where it can be.
+      const detail = [
+        v.colour.replace(/\s*\([^)]*\)/, ''),
+        v.engine,
+        v.dayRate === null ? null : `${v.dayRate}/day`,
+      ].filter((part): part is string => part !== null && part !== '').join(' · ')
+
+      return {
+        id: `${VEHICLE_ROW}${name}`.slice(0, LIST_LIMITS.rowId),
+        title: name.slice(0, LIST_LIMITS.rowTitle),
+        description: detail.slice(0, LIST_LIMITS.rowDescription),
+      }
+    }),
+  }
+}
+
+/**
+ * The reply is inviting a choice between cars.
+ *
+ * Narrow on purpose, and checked against the reply rather than assumed from the
+ * tool call: search_vehicles returning three cars does not mean the agent asked
+ * the customer to pick one. It may have been answering "what do you have in
+ * orange", which is a sentence, not a menu.
+ */
+const ASKS_WHICH_CAR: RegExp[] = [
+  /\bwhich (?:one|car|model|of (?:them|these))\b/i,
+  /\b(?:any|either) of (?:them|these)\b/i,
+  /\blet me know which\b/i,
+  /\btake your pick\b/i,
+]
+
+export function invitesACarChoice(reply: string | null): boolean {
+  if (reply === null || reply.trim() === '') return false
+
+  /**
+   * One question per message, the same rule the buttons follow. A reply that
+   * confirms the dates and asks which car cannot be answered by one tap, and a
+   * list beside it answers the wrong one — the customer picks a car and the
+   * date question goes unanswered, which is worse than having typed.
+   */
+  if ((reply.match(/\?/g) ?? []).length > 1) return false
+
+  return ASKS_WHICH_CAR.some((p) => p.test(reply))
+}
+
 export const DATE_CONFIRMATION: ReplyButton[] = [
   { id: 'dates_confirmed', title: 'Yes, correct' },
   { id: 'dates_wrong', title: 'Different dates' },
@@ -93,5 +191,8 @@ const BUTTON_MEANINGS: Record<string, string> = {
 }
 
 export function meaningOfButton(id: string, title: string): string {
+  // A tapped car comes back as the sentence a customer would have typed, so the
+  // extraction and the transcript see a vehicle preference rather than an id.
+  if (id.startsWith(VEHICLE_ROW)) return `${id.slice(VEHICLE_ROW.length)}, please.`
   return BUTTON_MEANINGS[id] ?? title
 }

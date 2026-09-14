@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buttonsFor, DATE_CONFIRMATION, DELIVERY_CHOICE, meaningOfButton } from '../src/confirmations.ts'
+import {
+  buttonsFor, DATE_CONFIRMATION, DELIVERY_CHOICE, invitesACarChoice, LIST_LIMITS,
+  meaningOfButton, vehicleList,
+} from '../src/confirmations.ts'
 
 describe("Meta's limits", () => {
   it.each([...DATE_CONFIRMATION, ...DELIVERY_CHOICE])('$title fits in a button', (button) => {
@@ -68,5 +71,96 @@ describe('meaningOfButton', () => {
 
   it('falls back to the title for a button it does not know', () => {
     expect(meaningOfButton('something_new', 'Something new')).toBe('Something new')
+  })
+})
+
+describe('vehicleList', () => {
+  const FLEET = [
+    { make: 'Rolls-Royce', model: 'Cullinan', variant: null, colour: 'English White',
+      engine: '6.75L V12', dayRate: 'AED 8,000' },
+    { make: 'Lamborghini', model: 'Huracán', variant: 'EVO Spyder',
+      colour: 'Arancio Borealis (orange)', engine: '5.2L V10', dayRate: 'AED 5,500' },
+    { make: 'Ferrari', model: '488', variant: 'Spider', colour: 'Giallo Modena (yellow)',
+      engine: '3.9L V8', dayRate: null },
+  ]
+
+  it('builds a row per car, within every limit Meta enforces', () => {
+    const list = vehicleList(FLEET)!
+    expect(list.rows).toHaveLength(3)
+    expect(list.button.length).toBeLessThanOrEqual(LIST_LIMITS.buttonText)
+    for (const row of list.rows) {
+      expect(row.title.length).toBeLessThanOrEqual(LIST_LIMITS.rowTitle)
+      expect(row.description!.length).toBeLessThanOrEqual(LIST_LIMITS.rowDescription)
+      expect(row.id.length).toBeLessThanOrEqual(LIST_LIMITS.rowId)
+    }
+  })
+
+  it('shows the colour a customer would recognise, and the price', () => {
+    const [, huracan] = vehicleList(FLEET)!.rows
+    expect(huracan!.title).toBe('Lamborghini Huracán')
+    // The manufacturer's gloss is dropped: "Arancio Borealis", not "(orange)".
+    expect(huracan!.description).toBe('Arancio Borealis · 5.2L V10 · AED 5,500/day')
+  })
+
+  it('says nothing about a price nobody confirmed', () => {
+    const [, , ferrari] = vehicleList(FLEET)!.rows
+    expect(ferrari!.description).toBe('Giallo Modena · 3.9L V8')
+  })
+
+  /** One car is an answer, not a menu. */
+  it('refuses to make a list of one', () => {
+    expect(vehicleList([FLEET[0]!])).toBeNull()
+    expect(vehicleList([])).toBeNull()
+  })
+
+  /** Meta allows ten rows; a bigger fleet is described the way a person would. */
+  it('refuses a fleet too large to list', () => {
+    const many = Array.from({ length: 11 }, (_, i) => ({ ...FLEET[0]!, model: `Car ${i}` }))
+    expect(vehicleList(many)).toBeNull()
+  })
+})
+
+describe('invitesACarChoice', () => {
+  it.each([
+    'We have three that would suit — which one appeals?',
+    'Let me know which of these you like.',
+    'Take your pick.',
+  ])('reads %j as inviting a choice', (reply) => {
+    expect(invitesACarChoice(reply)).toBe(true)
+  })
+
+  /**
+   * A search returning three cars does not mean the agent asked the customer to
+   * pick one. It may have been answering "what do you have in orange".
+   */
+  it.each([
+    'We have the Cullinan, the Huracán and the 488 Spider.',
+    'What dates are you looking at?',
+    'The Cullinan is AED 8,000 per day.',
+  ])('reads %j as an answer, not a menu', (reply) => {
+    expect(invitesACarChoice(reply)).toBe(false)
+  })
+
+  /**
+   * Seen from the live model: it confirmed the weekend dates and asked which
+   * car in the same message. One tap answers the wrong one, and the date
+   * question is left hanging.
+   */
+  it('declines when the reply also asks something else', () => {
+    expect(invitesACarChoice(
+      'I’ve got the weekend as 19th–20th September, right? Which one should I price?',
+    )).toBe(false)
+  })
+})
+
+describe('a tapped car', () => {
+  it('comes back as a sentence the conversation can use', () => {
+    const [cullinan] = vehicleList([
+      { make: 'Rolls-Royce', model: 'Cullinan', variant: null, colour: 'English White',
+        engine: '6.75L V12', dayRate: 'AED 8,000' },
+      { make: 'Ferrari', model: '488', variant: 'Spider', colour: 'Giallo Modena (yellow)',
+        engine: '3.9L V8', dayRate: 'AED 5,000' },
+    ])!.rows
+    expect(meaningOfButton(cullinan!.id, cullinan!.title)).toBe('Rolls-Royce Cullinan, please.')
   })
 })

@@ -84,3 +84,64 @@ describe('sending', () => {
     expect(sent.interactive.action.buttons[0]!.reply.title).toHaveLength(20)
   })
 })
+
+describe('sending a list', () => {
+  const LIST = {
+    button: 'See the cars',
+    rows: [
+      { id: 'vehicle:Rolls-Royce Cullinan', title: 'Rolls-Royce Cullinan',
+        description: 'English White · 6.75L V12 · AED 8,000/day' },
+      { id: 'vehicle:Ferrari 488', title: 'Ferrari 488', description: 'Giallo Modena · 3.9L V8' },
+    ],
+  }
+
+  it('sends the shape Meta expects', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Which one appeals?', list: LIST })
+
+    expect(calls[0]).toMatchObject({
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: 'Which one appeals?' },
+        action: {
+          button: 'See the cars',
+          sections: [{ rows: [
+            { id: 'vehicle:Rolls-Royce Cullinan', title: 'Rolls-Royce Cullinan' },
+            { id: 'vehicle:Ferrari 488', title: 'Ferrari 488' },
+          ] }],
+        },
+      },
+    })
+  })
+
+  /** A list body may run to 4096, so a long one does not fall back to text. */
+  it('keeps the list even when the body is long for a button message', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'x'.repeat(1100), list: LIST })
+    expect(calls[0]).toMatchObject({ type: 'interactive', interactive: { type: 'list' } })
+  })
+
+  /** A message carries one or the other. The list is the richer offer. */
+  it('prefers the list when both are supplied', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Pick one', buttons: BUTTONS, list: LIST })
+    expect(calls[0]).toMatchObject({ interactive: { type: 'list' } })
+  })
+
+  it('omits an empty description rather than sending a blank one', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001', body: 'Pick one',
+      list: { button: 'Cars', rows: [{ id: 'a', title: 'A', description: '' }] },
+    })
+    const sent = calls[0] as { interactive: { action: { sections: Array<{ rows: Array<Record<string, unknown>> }> } } }
+    expect(sent.interactive.action.sections[0]!.rows[0]).not.toHaveProperty('description')
+  })
+
+  it.each([null, undefined, { button: 'x', rows: [] }])('falls back to text for %j', async (list) => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Nice choice.', list })
+    expect(calls[0]).toMatchObject({ type: 'text' })
+  })
+})

@@ -90,6 +90,8 @@ export async function acceptTurnOutput(
     ownHandoff?: boolean
     /** Reply buttons to offer with this message, or null for plain text. */
     replyButtons?: Array<{ id: string; title: string }> | null
+    /** A tappable list of options. A message carries buttons or a list, not both. */
+    replyList?: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -156,6 +158,7 @@ export async function acceptTurnOutput(
     // 18.12: never build a second way to send.
     const queued = await queueOutboundText(tx, {
       replyButtons: input.replyButtons ?? null,
+      replyList: input.replyList ?? null,
       conversationId: input.conversationId,
       operatorId: input.operatorId,
       body: input.body,

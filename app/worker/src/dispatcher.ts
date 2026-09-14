@@ -21,6 +21,8 @@ export type SendIntent = {
   kind: string
   /** Reply buttons offered with this message, or null for plain text. */
   replyButtons: Array<{ id: string; title: string }> | null
+  /** A tappable list, for choosing between cars. */
+  replyList: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
   /** Null for AI messages, set for a salesperson's own message. */
   sentByMembershipId: string | null
   revisionAtSend: number | null
@@ -120,7 +122,7 @@ export type DispatchResult =
 
 const LOAD_INTENT_SQL = `
   select
-    m.id, m.operator_id, m.conversation_id, m.body, m.kind, m.reply_buttons,
+    m.id, m.operator_id, m.conversation_id, m.body, m.kind, m.reply_buttons, m.reply_list,
     m.sent_by_membership_id, m.revision_at_send,
     v.revision, v.handler_mode, v.owner_membership_id, v.last_customer_message_at,
     c.channel_identifier, c.opted_out_at,
@@ -167,6 +169,7 @@ export async function dispatchMessage(
     // jsonb arrives parsed from postgres.js and from PGlite alike.
     replyButtons:
       (row['reply_buttons'] as Array<{ id: string; title: string }> | null) ?? null,
+    replyList: (row['reply_list'] as SendIntent['replyList']) ?? null,
     sentByMembershipId: (row['sent_by_membership_id'] as string) ?? null,
     revisionAtSend: row['revision_at_send'] === null ? null : Number(row['revision_at_send']),
     conversationRevision: Number(row['revision']),
@@ -194,6 +197,7 @@ export async function dispatchMessage(
       // Stored with the message when it was queued, so what the customer was
       // offered survives a retry and a restart.
       buttons: intent.replyButtons,
+      list: intent.replyList,
     })
     await run(
       `update messages

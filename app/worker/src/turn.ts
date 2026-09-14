@@ -1,4 +1,16 @@
-import { buttonsFor, detectDiscountRequest } from '@vyra/contracts'
+import {
+  buttonsFor, detectDiscountRequest, invitesACarChoice, vehicleList,
+} from '@vyra/contracts'
+
+/** The shape search_vehicles returns, as much of it as a list row needs. */
+type VehicleRow = {
+  make: string
+  model: string
+  variant: string | null
+  colour: string
+  engine: string | null
+  dayRate: string | null
+}
 import {
   classifyTurnEnd,
   promiseMadeIn,
@@ -192,7 +204,12 @@ export async function runConversationTurn(
    * cannot reach a variable assigned later in a try/catch, and naming the shape
    * is better than widening it to any.
    */
-  let end: (TurnEnd & { rounds: number; usage?: TurnUsage }) | undefined
+  let end: (TurnEnd & {
+    rounds: number
+    usage?: TurnUsage
+    /** What the tools returned, so the reply can offer what they found. */
+    toolResults: Array<{ name: string; result: { status: string } }>
+  }) | undefined
 
   /**
    * One row per turn, written on every path out of this function.
@@ -254,6 +271,7 @@ export async function runConversationTurn(
       toolCalls: outcome.toolCalls,
       rounds: outcome.rounds,
       usage: outcome.usage,
+      toolResults: outcome.toolResults,
     }
   } catch (error) {
     end = {
@@ -261,6 +279,7 @@ export async function runConversationTurn(
       stoppedBecause: 'error' as const,
       toolCalls: [],
       rounds: 0,
+      toolResults: [],
       // A provider that threw reported no usage, and the tokens it may still
       // have charged for are not knowable from here. Undefined says so.
       usage: undefined,
@@ -323,6 +342,29 @@ export async function runConversationTurn(
     })
   }
 
+  /**
+   * What the customer can tap, if anything.
+   *
+   * A list of cars only when the reply actually invites a choice: three
+   * vehicles coming back from a search does not mean the agent asked the
+   * customer to pick one, and a menu attached to an answer is the flow-builder
+   * product this is deliberately not.
+   *
+   * The vehicles come from what the tools returned this turn, not from the
+   * reply text, so the rows are the cars the agent was actually looking at.
+   */
+  const searched = end.toolResults
+    .filter((r) => r.name === 'search_vehicles' && r.result.status === 'ok')
+    .at(-1)
+  const fleet = searched === undefined
+    ? []
+    : ((searched.result as { data?: { fleet?: VehicleRow[] } }).data?.fleet ?? [])
+
+  const offered = {
+    buttons: buttonsFor(end.reply),
+    list: invitesACarChoice(end.reply) ? vehicleList(fleet) : null,
+  }
+
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
@@ -333,7 +375,8 @@ export async function runConversationTurn(
      * else — which is nearly everything — goes as plain text, because a menu
      * on an open question is the fixed-flow bot this is not.
      */
-    replyButtons: buttonsFor(end.reply),
+    replyButtons: offered.list === null ? offered.buttons : null,
+    replyList: offered.list,
     // Per inbound message, so a retried job cannot produce a second reply to
     // the same customer message.
     idempotencyKey: `turn:${context.message.id}`,

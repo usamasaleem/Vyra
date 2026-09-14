@@ -47,6 +47,14 @@ export type SendTextInput = {
    * tap; see the confirmations module for why that restraint is the design.
    */
   buttons?: Array<{ id: string; title: string }> | null
+  /**
+   * A tappable list, for the one question three buttons cannot hold. A message
+   * carries buttons or a list, never both — the list wins if both arrive.
+   */
+  list?: {
+    button: string
+    rows: Array<{ id: string; title: string; description?: string }>
+  } | null
 }
 
 export type SendTextResult = {
@@ -73,7 +81,7 @@ export function createWhatsAppClient(config: {
   const timeoutMs = config.timeoutMs ?? 15_000
 
   return {
-    async sendText({ to, body, buttons }) {
+    async sendText({ to, body, buttons, list }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
 
       /**
@@ -85,7 +93,40 @@ export function createWhatsAppClient(config: {
         buttons !== undefined && buttons !== null && buttons.length > 0
         && buttons.length <= 3 && body.length <= 1024
 
-      const payload = useButtons
+      /**
+       * A list body may run to 4096 characters, unlike the 1024 a button
+       * message allows, so no length fallback is needed here. Ten rows is the
+       * hard ceiling; anything longer was never built.
+       */
+      const useList =
+        list !== undefined && list !== null && list.rows.length > 0 && list.rows.length <= 10
+
+      const payload = useList
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'interactive',
+            interactive: {
+              type: 'list',
+              body: { text: body },
+              action: {
+                button: list.button.slice(0, 20),
+                sections: [{
+                  rows: list.rows.map((r) => ({
+                    id: r.id.slice(0, 200),
+                    title: r.title.slice(0, 24),
+                    // Omitted rather than sent empty: Meta rejects a blank
+                    // description where it accepts an absent one.
+                    ...(r.description === undefined || r.description === ''
+                      ? {}
+                      : { description: r.description.slice(0, 72) }),
+                  })),
+                }],
+              },
+            },
+          }
+        : useButtons
         ? {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',

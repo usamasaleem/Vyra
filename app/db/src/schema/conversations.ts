@@ -208,6 +208,21 @@ export const messages = pgTable(
      */
     replyButtons: jsonb().$type<Array<{ id: string; title: string }> | null>(),
 
+    /**
+     * A tappable list of options, for the one question buttons cannot hold:
+     * which car.
+     *
+     * Separate from replyButtons rather than one polymorphic column, because a
+     * message carries at most one of them and two typed columns say that more
+     * plainly than one column with a discriminator inside it. Meta allows ten
+     * rows; a fleet larger than that is described in prose instead, which is
+     * what a salesperson would do anyway.
+     */
+    replyList: jsonb().$type<{
+      button: string
+      rows: Array<{ id: string; title: string; description?: string }>
+    } | null>(),
+
     deliveryState: deliveryState().notNull().default('pending'),
     errorCode: text(),
     errorDetail: text(),
