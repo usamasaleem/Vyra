@@ -1,4 +1,4 @@
-import { createClient, type Sql } from '@vyra/db'
+import { createClient, type Sql, type Transactor } from '@vyra/db'
 import type { QueryRunner } from './whatsapp/ingest'
 import { serverEnv } from './env'
 
@@ -20,4 +20,21 @@ export function queryRunner(): QueryRunner {
   const sql = sqlClient()
   return async (text, params) =>
     (await sql.unsafe(text, params as never[])) as unknown as Array<Record<string, unknown>>
+}
+
+/**
+ * A transaction, for the queries that need several statements to agree.
+ *
+ * The inbox has managed without one until now because every action it performs
+ * is a single statement, which is atomic on its own. Publishing an operator
+ * answer is not: the current version is closed and the new one opened, and a
+ * failure between them would leave a topic with no live answer at all.
+ */
+export function transactor(): Transactor {
+  const sql = sqlClient()
+  return ((fn: (tx: QueryRunner) => Promise<unknown>) =>
+    sql.begin((tx) =>
+      fn(async (text, params) =>
+        (await tx.unsafe(text, params as never[])) as unknown as Array<Record<string, unknown>>),
+    )) as Transactor
 }

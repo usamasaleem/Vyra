@@ -20,6 +20,7 @@ const DESTINATIONS = [
   { key: 'handoffs', href: '/handoffs', label: 'Handoffs' },
   { key: 'operations', href: '/operations', label: 'Operations' },
   { key: 'rates', href: '/rates', label: 'Rates' },
+  { key: 'knowledge', href: '/knowledge', label: 'Answers' },
   { key: 'reports', href: '/reports', label: 'Reports' },
 ] as const
 
