@@ -35,10 +35,32 @@ export type ModelRequest = {
   tools: ToolDefinition[]
 }
 
+/**
+ * What one model call cost, in tokens.
+ *
+ * Reasoning tokens are separated because they are billed as output and are
+ * invisible in the reply — a turn can be expensive and look cheap. Cached input
+ * tokens are separated because they are billed at a lower rate, so a total that
+ * ignores them overstates the bill.
+ *
+ * Every field is optional: a provider that reports nothing must not force a
+ * zero, which would read as "this turn was free" rather than "nobody said".
+ */
+export type ModelUsage = {
+  inputTokens?: number
+  outputTokens?: number
+  /** Billed as output, and not visible anywhere in the reply. */
+  reasoningTokens?: number
+  /** A subset of inputTokens, billed cheaper. */
+  cachedInputTokens?: number
+}
+
 export type ModelResponse = {
   toolCalls: ModelToolCall[]
   /** The customer-facing reply, or null when the model only wants tools. */
   reply: string | null
+  /** Absent when the provider did not report it. Absent is not zero. */
+  usage?: ModelUsage
 }
 
 export type ModelAdapter = {

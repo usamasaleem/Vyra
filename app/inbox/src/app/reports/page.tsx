@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { SiteNav } from '../site-nav'
-import { formatDuration, getMetrics } from '@vyra/db'
+import { formatDuration, getAgentCosts, getMetrics } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
 
@@ -49,7 +49,16 @@ export default async function ReportsPage({
   const actor = await requireActor()
   const { range } = await searchParams
   const days = RANGES[range ?? 'week'] ?? 7
-  const m = await getMetrics(queryRunner(), actor.operatorId, new Date(Date.now() - days * 86_400_000))
+  const since = new Date(Date.now() - days * 86_400_000)
+  const run = queryRunner()
+  const [m, ai] = await Promise.all([
+    getMetrics(run, actor.operatorId, since),
+    getAgentCosts(run, actor.operatorId, since),
+  ])
+
+  // Thousands separators, and an em dash when nobody reported a number. "0"
+  // would say the turns were free rather than that the provider said nothing.
+  const tokens = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-US'))
 
   const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%`)
 
@@ -109,6 +118,68 @@ export default async function ReportsPage({
           note="flagged by staff"
         />
       </div>
+
+      {/*
+        What the AI did and what it cost.
+        
+        Here rather than on its own page because the question it answers —
+        "is this worth running" — is the same question the ten measures above
+        answer from the other side.
+      */}
+      <section style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1.05rem' }}>What the agent did</h2>
+        <div className="measures" style={{ marginTop: '0.8rem' }}>
+          <Measure label="TURNS" value={String(ai.runs)} note={`${ai.conversations} conversations`} />
+          <Measure label="MODEL CALLS" value={String(ai.modelCalls)} note="including the tool loop" />
+          <Measure label="INPUT TOKENS" value={tokens(ai.inputTokens)} note={`${tokens(ai.cachedInputTokens)} cached`} />
+          <Measure
+            label="OUTPUT TOKENS"
+            value={tokens(ai.outputTokens)}
+            note={`${tokens(ai.reasoningTokens)} reasoning`}
+          />
+        </div>
+
+        {ai.runsWithoutUsage > 0 && (
+          <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 1rem' }}>
+            {ai.runsWithoutUsage} turn{ai.runsWithoutUsage === 1 ? '' : 's'} reported no usage, so the
+            totals above are missing {ai.runsWithoutUsage === 1 ? 'it' : 'them'}.
+          </p>
+        )}
+
+        {ai.byModel.length > 0 && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem', display: 'grid', gap: '0.4rem' }}>
+            {ai.byModel.map((b) => (
+              <li
+                key={`${b.modelId}:${b.promptVersion}`}
+                className="card"
+                style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}
+              >
+                <span>
+                  {b.modelId} <span className="muted">· {b.promptVersion}</span>
+                </span>
+                <span className="muted">
+                  {b.runs} turn{b.runs === 1 ? '' : 's'} · {tokens(b.outputTokens)} out
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/*
+          How turns ended. 'drafted' is the one worth reading: it was paid for
+          and never reached a customer.
+        */}
+        {ai.byResultState.length > 0 && (
+          <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>
+            {ai.byResultState.map((r) => `${r.runs} ${r.state}`).join(' · ')}
+          </p>
+        )}
+
+        <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.8rem' }}>
+          Tokens, not money. Converting them needs the rates you actually pay, which nothing here
+          should invent.
+        </p>
+      </section>
 
       <section>
         <h2 style={{ fontSize: '1.05rem' }}>Why leads were lost</h2>

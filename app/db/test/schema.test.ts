@@ -51,6 +51,9 @@ describe('schema v1 applies', () => {
        where table_schema = 'public' order by table_name`,
     )
     expect(result.rows.map((r) => r.table_name)).toEqual([
+      // One row per AI turn: which prompt, which model, which revision, what it
+      // cost. §18.6. Without it every question about live behaviour is a guess.
+      'agent_runs',
       'audit_events',
       'contacts',
       // Internal notes live apart from messages on purpose: the dispatcher

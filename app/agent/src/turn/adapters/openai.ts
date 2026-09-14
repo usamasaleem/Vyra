@@ -80,6 +80,17 @@ export function openaiModel(options: {
           | { type: 'function_call'; call_id: string; name: string; arguments: string }
           | { type: 'message'; content: Array<{ type: string; text?: string }> }
         >
+        /**
+         * Optional in this type on purpose. It is documented, but a response
+         * without it must produce undefined usage rather than a crash — losing
+         * the reply because the meter is missing would be the wrong trade.
+         */
+        usage?: {
+          input_tokens?: number
+          output_tokens?: number
+          output_tokens_details?: { reasoning_tokens?: number }
+          input_tokens_details?: { cached_tokens?: number }
+        }
       }
 
       const toolCalls: ModelToolCall[] = []
@@ -99,9 +110,26 @@ export function openaiModel(options: {
         }
       }
 
-      return { toolCalls, reply: text.length > 0 ? text.join('\n').trim() : null }
+      /**
+       * Usage as the Responses API reports it. Read defensively: a missing
+       * block leaves the fields undefined rather than zero, because a turn
+       * whose cost nobody reported is not a free turn.
+       */
+      const u = body.usage
+      const usage = u === undefined || u === null ? undefined : {
+        inputTokens: numberOrUndefined(u.input_tokens),
+        outputTokens: numberOrUndefined(u.output_tokens),
+        reasoningTokens: numberOrUndefined(u.output_tokens_details?.reasoning_tokens),
+        cachedInputTokens: numberOrUndefined(u.input_tokens_details?.cached_tokens),
+      }
+
+      return { toolCalls, reply: text.length > 0 ? text.join('\n').trim() : null, usage }
     },
   }
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function parseArguments(raw: string): unknown {

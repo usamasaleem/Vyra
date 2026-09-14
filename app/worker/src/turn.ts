@@ -1,12 +1,16 @@
 import {
   classifyTurnEnd,
+  PROMPT_VERSION,
   runTurn,
   type ModelAdapter,
   type ToolContext,
+  type TurnEnd,
+  type TurnUsage,
 } from '@vyra/agent'
 import {
   acceptTurnOutput,
   ensureEnquiry,
+  recordAgentRun,
   requestHandoff,
   recordOutstandingWork,
   recordRejectedTurn,
@@ -176,7 +180,48 @@ export async function runConversationTurn(
    * job — spending money to reproduce an outage — while the customer waits
    * with no reply and nothing visible to a salesperson.
    */
-  let end
+  const startedAt = Date.now()
+
+  /**
+   * Declared up front because the recorder below closes over it. Inference
+   * cannot reach a variable assigned later in a try/catch, and naming the shape
+   * is better than widening it to any.
+   */
+  let end: (TurnEnd & { rounds: number; usage?: TurnUsage }) | undefined
+
+  /**
+   * One row per turn, written on every path out of this function.
+   *
+   * Placed here rather than at each return so no exit can quietly skip it: a
+   * run log with holes in it is worse than none, because the holes are exactly
+   * the turns worth looking at. The error is logged and swallowed — a turn that
+   * replied correctly must not become a failure because the record of it could
+   * not be written.
+   */
+  const record = async (resultState: string, detail?: string | null) => {
+    const outcome = await recordAgentRun(deps.run, {
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+      messageId: context.message.id,
+      inputRevision: revisionAtTurnStart,
+      promptVersion: PROMPT_VERSION,
+      modelId: deps.model?.modelId ?? 'none',
+      resultState,
+      detail: detail ?? null,
+      rounds: end?.rounds ?? 0,
+      toolNames: (end?.toolCalls ?? []).map((c) => `${c.requestedName}:${c.status}`),
+      durationMs: Date.now() - startedAt,
+      usage: end?.usage,
+    })
+    if (!outcome.recorded) {
+      console.error(JSON.stringify({
+        event: 'agent_run.record_failed',
+        conversationId: context.conversation.id,
+        error: outcome.error,
+      }))
+    }
+  }
+
   try {
     /**
      * The whole recent conversation, oldest first, not just the newest message.
@@ -198,12 +243,18 @@ export async function runConversationTurn(
       reply: outcome.reply,
       stoppedBecause: outcome.stoppedBecause,
       toolCalls: outcome.toolCalls,
+      rounds: outcome.rounds,
+      usage: outcome.usage,
     }
   } catch (error) {
     end = {
       reply: null,
       stoppedBecause: 'error' as const,
       toolCalls: [],
+      rounds: 0,
+      // A provider that threw reported no usage, and the tokens it may still
+      // have charged for are not knowable from here. Undefined says so.
+      usage: undefined,
       error: error instanceof Error ? error.message : String(error),
     }
   }
@@ -224,6 +275,7 @@ export async function runConversationTurn(
       summary: `The agent could not reply (${failure.kind}) — answer this customer manually.`,
       triggerMessageId: context.message.id,
     })
+    await record(failure.kind, failure.detail)
     return { outcome: 'failed', kind: failure.kind, detail: failure.detail }
   }
 
@@ -282,6 +334,7 @@ export async function runConversationTurn(
       revisionAtTurnStart,
       revisionNow: accepted.revisionNow,
     })
+    await record('rejected', accepted.reason)
     return { outcome: 'rejected', reason: accepted.reason }
   }
 
@@ -329,6 +382,10 @@ export async function runConversationTurn(
       afterMinutes: Number(operator?.['follow_up_after_minutes'] ?? 240),
     })
   }
+
+  // 'drafted' and 'queued' are different outcomes worth telling apart: a draft
+  // was paid for and never reached the customer.
+  await record(accepted.destination === 'draft' ? 'drafted' : 'queued')
 
   return accepted.destination === 'draft'
     ? { outcome: 'drafted', noteId: accepted.noteId }

@@ -22,6 +22,31 @@ export type TurnOutcome = {
   /** Results in call order, for checking what the reply was entitled to say. */
   toolResults: Array<{ name: string; result: ToolResult<unknown> }>
   transcript: TranscriptEntry[]
+  /**
+   * Every model call in this turn added together, not just the last one.
+   *
+   * A turn that looks up the fleet, records three fields and then answers is
+   * four billed calls, and the spec asks for the tool loop to be counted. A
+   * figure taken from the final call would understate the expensive turns by
+   * the most and the cheap ones not at all.
+   */
+  usage: TurnUsage
+}
+
+/**
+ * Summed usage, with a count of how many calls it came from.
+ *
+ * `reportedCalls` is what makes the sum readable: two calls that each reported
+ * usage and four that did not is a different number from six that all did, and
+ * without the count the total silently looks like the whole turn.
+ */
+export type TurnUsage = {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cachedInputTokens: number
+  modelCalls: number
+  reportedCalls: number
 }
 
 export type RunTurnOptions = {
@@ -63,6 +88,11 @@ export async function runTurn(
   )
   const toolResults: Array<{ name: string; result: ToolResult<unknown> }> = []
 
+  const usage: TurnUsage = {
+    inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cachedInputTokens: 0,
+    modelCalls: 0, reportedCalls: 0,
+  }
+
   let rounds = 0
   while (rounds < maxRounds) {
     rounds++
@@ -71,6 +101,15 @@ export async function runTurn(
       transcript: [...transcript],
       tools: boundary.definitions,
     })
+
+    usage.modelCalls++
+    if (response.usage !== undefined) {
+      usage.reportedCalls++
+      usage.inputTokens += response.usage.inputTokens ?? 0
+      usage.outputTokens += response.usage.outputTokens ?? 0
+      usage.reasoningTokens += response.usage.reasoningTokens ?? 0
+      usage.cachedInputTokens += response.usage.cachedInputTokens ?? 0
+    }
 
     if (response.toolCalls.length > 0) {
       transcript.push({ from: 'agent', toolCalls: response.toolCalls })
@@ -90,6 +129,7 @@ export async function runTurn(
         toolCalls: boundary.history,
         toolResults,
         transcript,
+        usage,
       }
     }
 
@@ -103,6 +143,7 @@ export async function runTurn(
         toolCalls: boundary.history,
         toolResults,
         transcript,
+        usage,
       }
     }
   }
@@ -114,5 +155,6 @@ export async function runTurn(
     toolCalls: boundary.history,
     toolResults,
     transcript,
+    usage,
   }
 }
