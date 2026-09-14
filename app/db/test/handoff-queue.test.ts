@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  acceptHandoff, escalateOverdueHandoffs, raiseHandoff, resolveHandoff,
+  acceptHandoff, escalateOverdueHandoffs, listOpenHandoffs, raiseHandoff, resolveHandoff,
 } from '../src/queries/handoff-queue.ts'
 import { assembleHandoffPacket } from '../src/queries/handoff-packet.ts'
 import { ensureEnquiry, recordFields } from '../src/queries/enquiry-fields.ts'
@@ -253,5 +253,73 @@ describe('the packet', () => {
   it('is not found for another operator', async () => {
     await raise()
     expect(await assembleHandoffPacket(run, '22222222-2222-2222-2222-222222222222', CONV)).toBeNull()
+  })
+})
+
+describe('the queue a person reads', () => {
+  async function otherConversation(phone: string): Promise<string> {
+    const [c] = await run(
+      `insert into contacts (operator_id, channel_identifier) values ($1, $2) returning id`,
+      [OP, phone],
+    )
+    const [v] = await run(
+      `insert into conversations (operator_id, contact_id, whatsapp_account_id)
+       values ($1, $2, $3) returning id`,
+      [OP, c!['id'], ACCOUNT],
+    )
+    return v!['id'] as string
+  }
+
+  it('shows what the customer last said, so the queue can be triaged without opening it', async () => {
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body)
+       values ($1, $2, 'inbound', 'text', 'is the Huracan free on Friday?')`,
+      [OP, CONV],
+    )
+    await raise()
+    const [item] = await listOpenHandoffs(run, OP)
+    expect(item).toMatchObject({
+      customerName: 'Layla',
+      lastCustomerMessage: 'is the Huracan free on Friday?',
+    })
+    expect(item!.minutesRemaining).toBeGreaterThan(25)
+  })
+
+  /**
+   * Worst first. An item that already blew its SLA is a worse fact than an
+   * urgent one with ten minutes left.
+   */
+  it('puts overdue above urgent, and urgent above the rest', async () => {
+    const second = await otherConversation('971500000002')
+    const third = await otherConversation('971500000003')
+
+    await raiseHandoff(run, { operatorId: OP, conversationId: CONV, reason: 'qualified_lead', summary: 'lead' })
+    await run(`update handoffs set due_at = now() - interval '10 minutes' where conversation_id = $1`, [CONV])
+    await escalateOverdueHandoffs(run)
+
+    await raiseHandoff(run, { operatorId: OP, conversationId: second, reason: 'safety_or_accident', summary: 'crash' })
+    await raiseHandoff(run, { operatorId: OP, conversationId: third, reason: 'qualified_lead', summary: 'lead 2' })
+
+    const queue = await listOpenHandoffs(run, OP)
+    expect(queue.map((h) => h.summary)).toEqual(['lead', 'crash', 'lead 2'])
+  })
+
+  it('hides accepted items from the unclaimed view but keeps them in all', async () => {
+    const { handoffId } = await raise()
+    await acceptHandoff(run, { handoffId: handoffId!, operatorId: OP, membershipId: SARA })
+
+    expect(await listOpenHandoffs(run, OP, { unclaimedOnly: true })).toHaveLength(0)
+    expect(await listOpenHandoffs(run, OP)).toHaveLength(1)
+  })
+
+  it('drops resolved items entirely', async () => {
+    await raise()
+    await resolveHandoff(run, { conversationId: CONV, operatorId: OP, resolution: 'sold' })
+    expect(await listOpenHandoffs(run, OP)).toHaveLength(0)
+  })
+
+  it('shows nothing from another operator', async () => {
+    await raise()
+    expect(await listOpenHandoffs(run, '22222222-2222-2222-2222-222222222222')).toHaveLength(0)
   })
 })

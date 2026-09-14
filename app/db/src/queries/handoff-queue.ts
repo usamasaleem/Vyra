@@ -227,3 +227,92 @@ export async function resolveHandoff(
   )
   return { resolved: rows.length }
 }
+
+export type QueuedHandoff = {
+  id: string
+  conversationId: string
+  reason: string
+  summary: string
+  priority: string
+  state: string
+  dueAt: Date
+  /** Negative once it is late. The queue's whole point is that this goes negative. */
+  minutesRemaining: number
+  escalatedAt: Date | null
+  ownerMembershipId: string | null
+  customerName: string | null
+  whatsappNumber: string
+  /** The customer's last message, so the queue can be read without opening each one. */
+  lastCustomerMessage: string | null
+  waitingSinceMinutes: number
+}
+
+/**
+ * The shared queue: everything open, worst first.
+ *
+ * Escalated before waiting, because an item that already blew its SLA is a
+ * worse fact than an urgent one that has ten minutes left. Within that,
+ * priority, then oldest — a conversation that has been waiting an hour should
+ * not sit under one that arrived a minute ago at the same priority.
+ */
+const QUEUE_SQL = `
+  select h.id, h.conversation_id, h.reason::text as reason, h.summary,
+         h.priority::text as priority, h.state::text as state, h.due_at,
+         h.escalated_at, h.owner_membership_id,
+         extract(epoch from h.due_at - now())::int / 60 as minutes_remaining,
+         extract(epoch from now() - h.created_at)::int / 60 as waiting_since_minutes,
+         c.display_name, c.channel_identifier,
+         last_in.body as last_customer_message
+  from handoffs h
+  join conversations v on v.id = h.conversation_id and v.operator_id = h.operator_id
+  join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
+  left join lateral (
+    select m.body from messages m
+    where m.conversation_id = v.id and m.operator_id = v.operator_id
+      and m.direction = 'inbound' and m.body is not null
+    order by m.created_at desc limit 1
+  ) last_in on true
+  where h.operator_id = $1
+    -- Open means unresolved, which includes accepted. A salesperson needs to
+    -- see what they picked up and have not finished; the unclaimed filter is
+    -- what narrows it to the shared pile.
+    and h.state in ('waiting', 'escalated', 'accepted')
+    and ($2::boolean is not true or h.owner_membership_id is null)
+  order by
+    (h.state = 'escalated') desc,
+    -- Unclaimed above accepted at the same priority: nobody is looking at the
+    -- unclaimed ones.
+    (h.owner_membership_id is not null),
+    case h.priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end,
+    h.created_at
+  limit $3
+`
+
+export async function listOpenHandoffs(
+  run: QueryRunner,
+  operatorId: string,
+  options: { unclaimedOnly?: boolean; limit?: number } = {},
+): Promise<QueuedHandoff[]> {
+  const rows = await run(QUEUE_SQL, [
+    operatorId,
+    options.unclaimedOnly ?? false,
+    options.limit ?? 50,
+  ])
+
+  return rows.map((r) => ({
+    id: r['id'] as string,
+    conversationId: r['conversation_id'] as string,
+    reason: r['reason'] as string,
+    summary: r['summary'] as string,
+    priority: r['priority'] as string,
+    state: r['state'] as string,
+    dueAt: new Date(r['due_at'] as string),
+    minutesRemaining: Number(r['minutes_remaining'] ?? 0),
+    escalatedAt: r['escalated_at'] == null ? null : new Date(r['escalated_at'] as string),
+    ownerMembershipId: (r['owner_membership_id'] as string) ?? null,
+    customerName: (r['display_name'] as string) ?? null,
+    whatsappNumber: r['channel_identifier'] as string,
+    lastCustomerMessage: (r['last_customer_message'] as string) ?? null,
+    waitingSinceMinutes: Number(r['waiting_since_minutes'] ?? 0),
+  }))
+}

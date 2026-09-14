@@ -1,6 +1,7 @@
 'use server'
 
 import {
+  acceptHandoff,
   addNote,
   assignConversation,
   queueOutboundText,
@@ -161,4 +162,48 @@ function hash(input: string): string {
     h = Math.imul(h, 16777619)
   }
   return (h >>> 0).toString(36)
+}
+
+/**
+ * Taking a handoff off the shared queue.
+ *
+ * The handoff id comes from the form, and that is safe for the same reason the
+ * conversation id is: `acceptHandoff` scopes on the operator derived from the
+ * session, so an id belonging to another operator matches nothing and reports
+ * that somebody else has it rather than acting.
+ *
+ * Two people clicking Accept at once is the ordinary case in a shared queue,
+ * not an edge case. The loser is told who took it, rather than silently
+ * appearing to succeed.
+ */
+export async function claimHandoff(
+  _previous: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const actor = await requireActor()
+  const handoffId = String(formData.get('handoffId') ?? '')
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'accept a handoff')
+  } catch {
+    return { error: 'Your role cannot accept handoffs.' }
+  }
+
+  const result = await acceptHandoff(queryRunner(), {
+    handoffId,
+    operatorId: actor.operatorId,
+    membershipId: actor.membershipId,
+  })
+
+  revalidatePath('/handoffs')
+  revalidatePath('/')
+
+  if (!result.accepted) {
+    return {
+      error: result.takenBy === null
+        ? 'That handoff is no longer open.'
+        : 'Someone else accepted this a moment ago.',
+    }
+  }
+  return { error: null }
 }

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { LiveRefresh } from './live-refresh'
 import { signOut } from './login/actions'
 import { toggleAiSending } from './actions'
+import { listOpenHandoffs } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
 import { listConversations } from '@/lib/queries/conversations'
@@ -29,8 +30,9 @@ export default async function InboxPage({
   const filters = await searchParams
   const run = queryRunner()
 
-  const [status, conversations] = await Promise.all([
+  const [status, waitingHandoffs, conversations] = await Promise.all([
     getOperatorStatus(run, actor.operatorId),
+    listOpenHandoffs(run, actor.operatorId, { unclaimedOnly: true }),
     listConversations(run, actor.operatorId, {
       salesStage: filters.stage ?? null,
       handlerMode: filters.handler ?? null,
@@ -80,6 +82,18 @@ export default async function InboxPage({
         <Link className="button secondary" href="/?owner=mine">Mine</Link>
         <Link className="button secondary" href="/?owner=unassigned">Unassigned</Link>
         <Link className="button secondary" href="/?needs=me">Waiting on you</Link>
+        {/*
+          The handoff queue, with its count, because a queue nobody can find is
+          the same failure as a queue that does not exist. Shown even at zero,
+          so its absence never has to be inferred.
+        */}
+        <Link
+          className="button secondary"
+          href="/handoffs"
+          style={waitingHandoffs.length > 0 ? { fontWeight: 600 } : undefined}
+        >
+          Handoffs{waitingHandoffs.length > 0 ? ` (${waitingHandoffs.length})` : ''}
+        </Link>
         <Link className="button secondary" href="/?handler=human">Human-owned</Link>
         <Link className="button secondary" href="/?handler=ai">AI-owned</Link>
         <Link className="button secondary" href="/?priority=urgent">Urgent</Link>
