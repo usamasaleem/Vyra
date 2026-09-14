@@ -27,9 +27,9 @@ export const getOperatorPolicySchema = z.strictObject({
 export const searchVehiclesSchema = z.strictObject({
   /** Free text because customers say "a Lamborghini" and "something red and loud". */
   vehicle: z.string().min(1).nullable()
-    .describe('Vehicle, model or class the customer asked for. Null if they have not said.'),
+    .describe('Vehicle, model or class the customer asked for. Null returns the whole fleet, which is what a question about the range or the dearest car needs.'),
   startDate: z.string().nullable()
-    .describe('Rental start as YYYY-MM-DD in the operator timezone. Null if unknown.'),
+    .describe('Rental start as YYYY-MM-DD in the operator timezone. Null if unknown — do not guess, and do not withhold the call because you lack it. Cars and rates come back either way; only availability needs a date.'),
   endDate: z.string().nullable()
     .describe('Rental end as YYYY-MM-DD in the operator timezone. Null if unknown.'),
 })
@@ -87,9 +87,13 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   get_operator_policy:
     'Look up this operator\'s approved answer on a policy topic. Returns nothing if they have not published one — say you will check rather than guessing.',
   search_vehicles:
-    'Check which vehicles are available for a date range, and how recently that was verified.',
+    'Look up this operator\'s cars: what they are, and the day rate a person at the operator confirmed. ' +
+    'Call this for any question about what cars exist, what they are like, or what they cost — including ' +
+    '"what is your most expensive car". Dates are optional and are only needed to check availability; ' +
+    'without them you still get the fleet and the rates, dearest first.',
   prepare_quote:
-    'Ask for a draft quote to be calculated from approved rates. Does not send anything to the customer.',
+    'Work out the full price for the dates on this enquiry: total, deposit and the breakdown, ' +
+    'calculated from the confirmed rate. Returns figures you may state. Does not send anything to the customer.',
   record_enquiry_fields:
     'Save facts the customer has stated. Call this as soon as they say something, not at the end.',
   request_handoff:
