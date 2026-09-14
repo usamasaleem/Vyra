@@ -1,5 +1,5 @@
 import {
-  boolean, foreignKey, index, integer, pgTable, text, timestamp, unique, uuid,
+  boolean, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uuid,
 } from 'drizzle-orm/pg-core'
 import { operators } from './operators.js'
 import { memberships } from './operators.js'
@@ -57,6 +57,20 @@ export const vehicles = pgTable(
     seats: integer(),
     doors: integer(),
     /** Odometer at last check, in kilometres. */
+    /**
+   * Photographs of this exact car, as public HTTPS links.
+   *
+   * Links rather than stored files, because WhatsApp fetches the image itself
+   * and every operator already has photographs of their own cars on their own
+   * website. An upload screen can come later and will write a URL here, so
+   * nothing about this changes when it does.
+   *
+   * Of this exact car, not the model. A customer renting a specific Huracán is
+   * shown that Huracán, and a stock photograph of a different one is the same
+   * class of untruth as a made-up price.
+   */
+  photoUrls: jsonb().$type<string[] | null>(),
+
     odometerKm: integer(),
 
     /**

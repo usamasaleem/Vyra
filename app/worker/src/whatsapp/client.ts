@@ -55,6 +55,12 @@ export type SendTextInput = {
     button: string
     rows: Array<{ id: string; title: string; description?: string }>
   } | null
+  /**
+   * A photograph to send instead of a plain text message, as a public HTTPS
+   * link. The reply becomes its caption, so a picture costs one message rather
+   * than a burst of them.
+   */
+  imageUrl?: string | null
 }
 
 export type SendTextResult = {
@@ -81,7 +87,7 @@ export function createWhatsAppClient(config: {
   const timeoutMs = config.timeoutMs ?? 15_000
 
   return {
-    async sendText({ to, body, buttons, list }) {
+    async sendText({ to, body, buttons, list, imageUrl }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
 
       /**
@@ -101,7 +107,25 @@ export function createWhatsAppClient(config: {
       const useList =
         list !== undefined && list !== null && list.rows.length > 0 && list.rows.length <= 10
 
-      const payload = useList
+      /**
+       * An image caption is capped at 1024 characters, and an image cannot
+       * carry buttons or a list. When both are on offer the interactive one
+       * wins: a tap moves the conversation forward, a photograph only makes it
+       * nicer to look at.
+       */
+      const useImage =
+        imageUrl !== undefined && imageUrl !== null && imageUrl.startsWith('https://')
+        && body.length <= 1024 && !useList && !useButtons
+
+      const payload = useImage
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'image',
+            image: { link: imageUrl, caption: body },
+          }
+        : useList
         ? {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',

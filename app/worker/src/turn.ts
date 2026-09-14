@@ -26,7 +26,9 @@ import {
   acceptTurnOutput,
   ensureEnquiry,
   recordAgentRun,
+  findVehiclePhoto,
   loadMessagesBeforeWindow,
+  photoAlreadySent,
   saveConversationSummary,
   requestHandoff,
   recordOutstandingWork,
@@ -365,6 +367,34 @@ export async function runConversationTurn(
     list: invitesACarChoice(end.reply) ? vehicleList(fleet) : null,
   }
 
+  /**
+   * A photograph of the car, when the turn is about exactly one of them.
+   *
+   * Exactly one, because a reply about three cars has no single picture, and
+   * showing one of them silently favours it. Never alongside buttons or a list,
+   * which cannot be attached to an image — a tap moves the conversation
+   * forward and a photograph only makes it nicer to look at.
+   *
+   * Looked up from the database rather than taken from the tool result, so a
+   * URL is never in front of the model and can never be pasted into a reply.
+   */
+  const photo = fleet.length === 1 && offered.list === null && offered.buttons === null
+    ? await findVehiclePhoto(deps.run, {
+        operatorId: context.operator.id,
+        make: fleet[0]!.make,
+        model: fleet[0]!.model,
+      })
+    : null
+
+  // A customer who asks three questions about the same car should see it once.
+  const showPhoto = photo === null || await photoAlreadySent(deps.run, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    url: photo,
+  })
+    ? null
+    : photo
+
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
@@ -377,6 +407,7 @@ export async function runConversationTurn(
      */
     replyButtons: offered.list === null ? offered.buttons : null,
     replyList: offered.list,
+    replyImageUrl: showPhoto,
     // Per inbound message, so a retried job cannot produce a second reply to
     // the same customer message.
     idempotencyKey: `turn:${context.message.id}`,

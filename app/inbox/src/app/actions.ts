@@ -378,3 +378,46 @@ export async function saveRate(
   revalidatePath('/rates')
   return { error: null }
 }
+
+
+export type PhotoState = { error: string | null }
+
+/**
+ * Photographs of a car, as public links.
+ *
+ * https only, and checked here rather than trusted: WhatsApp fetches the image
+ * itself and will not follow an http link, so an http URL is a message that
+ * silently arrives with no picture. A malformed one is refused for the same
+ * reason — the failure would otherwise be invisible until a customer saw
+ * nothing.
+ */
+export async function savePhotos(_previous: PhotoState, formData: FormData): Promise<PhotoState> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canAdminister(actor), 'change vehicle photographs')
+
+  const vehicleId = String(formData.get('vehicleId') ?? '')
+  const urls = String(formData.get('photoUrls') ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+
+  for (const url of urls) {
+    if (!url.startsWith('https://')) {
+      return { error: `"${url.slice(0, 40)}" is not an https link. WhatsApp will not fetch it.` }
+    }
+    try {
+      new URL(url)
+    } catch {
+      return { error: `"${url.slice(0, 40)}" is not a valid address.` }
+    }
+  }
+
+  await queryRunner()(
+    `update vehicles set photo_urls = $3::jsonb, updated_at = now()
+     where id = $1 and operator_id = $2`,
+    [vehicleId, actor.operatorId, urls.length === 0 ? null : JSON.stringify(urls)],
+  )
+
+  revalidatePath('/rates')
+  return { error: null }
+}

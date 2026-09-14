@@ -328,6 +328,8 @@ export type RateRow = {
   depositMinor: number | null
   deliveryFeeMinor: number | null
   confirmedBy: string | null
+  /** Photographs of this car, shown to a customer asking about it. */
+  photoUrls: string[]
 }
 
 /**
@@ -339,7 +341,7 @@ export type RateRow = {
  */
 export async function listRates(run: QueryRunner, operatorId: string): Promise<RateRow[]> {
   const rows = await run(
-    `select v.id as vehicle_id,
+    `select v.id as vehicle_id, v.photo_urls,
             v.make || ' ' || v.model || coalesce(' ' || v.variant, '') ||
               ' · ' || v.colour as vehicle_label,
             r.id as rate_id, coalesce(r.currency, 'AED') as currency,
@@ -358,6 +360,7 @@ export async function listRates(run: QueryRunner, operatorId: string): Promise<R
   return rows.map((r) => ({
     vehicleId: r['vehicle_id'] as string,
     vehicleLabel: r['vehicle_label'] as string,
+    photoUrls: (r['photo_urls'] as string[] | null) ?? [],
     rateId: (r['rate_id'] as string) ?? null,
     currency: r['currency'] as string,
     dailyRateMinor: r['daily_rate_minor'] == null ? null : Number(r['daily_rate_minor']),

@@ -145,3 +145,44 @@ describe('sending a list', () => {
     expect(calls[0]).toMatchObject({ type: 'text' })
   })
 })
+
+describe('sending a photograph', () => {
+  const IMAGE = 'https://example.com/huracan.jpg'
+
+  it('sends the reply as the caption', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: 'The Huracán EVO Spyder, in Arancio orange. AED 5,500 per day.',
+      imageUrl: IMAGE,
+    })
+
+    expect(calls[0]).toMatchObject({
+      type: 'image',
+      image: { link: IMAGE, caption: 'The Huracán EVO Spyder, in Arancio orange. AED 5,500 per day.' },
+    })
+  })
+
+  /**
+   * An image carries neither buttons nor a list. A tap moves the conversation
+   * forward; a photograph only makes it nicer to look at.
+   */
+  it('gives way to buttons', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'That right?', buttons: BUTTONS, imageUrl: IMAGE })
+    expect(calls[0]).toMatchObject({ type: 'interactive', interactive: { type: 'button' } })
+  })
+
+  it('falls back to text when the caption is too long', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'x'.repeat(1100), imageUrl: IMAGE })
+    expect(calls[0]).toMatchObject({ type: 'text' })
+  })
+
+  it.each([null, undefined, 'http://example.com/insecure.jpg'])(
+    'sends plain text for %j', async (imageUrl) => {
+      const { client, calls } = clientCapturing()
+      await client.sendText({ to: '971500000001', body: 'Nice choice.', imageUrl })
+      expect(calls[0]).toMatchObject({ type: 'text' })
+    })
+})

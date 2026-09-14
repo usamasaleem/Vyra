@@ -20,11 +20,11 @@ intent as (
   insert into messages (
     operator_id, conversation_id, direction, kind, body,
     delivery_state, idempotency_key, revision_at_send, sent_by_membership_id,
-    reply_buttons, reply_list
+    reply_buttons, reply_list, reply_image_url
   )
   select v.operator_id, v.id, 'outbound', 'text', $3, 'pending', $4,
          case when $5::uuid is null then v.revision else null end, $5::uuid,
-         $6::jsonb, $7::jsonb
+         $6::jsonb, $7::jsonb, $8
   from conversation v
   on conflict do nothing
   returning id, operator_id, conversation_id
@@ -60,6 +60,8 @@ export async function queueOutboundText(
     replyButtons?: Array<{ id: string; title: string }> | null
     /** A tappable list of options. A message carries buttons or a list, not both. */
     replyList?: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
+    /** A photograph to send with this reply, as a public HTTPS link. */
+    replyImageUrl?: string | null
   },
 ): Promise<QueuedOutbound> {
   const rows = await run(QUEUE_OUTBOUND_SQL, [
@@ -74,6 +76,7 @@ export async function queueOutboundText(
     input.replyList === undefined || input.replyList === null
       ? null
       : JSON.stringify(input.replyList),
+    input.replyImageUrl ?? null,
   ])
   const row = rows[0]
   const messageId = (row?.['message_id'] as string) ?? null

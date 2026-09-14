@@ -92,6 +92,8 @@ export async function acceptTurnOutput(
     replyButtons?: Array<{ id: string; title: string }> | null
     /** A tappable list of options. A message carries buttons or a list, not both. */
     replyList?: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
+    /** A photograph to send with this reply, as a public HTTPS link. */
+    replyImageUrl?: string | null
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -159,6 +161,7 @@ export async function acceptTurnOutput(
     const queued = await queueOutboundText(tx, {
       replyButtons: input.replyButtons ?? null,
       replyList: input.replyList ?? null,
+      replyImageUrl: input.replyImageUrl ?? null,
       conversationId: input.conversationId,
       operatorId: input.operatorId,
       body: input.body,

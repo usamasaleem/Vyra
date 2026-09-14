@@ -218,6 +218,15 @@ export const messages = pgTable(
      * rows; a fleet larger than that is described in prose instead, which is
      * what a salesperson would do anyway.
      */
+    /**
+     * A photograph to send with this reply, as a public HTTPS link.
+     *
+     * One image, with the reply as its caption, so a picture costs one message
+     * rather than a burst of them. WhatsApp allows 1024 characters of caption,
+     * which is longer than any reply this agent writes.
+     */
+    replyImageUrl: text(),
+
     replyList: jsonb().$type<{
       button: string
       rows: Array<{ id: string; title: string; description?: string }>

@@ -3,6 +3,7 @@ import { listRates } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
 import { RateForm } from './rate-form'
+import { PhotoForm } from './photo-form'
 
 /**
  * Rates, the last thing standing between the agent and a price.
@@ -25,7 +26,8 @@ export default async function RatesPage() {
       <h1>Rates</h1>
       <p className="muted">
         The agent prices from these and from nothing else. A vehicle with no rate cannot be
-        quoted — it says so rather than estimating.
+        quoted — it says so rather than estimating. Photo links are sent to a customer asking
+        about that car.
       </p>
 
       {unpriced > 0 && (
@@ -55,6 +57,7 @@ export default async function RatesPage() {
               {canEdit ? (
                 <div style={{ marginTop: '0.6rem' }}>
                   <RateForm vehicleId={r.vehicleId} current={r} />
+                  <PhotoForm vehicleId={r.vehicleId} current={r.photoUrls} />
                 </div>
               ) : (
                 <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.85rem' }}>
