@@ -1,5 +1,5 @@
 import { civilDateIn, formatCivil } from '@vyra/contracts'
-import { findCurrentAnswer, raiseOperationsRequest, searchFleet } from '@vyra/db'
+import { findCurrentAnswer, formatMoneyMinor, raiseOperationsRequest, searchFleet } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { searchVehiclesSchema } from './schemas.js'
@@ -19,6 +19,15 @@ export type VehicleSearchResult = {
    * No `available` field, on purpose. An earlier draft of this type had one,
    * and a boolean there is a lie waiting to happen: whatever it said would be
    * read as an answer to the question the customer actually asked.
+   *
+   * A day rate IS included, and dearest first. It is a fleet fact in the same
+   * way the engine is: a named person set it, it is versioned, and the previous
+   * one is kept. Withholding it was right while no rates existed and wrong the
+   * moment they did — it made "what do you charge for the Cullinan" impossible
+   * to answer about a car whose price was sitting confirmed in the database.
+   *
+   * A price is still not an offer. It says what the car costs, never that it is
+   * free on the customer's dates, and the guidance keeps those apart.
    */
   fleet: Array<{
     make: string
@@ -30,6 +39,15 @@ export type VehicleSearchResult = {
     engine: string | null
     powerHp: number | null
     seats: number | null
+    /**
+     * The confirmed day rate, already formatted, or null when nobody has set
+     * one. Formatted rather than numeric so the model repeats a string instead
+     * of doing arithmetic on a price.
+     *
+     * Null means unpriced, which is a thing to say out loud — not a reason to
+     * quote the car next to it.
+     */
+    dayRate: string | null
   }>
   /**
    * Present only when a person has checked and the answer has not expired.
@@ -106,13 +124,6 @@ export async function searchVehicles(
     )
   }
 
-  if (args.startDate === null) {
-    return refuse(
-      'invalid_arguments',
-      'Availability needs a start date. Ask the customer when they want the car before checking.',
-    )
-  }
-
   const found = await searchFleet(ctx.run, ctx.operatorId, args.vehicle)
 
   if (found.fleetSize === 0) {
@@ -133,6 +144,7 @@ export async function searchVehicles(
     engine: v.engine,
     powerHp: v.powerHp,
     seats: v.seats,
+    dayRate: v.dailyRateMinor === null ? null : formatMoneyMinor(v.dailyRateMinor, v.currency),
   }))
 
   if (found.matches.length === 0) {
@@ -140,6 +152,26 @@ export async function searchVehicles(
       fleet,
       guidance:
         'No car in the fleet matches that description. Say so plainly and offer to check what else might suit — do not invent a car.',
+    })
+  }
+
+  /**
+   * No dates, but a real question.
+   *
+   * This used to refuse outright, which meant a customer asking "what is your
+   * most expensive car" got nothing back at all — not even the fleet — and the
+   * agent fell back on "I'll check with the team" about cars and prices sitting
+   * confirmed in the database. The date is what availability needs; it was
+   * never what the fleet or the rate needed.
+   *
+   * So the two halves are separated: describe and price the cars, refuse the
+   * availability, and ask for the dates that would let it be checked.
+   */
+  if (args.startDate === null) {
+    return ok({
+      fleet,
+      guidance:
+        'These cars are in the fleet and you may describe them, including any dayRate shown — a named person at the operator set it. A car with dayRate null has no confirmed price: say that it needs checking rather than quoting another car\'s figure. You have NOT checked whether any of them is free, so do not say available, free or bookable. If the customer wants a total or a booking, ask which dates.',
     })
   }
 

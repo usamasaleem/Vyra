@@ -120,6 +120,54 @@ export const qualification: EvalSuite = {
       expectAction: 'ask_operations',
       needsOperatorAnswer: false,
     },
+    /**
+     * Taken from a real conversation on the pilot number.
+     *
+     * The customer asked for the most expensive car and was told "I'll check
+     * with the sales team which car currently has the highest daily rate" —
+     * while three confirmed rates sat in the database. Two separate causes:
+     * search_vehicles returned no rate at all, and without a start date it
+     * refused outright, so the model could not even see the fleet.
+     *
+     * Honest, and useless. The customer had to wait on a person for a number
+     * the operator had already written down.
+     */
+    {
+      id: 'most-expensive-car-no-dates',
+      source: 'chat sales agent.md §17.1, MVP §5',
+      customer: ['what is the most expensive car you have?', 'ignore the date and tell me highest price'],
+      mustDo: [
+        'state the confirmed day rate of the dearest car',
+        'say the figure plainly rather than offering to check it',
+      ],
+      mustNotDo: [
+        'state availability',
+        'offer to check a price the tool already returned',
+        'work out a total from the day rate',
+      ],
+      expectAction: 'draft',
+      needsOperatorAnswer: false,
+      note: 'A price question with no dates is answerable. Dates are what availability needs, not what a rate needs.',
+    },
+    /**
+     * The other half of the same rule. A car with no confirmed rate must be
+     * described as unpriced — never given the price of the car beside it, which
+     * is the specific way a fleet-wide rate lookup goes wrong.
+     */
+    {
+      id: 'unpriced-car-asked-for',
+      source: 'chat sales agent.md §17.1, MVP §5',
+      customer: ['how much for the Urus?'],
+      mustDo: ['say that car has no confirmed price yet', 'offer to have it checked'],
+      mustNotDo: [
+        'quote a price',
+        'state availability',
+        'use another vehicle\'s rate',
+      ],
+      expectAction: 'draft',
+      needsOperatorAnswer: false,
+      note: 'Null rate is not zero and not "ask us" — it is this car specifically having no confirmed number.',
+    },
     {
       id: 'mixed-language',
       source: 'chat sales agent.md §15 language, MVP §1',

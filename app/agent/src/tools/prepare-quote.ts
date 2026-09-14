@@ -1,27 +1,45 @@
-import { calculateDraftQuote, getEnquiryFields } from '@vyra/db'
+import { calculateDraftQuote, formatMoneyMinor, getEnquiryFields } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { prepareQuoteSchema } from './schemas.js'
 import type { z } from 'zod'
 
 /**
- * Note what is absent: every number.
+ * The figures, rendered — not phrased.
  *
- * The agent learns that a quote exists and is waiting for a person, not what it
- * says. Section 18.9 gives Operations the calculation and forbids Sales turning
- * an estimate into a booking; section 18.8 says material commercial amounts are
- * rendered from validated database fields rather than phrased by a model.
+ * This tool used to return no numbers at all, on the reasoning that a model
+ * cannot leak a figure it was never given. That was the right rule while no
+ * confirmed rates existed: any price would have been invented.
  *
- * Withholding the figures is stronger than instructing the model not to repeat
- * them. A model cannot leak a number it was never given, and every rule about
- * what it must not say is a rule it might not follow.
+ * It became the wrong rule once rates were entered. Every price question — "what
+ * do you charge", "what's the total for four days" — died in the same place,
+ * and a customer was told "I'll check with the sales team" about a figure a
+ * named person had already confirmed and versioned. Correct, and useless.
+ *
+ * What section 18.8 actually requires is that commercial amounts are *rendered
+ * from validated database fields rather than phrased by a model*. That is what
+ * happens here: calculateDraftQuote does the arithmetic in integer fils from a
+ * confirmed rate, formatMoneyMinor turns it into a string, and the model is
+ * handed finished text it can only repeat. It never sees a minor-unit integer
+ * and never multiplies anything.
+ *
+ * The draft is still recorded and still waits for approval — the record is what
+ * makes the figure explainable afterwards. What changed is that the customer
+ * hears it now instead of waiting for someone to retype it.
  */
 export type QuoteRequested = {
   quoteRequested: true
   /** So a salesperson and the agent are talking about the same draft. */
   revision: number
   days: number
-  /** What the agent may tell the customer while they wait. */
+  /** Formatted, never numeric — the model repeats a string, it does not do sums. */
+  total: string
+  /** Null when this operator has set no deposit, which is not the same as zero. */
+  deposit: string | null
+  lines: Array<{ label: string; amount: string }>
+  /** ISO instant. A quote with no end is a promise with no end. */
+  validUntil: string
+  /** What the agent may say, and what it must not turn these figures into. */
   guidance: string
 }
 
@@ -110,13 +128,23 @@ export async function prepareQuote(
     )
   }
 
+  const { quote } = result
+  const money = (minor: number) => formatMoneyMinor(minor, quote.currency)
+
   return ok(
     {
       quoteRequested: true,
-      revision: result.quote.revision,
-      days: result.quote.days,
+      revision: quote.revision,
+      days: quote.days,
+      total: money(quote.totalMinor),
+      deposit: quote.depositMinor === null ? null : money(quote.depositMinor),
+      // Each line already carries its own label ("3 days", "Delivery and
+      // collection"), so the breakdown can be read out without the model
+      // working out what any figure is for.
+      lines: quote.lines.map((l) => ({ label: l.label, amount: money(l.amountMinor) })),
+      validUntil: quote.validUntil.toISOString(),
       guidance:
-        'A draft quote has been prepared and is waiting for a salesperson to approve. You have NOT been told the price and must not state, estimate or hint at any figure. Tell the customer the quote is being prepared and will come through shortly.',
+        'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. A price is not availability: unless you have separately been told the car is free on these dates, do not say it is.',
     },
     'approve or reject a draft quote',
   )

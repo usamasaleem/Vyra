@@ -193,13 +193,6 @@ describe('search_vehicles', () => {
     expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
   })
 
-  it('will not check availability without a start date', async () => {
-    const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: 'Ferrari', startDate: null, endDate: null,
-    })
-    expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
-  })
-
   /**
    * The one that matters. Valid dates, a real vehicle, and still no answer —
    * because there is no verified source, and inventing availability is the
@@ -236,6 +229,58 @@ describe('search_vehicles with a fleet', () => {
     createToolBoundary(ctx).call('search_vehicles', {
       vehicle, startDate: '2026-09-20', endDate: '2026-09-23',
     })
+
+  const rate = (dailyMinor: number, vehicleMatch: string) =>
+    run(
+      `insert into vehicle_rates (operator_id, vehicle_id, currency, daily_rate_minor,
+                                  minimum_days, provenance, confirmed_by, confirmed_at)
+       select $1, id, 'AED', $2, 1, 'operator_confirmed', 'Owner', now() from vehicles
+       where operator_id = $1 and model = $3`,
+      [OP, dailyMinor, vehicleMatch],
+    )
+
+  /**
+   * Without dates the fleet still comes back and the availability does not.
+   *
+   * This used to refuse outright, and live that meant a customer asking "what
+   * is your most expensive car" received nothing — not even the car list — so
+   * the agent fell back on "I'll check with the team" about cars sitting
+   * confirmed in the database. Dates are what availability needs; they were
+   * never what the fleet needed.
+   */
+  it('returns the fleet without dates, and refuses only the availability', async () => {
+    await addVehicle()
+    const result = await createToolBoundary(ctx).call('search_vehicles', {
+      vehicle: 'Ferrari', startDate: null, endDate: null,
+    })
+
+    expect(result).toMatchObject({ status: 'ok' })
+    const data = (result as {
+      data: { fleet: unknown[]; availability?: unknown; guidance: string }
+    }).data
+    expect(data.fleet.length).toBe(1)
+    expect(data.availability).toBeUndefined()
+    expect(data.guidance).toContain('do not say available')
+  })
+
+  it('carries the confirmed day rate, formatted, and null when none is set', async () => {
+    await addVehicle()
+    await addVehicle({ make: 'Rolls-Royce', model: 'Cullinan', variant: null,
+                       colour: 'English White', plate: 'Dubai A 1', chassis: 'VIN-RR' })
+    await rate(800_000, 'Cullinan')
+
+    const result = await createToolBoundary(ctx).call('search_vehicles', {
+      vehicle: null, startDate: null, endDate: null,
+    })
+    const { fleet } = (result as { data: { fleet: Array<{ model: string; dayRate: string | null }> } }).data
+
+    // Dearest first, so "the most expensive car" is the first row rather than a
+    // comparison the model performs.
+    expect(fleet[0]).toMatchObject({ model: 'Cullinan', dayRate: 'AED 8,000' })
+    // The unpriced car says so. A null here must never be read as free, and
+    // must never be filled in from the car above it.
+    expect(fleet[1]).toMatchObject({ model: '488', dayRate: null })
+  })
 
   it('describes the car, and refuses to say it is available until someone checks', async () => {
     await addVehicle()
@@ -487,20 +532,48 @@ describe('prepare_quote', () => {
     }
 
     /**
-     * The point of the whole design: a quote exists, and the agent is not told
-     * what it says.
+     * The figures are handed over finished.
+     *
+     * The guarantee moved rather than disappeared. It used to be "the model is
+     * told no numbers", which made every price question unanswerable once real
+     * rates existed. It is now "the model is told no numbers it could do
+     * arithmetic with": the sum is computed in integer fils from a confirmed
+     * rate and rendered to a string, so the only thing the model can do with a
+     * price is repeat it.
      */
-    it('prepares a draft and tells the model nothing about the money', async () => {
+    it('gives the model finished strings and never a minor-unit figure', async () => {
       await readyToQuote()
       const result = await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
 
-      expect(result).toMatchObject({ status: 'ok', data: { quoteRequested: true, revision: 1, days: 3 } })
+      // 3 days at 1,500 a day is 4,500, and the deposit is 5,000.
+      expect(result).toMatchObject({
+        status: 'ok',
+        data: {
+          quoteRequested: true, revision: 1, days: 3,
+          total: 'AED 4,500', deposit: 'AED 5,000',
+          lines: [{ label: '3 days', amount: 'AED 4,500' }],
+        },
+      })
+
+      // Minor units never reach the model. Handing over 450000 would invite it
+      // to divide by a hundred, and a model doing arithmetic on a price is the
+      // thing this boundary exists to prevent.
       const serialised = JSON.stringify(result)
-      // 3 days at 1,500 is 4,500 and the deposit is 5,000. Neither appears.
       expect(serialised).not.toContain('450000')
-      expect(serialised).not.toContain('4500')
       expect(serialised).not.toContain('500000')
-      expect(serialised).toContain('must not state, estimate or hint at any figure')
+      expect(serialised).toContain('Do NOT recalculate')
+    })
+
+    /**
+     * A price says nothing about whether the car is free, and the two facts
+     * arrive from different tools for exactly that reason.
+     */
+    it('tells the model a price is not availability', async () => {
+      await readyToQuote()
+      const result = await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
+
+      const { guidance } = (result as { data: { guidance: string } }).data
+      expect(guidance).toContain('A price is not availability')
     })
 
     it('stores the draft for a person to approve', async () => {

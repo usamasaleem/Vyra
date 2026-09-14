@@ -31,6 +31,17 @@ export type FleetVehicle = {
   drivetrain: string | null
   seats: number | null
   doors: number | null
+  /**
+   * The operator's confirmed day rate, in minor units, or null when nobody has
+   * set one.
+   *
+   * Null is not "free" and not "ask us" — it is the reason this car cannot be
+   * priced, and the caller must say so rather than reach for a neighbouring
+   * car's number. Only `operator_confirmed`, current rows are joined; an
+   * unconfirmed rate is a figure nobody has stood behind.
+   */
+  dailyRateMinor: number | null
+  currency: string
 }
 
 export type FleetSearch = {
@@ -65,21 +76,29 @@ export type FleetSearch = {
  * lamborghini" correctly finds nothing.
  */
 const SEARCH_SQL = `
-  select id, make, model, variant, year, colour, category::text as category,
-         plate, chassis_number, engine, power_hp, transmission, drivetrain, seats, doors
-  from vehicles
-  where operator_id = $1
-    and active
-    and provenance = 'operator_confirmed'
+  select v.id, v.make, v.model, v.variant, v.year, v.colour, v.category::text as category,
+         v.plate, v.chassis_number, v.engine, v.power_hp, v.transmission, v.drivetrain,
+         v.seats, v.doors,
+         r.daily_rate_minor, coalesce(r.currency, 'AED') as currency
+  from vehicles v
+  left join vehicle_rates r
+    on r.vehicle_id = v.id and r.operator_id = v.operator_id
+   and r.effective_to is null and r.provenance = 'operator_confirmed'
+  where v.operator_id = $1
+    and v.active
+    and v.provenance = 'operator_confirmed'
     and (
       $2::text[] is null
       or cardinality($2::text[]) = 0
       or (
-        make || ' ' || model || ' ' || coalesce(variant, '') || ' ' ||
-        colour || ' ' || category::text || ' ' || year::text
+        v.make || ' ' || v.model || ' ' || coalesce(v.variant, '') || ' ' ||
+        v.colour || ' ' || v.category::text || ' ' || v.year::text
       ) ilike all ($2::text[])
     )
-  order by make, model
+  -- Dearest first, so "what is the most expensive car you have" is answered by
+  -- the order of the result rather than by the model comparing numbers.
+  -- Unpriced cars sort last: they cannot answer a price question at all.
+  order by r.daily_rate_minor desc nulls last, v.make, v.model
   limit 20
 `
 
@@ -128,6 +147,8 @@ export async function searchFleet(
       drivetrain: (r['drivetrain'] as string) ?? null,
       seats: r['seats'] === null ? null : Number(r['seats']),
       doors: r['doors'] === null ? null : Number(r['doors']),
+      dailyRateMinor: r['daily_rate_minor'] == null ? null : Number(r['daily_rate_minor']),
+      currency: r['currency'] as string,
     })),
     availabilityChecked: false,
     fleetSize: Number(size?.['n'] ?? 0),
