@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx --env-file-if-exists=../inbox/.env.local watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=../inbox/.env.local src/index.ts",
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "start": "node --env-file-if-exists=../inbox/.env.local dist/index.js",
