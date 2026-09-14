@@ -454,9 +454,93 @@ describe('prepare_quote', () => {
     expect(result).toMatchObject({ status: 'refused', reason: 'wrong_scope' })
   })
 
-  it('refuses to calculate without approved rates', async () => {
+  it('refuses when no single confirmed vehicle matches the enquiry', async () => {
     const result = await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
-    expect(result).toMatchObject({ status: 'refused', reason: 'not_available_yet' })
+    expect(result).toMatchObject({ status: 'refused', reason: 'nothing_to_do' })
+  })
+
+  describe('once the enquiry has a car and dates', () => {
+    async function readyToQuote(opts: { rate?: boolean; minimumDays?: number } = {}) {
+      const [v] = await run(
+        `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                               chassis_number, provenance, confirmed_by)
+         values ($1,'Ferrari','488',2022,'Giallo','exotic','Dubai K 9','VIN9',
+                 'operator_confirmed','Owner') returning id`,
+        [OP],
+      )
+      if (opts.rate !== false) {
+        await run(
+          `insert into vehicle_rates (operator_id, vehicle_id, daily_rate_minor, minimum_days,
+                                      deposit_minor, provenance, confirmed_by, confirmed_at)
+           values ($1, $2, 150000, $3, 500000, 'operator_confirmed', 'Owner', now())`,
+          [OP, v!['id'], opts.minimumDays ?? 1],
+        )
+      }
+      await run(
+        `insert into field_evidence (operator_id, enquiry_id, field, value, source_message_id,
+                                     verification_state)
+         values ($1,$2,'vehicle','Ferrari 488',$3,'customer_stated'),
+                ($1,$2,'start_at','2026-09-20',$3,'customer_stated'),
+                ($1,$2,'end_at','2026-09-23',$3,'customer_stated')`,
+        [OP, ctx.enquiryId, ctx.messageId],
+      )
+    }
+
+    /**
+     * The point of the whole design: a quote exists, and the agent is not told
+     * what it says.
+     */
+    it('prepares a draft and tells the model nothing about the money', async () => {
+      await readyToQuote()
+      const result = await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
+
+      expect(result).toMatchObject({ status: 'ok', data: { quoteRequested: true, revision: 1, days: 3 } })
+      const serialised = JSON.stringify(result)
+      // 3 days at 1,500 is 4,500 and the deposit is 5,000. Neither appears.
+      expect(serialised).not.toContain('450000')
+      expect(serialised).not.toContain('4500')
+      expect(serialised).not.toContain('500000')
+      expect(serialised).toContain('must not state, estimate or hint at any figure')
+    })
+
+    it('stores the draft for a person to approve', async () => {
+      await readyToQuote()
+      await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
+
+      const [quote] = await run(
+        `select state::text as state, total_minor, deposit_minor, days, lines,
+                approved_by_membership_id
+         from quotes where operator_id = $1`, [OP],
+      )
+      // 3 days x 150000 fils = 450000 fils = AED 4,500.
+      expect(quote).toMatchObject({
+        state: 'draft', total_minor: 450000, deposit_minor: 500000, days: 3,
+        approved_by_membership_id: null,
+      })
+    })
+
+    it('refuses when the vehicle has no confirmed rate', async () => {
+      await readyToQuote({ rate: false })
+      const result = await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
+      expect(result).toMatchObject({ status: 'refused', reason: 'no_trusted_source' })
+      expect(JSON.stringify(result)).toContain('no confirmed rate')
+    })
+
+    it('refuses a rental shorter than the minimum', async () => {
+      await readyToQuote({ minimumDays: 7 })
+      const result = await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
+      expect(result).toMatchObject({ status: 'refused' })
+      expect(JSON.stringify(result)).toContain('7-day minimum')
+    })
+
+    /** There is no discount argument, so a discount cannot arrive this way. */
+    it('has no way to ask for a discount', async () => {
+      await readyToQuote()
+      const result = await createToolBoundary(ctx).call('prepare_quote', {
+        enquiryId: ctx.enquiryId, discount: 500,
+      })
+      expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
+    })
   })
 })
 

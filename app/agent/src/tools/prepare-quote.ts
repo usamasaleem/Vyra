@@ -1,15 +1,28 @@
+import { calculateDraftQuote, getEnquiryFields } from '@vyra/db'
 import type { ToolContext } from './context.js'
-import { refuse, type ToolResult } from './result.js'
+import { ok, refuse, type ToolResult } from './result.js'
 import type { prepareQuoteSchema } from './schemas.js'
 import type { z } from 'zod'
 
-export type QuoteDraft = {
-  quoteId: string
+/**
+ * Note what is absent: every number.
+ *
+ * The agent learns that a quote exists and is waiting for a person, not what it
+ * says. Section 18.9 gives Operations the calculation and forbids Sales turning
+ * an estimate into a booking; section 18.8 says material commercial amounts are
+ * rendered from validated database fields rather than phrased by a model.
+ *
+ * Withholding the figures is stronger than instructing the model not to repeat
+ * them. A model cannot leak a number it was never given, and every rule about
+ * what it must not say is a rule it might not follow.
+ */
+export type QuoteRequested = {
+  quoteRequested: true
+  /** So a salesperson and the agent are talking about the same draft. */
   revision: number
-  lines: Array<{ description: string; amount: string }>
-  total: string
-  currency: string
-  validUntil: string
+  days: number
+  /** What the agent may tell the customer while they wait. */
+  guidance: string
 }
 
 /**
@@ -43,7 +56,7 @@ export type QuoteDraft = {
 export async function prepareQuote(
   ctx: ToolContext,
   args: z.infer<typeof prepareQuoteSchema>,
-): Promise<ToolResult<QuoteDraft>> {
+): Promise<ToolResult<QuoteRequested>> {
   if (args.enquiryId !== ctx.enquiryId) {
     return refuse(
       'wrong_scope',
@@ -51,9 +64,60 @@ export async function prepareQuote(
     )
   }
 
-  return refuse(
-    'not_available_yet',
-    'Quote calculation is not connected yet — approved rates come from Operations. Ask for a handoff so a person can price this, and do not state any figure.',
-    'price this enquiry — quote calculation is not connected',
+  /**
+   * Dates and vehicle come from the enquiry, not from the model.
+   *
+   * A quote is priced on what the customer actually said and a salesperson can
+   * check, and the evidence for each is already recorded with its source
+   * message. Letting the model pass them would make the priced dates a thing it
+   * asserted rather than a thing the customer said.
+   */
+  const fields = await getEnquiryFields(ctx.run, ctx.operatorId, ctx.enquiryId)
+  const value = (name: string) => fields.find((f) => f.field === name)?.value ?? null
+
+  const vehicleRows = await ctx.run(
+    `select id from vehicles
+     where operator_id = $1 and active and provenance = 'operator_confirmed'
+       and (make || ' ' || model || ' ' || coalesce(variant, '')) ilike '%' || $2 || '%'
+     limit 2`,
+    [ctx.operatorId, value('vehicle') ?? ''],
+  )
+  if (vehicleRows.length !== 1) {
+    return refuse(
+      'nothing_to_do',
+      vehicleRows.length === 0
+        ? 'No single confirmed vehicle matches this enquiry yet. Confirm which car before asking for a price.'
+        : 'More than one vehicle matches. Ask the customer which one before requesting a price.',
+    )
+  }
+
+  const result = await calculateDraftQuote(ctx.run, {
+    operatorId: ctx.operatorId,
+    conversationId: ctx.conversationId,
+    enquiryId: ctx.enquiryId,
+    vehicleId: vehicleRows[0]!['id'] as string,
+    startDate: value('start_at'),
+    endDate: value('end_at'),
+  })
+
+  if (!result.ok) {
+    return refuse(
+      result.refusal.reason === 'no_confirmed_rate' ? 'no_trusted_source' : 'invalid_arguments',
+      result.refusal.detail,
+      result.refusal.reason === 'no_confirmed_rate'
+        ? 'set a confirmed rate for this vehicle so it can be priced'
+        : undefined,
+    )
+  }
+
+  return ok(
+    {
+      quoteRequested: true,
+      revision: result.quote.revision,
+      days: result.quote.days,
+      guidance:
+        'A draft quote has been prepared and is waiting for a salesperson to approve. You have NOT been told the price and must not state, estimate or hint at any figure. Tell the customer the quote is being prepared and will come through shortly.',
+    },
+    'approve or reject a draft quote',
   )
 }

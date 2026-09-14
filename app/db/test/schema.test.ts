@@ -72,6 +72,8 @@ describe('schema v1 applies', () => {
       'operations_requests',
       'operators',
       'outbox',
+      'quotes',
+      'vehicle_rates',
       'vehicles',
       'whatsapp_accounts',
     ])

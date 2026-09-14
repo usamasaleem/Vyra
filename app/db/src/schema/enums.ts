@@ -208,3 +208,17 @@ export const operationsAnswer = pgEnum('operations_answer', [
   'pending_confirmation',
   'unknown',
 ])
+
+/**
+ * `superseded` is separate from `expired`: one means a newer revision replaced
+ * it, the other that time ran out. A customer arguing about a price needs to
+ * know which.
+ */
+export const quoteState = pgEnum('quote_state', [
+  'draft',
+  'approved',
+  'sent',
+  'expired',
+  'superseded',
+  'rejected',
+])
