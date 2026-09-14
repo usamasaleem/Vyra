@@ -183,3 +183,111 @@ describe('processing a job', () => {
     expect(result.outcome).toBe('operator_mismatch')
   })
 })
+
+const CONTACT = '55555555-5555-5555-5555-555555555555'
+const CONVERSATION = '66666666-6666-6666-6666-666666666666'
+
+async function inbound(body: string): Promise<string> {
+  const rows = await run(
+    `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+     values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+    [OPERATOR_A, CONVERSATION, body, `wamid.${Math.random()}`],
+  )
+  return rows[0]!['id'] as string
+}
+
+/**
+ * Build plan follow-on — opt-out is honoured by a rule, before any model runs.
+ *
+ * The column and every check that reads it already existed; nothing could set
+ * it. A model handled "stop" perfectly in the eval run and called nothing,
+ * because there was nothing to call.
+ */
+describe('opt-out', () => {
+  it('records the opt-out and holds this turn, not the next one', async () => {
+    const id = await inbound('please stop messaging me')
+    const result = await processInboundMessage(run, { message_id: id }, ENABLED)
+
+    expect(result).toMatchObject({
+      outcome: 'processed',
+      handling: { action: 'hold', reason: 'contact_opted_out' },
+      optedOut: { matched: 'stop messaging' },
+    })
+
+    const [contact] = await run(`select opted_out_at from contacts where id = $1`, [CONTACT])
+    expect(contact!['opted_out_at']).not.toBeNull()
+  })
+
+  it('cancels queued messages to that contact, staff-written included', async () => {
+    const queued = await run(
+      `insert into messages
+         (operator_id, conversation_id, direction, kind, body, delivery_state, sent_by_membership_id)
+       values ($1, $2, 'outbound', 'text', 'Following up on the Ferrari', 'pending', null),
+              ($1, $2, 'outbound', 'text', 'Sara here — any thoughts?', 'pending', null)
+       returning id`,
+      [OPERATOR_A, CONVERSATION],
+    )
+
+    const id = await inbound('unsubscribe')
+    const result = await processInboundMessage(run, { message_id: id }, ENABLED)
+    expect(result).toMatchObject({ optedOut: { cancelledMessages: 2 } })
+
+    const states = await run(
+      `select delivery_state::text as state, error_code from messages where id = any($1::uuid[])`,
+      [queued.map((r) => r['id'])],
+    )
+    for (const state of states) {
+      expect(state).toMatchObject({ state: 'cancelled', error_code: 'contact_opted_out' })
+    }
+  })
+
+  it('is idempotent — a second "stop" leaves one record and one audit event', async () => {
+    await processInboundMessage(run, { message_id: await inbound('stop') }, ENABLED)
+    const [first] = await run(`select opted_out_at from contacts where id = $1`, [CONTACT])
+
+    const second = await processInboundMessage(run, { message_id: await inbound('stop') }, ENABLED)
+    // Still held — the flag is set, so the handling is the same.
+    expect(second).toMatchObject({ handling: { reason: 'contact_opted_out' } })
+    // ...but nothing was recorded a second time.
+    expect(second).not.toHaveProperty('optedOut')
+
+    const [after] = await run(`select opted_out_at from contacts where id = $1`, [CONTACT])
+    expect(after!['opted_out_at']).toEqual(first!['opted_out_at'])
+
+    const audits = await run(
+      `select id from audit_events where action = 'contact.opted_out' and subject_id = $1`, [CONTACT],
+    )
+    expect(audits).toHaveLength(1)
+  })
+
+  it('hands the conversation to a person, since no automated reply can reach them', async () => {
+    await processInboundMessage(run, { message_id: await inbound('leave me alone') }, ENABLED)
+    const [conversation] = await run(
+      `select handler_mode::text as mode, next_action from conversations where id = $1`,
+      [CONVERSATION],
+    )
+    expect(conversation).toMatchObject({ mode: 'human', next_action: 'Customer opted out of messages' })
+  })
+
+  it('records what matched, so a mistaken opt-out can be explained', async () => {
+    await processInboundMessage(run, { message_id: await inbound('remove me from your list') }, ENABLED)
+    const [audit] = await run(
+      `select actor_type::text as actor, data from audit_events where action = 'contact.opted_out'`,
+      [],
+    )
+    expect(audit).toMatchObject({ actor: 'customer' })
+    expect((audit!['data'] as Record<string, unknown>)['matched']).toBe('remove me from')
+  })
+
+  /** A live customer must not be silenced by a pattern that reads too much in. */
+  it('leaves an ordinary enquiry alone', async () => {
+    const result = await processInboundMessage(
+      run, { message_id: await inbound('can I stop by the showroom tomorrow?') }, ENABLED,
+    )
+    expect(result).toMatchObject({ handling: { action: 'draft' } })
+    expect(result).not.toHaveProperty('optedOut')
+
+    const [contact] = await run(`select opted_out_at from contacts where id = $1`, [CONTACT])
+    expect(contact!['opted_out_at']).toBeNull()
+  })
+})

@@ -1,3 +1,5 @@
+import { detectOptOut } from '@vyra/contracts'
+import { recordOptOut } from '@vyra/db'
 import { loadConversationContext, type ConversationContext } from '../context.js'
 import type { QueryRunner } from '../relay.js'
 
@@ -40,13 +42,26 @@ export function decideHandling(
   if (!context.operator.aiSendingEnabled) {
     return { action: 'hold', reason: 'operator_ai_disabled' }
   }
+  /**
+   * Before human ownership, though both hold and the choice changes nothing
+   * about what happens.
+   *
+   * What it changes is what a salesperson reads in the inbox. Recording an
+   * opt-out also hands the conversation to a person, so with the old ordering
+   * every opted-out conversation reported "human owns the conversation" — true,
+   * and a description of the consequence rather than the cause. One of these
+   * reasons tells you the customer asked to be left alone; the other does not.
+   *
+   * The two switches above stay first because they are facts about the whole
+   * operator rather than this contact.
+   */
+  if (context.contact.optedOutAt !== null) {
+    return { action: 'hold', reason: 'contact_opted_out' }
+  }
   // Section 10 of the MVP: the AI does not send while human ownership is
   // active. One handler at a time, always.
   if (context.conversation.handlerMode === 'human') {
     return { action: 'hold', reason: 'human_owns_the_conversation' }
-  }
-  if (context.contact.optedOutAt !== null) {
-    return { action: 'hold', reason: 'contact_opted_out' }
   }
   // A voice note or photo is stored and acknowledged, never silently dropped,
   // and never treated as though the customer said nothing. Until the AI can
@@ -63,7 +78,13 @@ export function decideHandling(
 export type ProcessResult =
   | { outcome: 'message_not_found' }
   | { outcome: 'operator_mismatch' }
-  | { outcome: 'processed'; handling: Handling; context: ConversationContext }
+  | {
+      outcome: 'processed'
+      handling: Handling
+      context: ConversationContext
+      /** Set when this message was an opt-out and this call recorded it. */
+      optedOut?: { matched: string; cancelledMessages: number }
+    }
 
 export async function processInboundMessage(
   run: QueryRunner,
@@ -88,6 +109,49 @@ export async function processInboundMessage(
     payload.operator_id !== context.operator.id
   ) {
     return { outcome: 'operator_mismatch' }
+  }
+
+  /**
+   * Opt-out is checked here, before anything else looks at the message, and
+   * acted on rather than noted.
+   *
+   * A rule, not a tool: the eval run showed a model replying "Understood. I
+   * won't message you again" and calling nothing, because nothing existed for
+   * it to call. Honouring an opt-out must not depend on a model choosing to.
+   *
+   * It runs before `decideHandling` so the flag it sets is visible to the very
+   * decision that reads it — `contact_opted_out` is already a hold reason, and
+   * the mutated context below makes this turn take it too rather than waiting
+   * for the next message.
+   */
+  const optOut = context.message.kind === 'text' && context.message.body !== null
+    ? detectOptOut(context.message.body)
+    : null
+
+  if (optOut !== null) {
+    const result = await recordOptOut(run, {
+      contactId: context.contact.id,
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+      matched: optOut.matched,
+      messageId: context.message.id,
+    })
+
+    // The context was loaded before the write, so it still says null.
+    const optedContext: ConversationContext = {
+      ...context,
+      contact: { ...context.contact, optedOutAt: new Date() },
+      conversation: { ...context.conversation, handlerMode: 'human' },
+    }
+
+    return {
+      outcome: 'processed',
+      handling: decideHandling(optedContext, options),
+      context: optedContext,
+      ...(result.recorded
+        ? { optedOut: { matched: optOut.matched, cancelledMessages: result.cancelledMessages } }
+        : {}),
+    }
   }
 
   return { outcome: 'processed', handling: decideHandling(context, options), context }
