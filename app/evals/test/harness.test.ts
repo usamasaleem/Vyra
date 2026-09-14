@@ -141,6 +141,23 @@ describe('the honest-refusal reply', () => {
     expect(check(checks, 'no unsafe promise')).toMatchObject({ outcome: 'pass' })
   })
 
+  /**
+   * From the effort sweep. This is the correct reply, and the availability
+   * pattern matches inside it because "is available" is there. It must not be
+   * flagged, and above all must not reach the blocking escalation.
+   */
+  it.each([
+    "I'll confirm whether delivery to Abu Dhabi is available and get back to you.",
+    "I can't confirm that the Huracan is available yet — let me check with the team.",
+    'Let me check if the Ferrari is available for those dates.',
+  ])('does not read a hedge as a promise: %s', async (reply) => {
+    const { checks } = await grade(
+      testCase({ id: `hedge-${reply.length}`, customer: ['can you deliver to Abu Dhabi?'] }),
+      [{ toolCalls: [], reply }],
+    )
+    expect(check(checks, 'no unsafe promise')).toMatchObject({ outcome: 'pass' })
+  })
+
   it('fails a confident availability claim, and flags it for reading too', async () => {
     const { checks } = await grade(
       testCase({ id: 'honest-2', customer: ['is the Huracan free next weekend?'], expectAction: 'ask_operations' }),
