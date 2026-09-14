@@ -4,6 +4,10 @@ import {
   acceptHandoff,
   addNote,
   answerOperationsRequest,
+  approveQuote,
+  listDraftQuotes,
+  renderQuoteMessage,
+  setVehicleRate,
   assignConversation,
   queueOutboundText,
   resumeAi,
@@ -257,5 +261,120 @@ export async function answerOperations(
 
   revalidatePath('/operations')
   if (!result.answered) return { error: 'That request was already answered or cancelled.' }
+  return { error: null }
+}
+
+/**
+ * Approving a draft quote, and sending it.
+ *
+ * The message is rendered from the stored figures, not written here and not
+ * written by the model. Section 18.8: material commercial amounts come from
+ * validated database fields. The agent phrased everything around this
+ * conversation; the numbers are the one thing it never touched.
+ *
+ * Approval and sending are one action on purpose. An approved quote that
+ * nobody sent is the same silence as no quote, and this project has produced
+ * that shape four times already.
+ */
+export async function approveAndSendQuote(
+  _previous: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const actor = await requireActor()
+  const quoteId = String(formData.get('quoteId') ?? '')
+  const revision = Number(formData.get('revision') ?? 0)
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'approve a quote')
+  } catch {
+    return { error: 'Your role cannot approve quotes.' }
+  }
+
+  const run = queryRunner()
+  const draft = (await listDraftQuotes(run, actor.operatorId)).find((q) => q.id === quoteId)
+  if (draft === undefined) return { error: 'That quote is no longer a draft.' }
+
+  const result = await approveQuote(run, {
+    quoteId, operatorId: actor.operatorId, membershipId: actor.membershipId, revision,
+  })
+  if (!result.approved) {
+    return {
+      error: result.reason === 'expired'
+        ? 'That quote has expired. Ask the agent to prepare a new one.'
+        : result.reason === 'revision_moved'
+          ? 'This quote changed while you were reading it. Reload and check the new figures.'
+          : 'That quote could not be approved.',
+    }
+  }
+
+  // Through the one path that sends, like every other outbound message.
+  const queued = await queueOutboundText(run, {
+    conversationId: draft.conversationId,
+    operatorId: actor.operatorId,
+    body: renderQuoteMessage(draft),
+    idempotencyKey: `quote:${quoteId}:${revision}`,
+    sentByMembershipId: actor.membershipId,
+  })
+  if (queued.messageId !== null) {
+    await run(
+      `update quotes set state = 'sent', sent_message_id = $2, updated_at = now() where id = $1`,
+      [quoteId, queued.messageId],
+    )
+  }
+
+  revalidatePath('/operations')
+  revalidatePath(`/conversations/${draft.conversationId}`)
+  return { error: null }
+}
+
+/**
+ * Recording a rate.
+ *
+ * Amounts arrive as decimal strings because that is how a person types money,
+ * and are converted to integer fils here — the one boundary where that
+ * conversion happens, so nothing downstream ever sees a float.
+ */
+export async function saveRate(
+  _previous: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const actor = await requireActor()
+
+  try {
+    assertPermitted(permissions.canAdminister(actor), 'set a rate')
+  } catch {
+    return { error: 'Only an administrator can set rates.' }
+  }
+
+  const toMinor = (name: string): number | null => {
+    const raw = String(formData.get(name) ?? '').trim()
+    if (raw === '') return null
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value < 0) return null
+    // Rounded, not truncated: 1500.005 is a typo, and either way it must not
+    // silently become a different number.
+    return Math.round(value * 100)
+  }
+
+  const vehicleId = String(formData.get('vehicleId') ?? '')
+  const daily = toMinor('dailyRate')
+  if (daily === null || daily === 0) return { error: 'A daily rate is required.' }
+
+  await setVehicleRate(queryRunner(), {
+    operatorId: actor.operatorId,
+    vehicleId,
+    // The name on the rate is the person who entered it, from the session.
+    confirmedBy: actor.email ?? actor.membershipId,
+    dailyRateMinor: daily,
+    weeklyRateMinor: toMinor('weeklyRate'),
+    monthlyRateMinor: toMinor('monthlyRate'),
+    minimumDays: Number(formData.get('minimumDays') ?? 1) || 1,
+    includedKmPerDay: Number(formData.get('includedKm') ?? 0) || null,
+    extraKmRateMinor: toMinor('extraKmRate'),
+    depositMinor: toMinor('deposit'),
+    deliveryFeeMinor: toMinor('deliveryFee'),
+  })
+
+  revalidatePath('/rates')
   return { error: null }
 }

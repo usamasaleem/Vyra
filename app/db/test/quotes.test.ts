@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  approveQuote, calculateDraftQuote, formatMoney, listDraftQuotes,
+  approveQuote, calculateDraftQuote, formatMoney, listDraftQuotes, listRates,
+  renderQuoteMessage, setVehicleRate,
 } from '../src/queries/quotes.ts'
 import type { QueryRunner } from '../src/runner.ts'
 
@@ -204,5 +205,76 @@ describe('approval', () => {
       quoteId: drafted.quote.quoteId, operatorId: '22222222-2222-2222-2222-222222222222',
       membershipId: SARA, revision: 1,
     })).toMatchObject({ approved: false, reason: 'not_found' })
+  })
+})
+
+describe('entering a rate', () => {
+  it('supersedes the old one instead of editing it', async () => {
+    await setVehicleRate(run, {
+      operatorId: OP, vehicleId, confirmedBy: 'sara@example.com', dailyRateMinor: 150000,
+    })
+    await setVehicleRate(run, {
+      operatorId: OP, vehicleId, confirmedBy: 'sara@example.com', dailyRateMinor: 200000,
+    })
+
+    const rows = await run(
+      `select daily_rate_minor, effective_to from vehicle_rates order by created_at`, [],
+    )
+    expect(rows).toHaveLength(2)
+    // The old rate keeps its window, so a quote raised last week is still
+    // explainable by the price that was in force when it was raised.
+    expect(rows[0]!['effective_to']).not.toBeNull()
+    expect(rows[1]).toMatchObject({ daily_rate_minor: 200000, effective_to: null })
+  })
+
+  /** A rate with no name against it is exactly what provenance exists to stop. */
+  it('cannot be confirmed without attribution', async () => {
+    await expect(
+      run(
+        `insert into vehicle_rates (operator_id, vehicle_id, daily_rate_minor, provenance)
+         values ($1, $2, 150000, 'operator_confirmed')`,
+        [OP, vehicleId],
+      ),
+    ).rejects.toThrow(/vehicle_rates_confirmed_is_attributed/)
+  })
+
+  /** A vehicle with no rate must be visible, not absent. */
+  it('lists a vehicle that has no rate', async () => {
+    const [row] = await listRates(run, OP)
+    expect(row).toMatchObject({ vehicleLabel: 'Ferrari 488 (Giallo)', dailyRateMinor: null })
+
+    await setVehicleRate(run, {
+      operatorId: OP, vehicleId, confirmedBy: 'sara@example.com',
+      dailyRateMinor: 150000, depositMinor: 500000,
+    })
+    const [priced] = await listRates(run, OP)
+    expect(priced).toMatchObject({ dailyRateMinor: 150000, depositMinor: 500000 })
+  })
+})
+
+describe('the message a customer reads', () => {
+  it('renders the stored figures, not a model phrasing them', async () => {
+    await setRate({ daily: 150000, deposit: 500000 })
+    const drafted = await quote()
+    if (!drafted.ok) throw new Error('expected a quote')
+
+    const message = renderQuoteMessage({
+      currency: drafted.quote.currency,
+      lines: drafted.quote.lines,
+      totalMinor: drafted.quote.totalMinor,
+      depositMinor: drafted.quote.depositMinor,
+      days: drafted.quote.days,
+      validUntil: drafted.quote.validUntil,
+    })
+
+    expect(message).toContain('3 days: AED 4,500')
+    expect(message).toContain('Total: AED 4,500')
+    expect(message).toContain('Refundable deposit: AED 5,000')
+    // A price with no end is a promise with no end.
+    expect(message).toContain('Valid until')
+  })
+
+  it('formats fils that are not whole currency', () => {
+    expect(formatMoney(150050, 'AED')).toBe('AED 1,500.50')
   })
 })

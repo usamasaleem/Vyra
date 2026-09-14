@@ -313,3 +313,147 @@ export async function approveQuote(
   if (row['is_expired'] === true) return { approved: false, reason: 'expired' }
   return { approved: false, reason: 'revision_moved' }
 }
+
+export type RateRow = {
+  vehicleId: string
+  vehicleLabel: string
+  rateId: string | null
+  currency: string
+  dailyRateMinor: number | null
+  weeklyRateMinor: number | null
+  monthlyRateMinor: number | null
+  minimumDays: number | null
+  includedKmPerDay: number | null
+  extraKmRateMinor: number | null
+  depositMinor: number | null
+  deliveryFeeMinor: number | null
+  confirmedBy: string | null
+}
+
+/**
+ * Every confirmed vehicle, with its current rate or nothing.
+ *
+ * A left join rather than a list of rates, so a car with no price is visible
+ * instead of absent. A missing rate is the reason the agent refuses to quote,
+ * and a page that only lists what exists cannot show you what does not.
+ */
+export async function listRates(run: QueryRunner, operatorId: string): Promise<RateRow[]> {
+  const rows = await run(
+    `select v.id as vehicle_id,
+            v.make || ' ' || v.model || coalesce(' ' || v.variant, '') ||
+              ' (' || v.colour || ')' as vehicle_label,
+            r.id as rate_id, coalesce(r.currency, 'AED') as currency,
+            r.daily_rate_minor, r.weekly_rate_minor, r.monthly_rate_minor, r.minimum_days,
+            r.included_km_per_day, r.extra_km_rate_minor, r.deposit_minor,
+            r.delivery_fee_minor, r.confirmed_by
+     from vehicles v
+     left join vehicle_rates r
+       on r.vehicle_id = v.id and r.operator_id = v.operator_id
+      and r.effective_to is null and r.provenance = 'operator_confirmed'
+     where v.operator_id = $1 and v.active and v.provenance = 'operator_confirmed'
+     order by v.make, v.model`,
+    [operatorId],
+  )
+
+  return rows.map((r) => ({
+    vehicleId: r['vehicle_id'] as string,
+    vehicleLabel: r['vehicle_label'] as string,
+    rateId: (r['rate_id'] as string) ?? null,
+    currency: r['currency'] as string,
+    dailyRateMinor: r['daily_rate_minor'] == null ? null : Number(r['daily_rate_minor']),
+    weeklyRateMinor: r['weekly_rate_minor'] == null ? null : Number(r['weekly_rate_minor']),
+    monthlyRateMinor: r['monthly_rate_minor'] == null ? null : Number(r['monthly_rate_minor']),
+    minimumDays: r['minimum_days'] == null ? null : Number(r['minimum_days']),
+    includedKmPerDay: r['included_km_per_day'] == null ? null : Number(r['included_km_per_day']),
+    extraKmRateMinor: r['extra_km_rate_minor'] == null ? null : Number(r['extra_km_rate_minor']),
+    depositMinor: r['deposit_minor'] == null ? null : Number(r['deposit_minor']),
+    deliveryFeeMinor: r['delivery_fee_minor'] == null ? null : Number(r['delivery_fee_minor']),
+    confirmedBy: (r['confirmed_by'] as string) ?? null,
+  }))
+}
+
+/**
+ * Recording a rate, which supersedes rather than edits.
+ *
+ * The old row keeps its window, so a quote raised last week can still be
+ * explained by the rate that was in force when it was raised. Editing in place
+ * would make an old quote unexplainable, which is the same mistake as a
+ * mutable knowledge answer.
+ *
+ * `confirmedBy` is required by the caller and enforced by a check constraint.
+ * A rate with no name against it is exactly the unattributable figure the whole
+ * provenance mechanism exists to prevent.
+ */
+export async function setVehicleRate(
+  run: QueryRunner,
+  input: {
+    operatorId: string
+    vehicleId: string
+    confirmedBy: string
+    currency?: string
+    dailyRateMinor: number
+    weeklyRateMinor?: number | null
+    monthlyRateMinor?: number | null
+    minimumDays?: number
+    includedKmPerDay?: number | null
+    extraKmRateMinor?: number | null
+    depositMinor?: number | null
+    deliveryFeeMinor?: number | null
+  },
+): Promise<{ rateId: string }> {
+  // Close the current row first. A data-modifying CTE would share a snapshot
+  // and the partial unique index would still see the old row as current.
+  await run(
+    `update vehicle_rates set effective_to = now()
+     where operator_id = $1 and vehicle_id = $2 and effective_to is null`,
+    [input.operatorId, input.vehicleId],
+  )
+
+  const rows = await run(
+    `insert into vehicle_rates (
+       operator_id, vehicle_id, currency, daily_rate_minor, weekly_rate_minor,
+       monthly_rate_minor, minimum_days, included_km_per_day, extra_km_rate_minor,
+       deposit_minor, delivery_fee_minor, provenance, confirmed_by, confirmed_at
+     ) values ($1,$2,$3,$4,$5::int,$6::int,$7,$8::int,$9::int,$10::int,$11::int,
+               'operator_confirmed',$12,now())
+     returning id`,
+    [
+      input.operatorId, input.vehicleId, input.currency ?? 'AED', input.dailyRateMinor,
+      input.weeklyRateMinor ?? null, input.monthlyRateMinor ?? null, input.minimumDays ?? 1,
+      input.includedKmPerDay ?? null, input.extraKmRateMinor ?? null,
+      input.depositMinor ?? null, input.deliveryFeeMinor ?? null, input.confirmedBy,
+    ],
+  )
+  return { rateId: rows[0]!['id'] as string }
+}
+
+/**
+ * The customer-facing quote, rendered from the stored figures.
+ *
+ * Section 18.8: "For material commercial messages, render amounts, dates,
+ * expiry and status from validated database fields. Let the model phrase the
+ * surrounding explanation." This is that rendering, and it is the only place a
+ * price becomes words a customer reads.
+ */
+export function renderQuoteMessage(quote: {
+  currency: string
+  lines: QuoteLine[]
+  totalMinor: number
+  depositMinor: number | null
+  days: number
+  validUntil: Date | null
+}): string {
+  const parts = [
+    ...quote.lines.map((l) => `${l.label}: ${formatMoney(l.amountMinor, quote.currency)}`),
+    `Total: ${formatMoney(quote.totalMinor, quote.currency)}`,
+  ]
+  if (quote.depositMinor !== null) {
+    parts.push(`Refundable deposit: ${formatMoney(quote.depositMinor, quote.currency)}`)
+  }
+  if (quote.validUntil !== null) {
+    // An expiry the customer can see, because a price with no end is a promise
+    // with no end.
+    parts.push(`Valid until ${quote.validUntil.toISOString().slice(0, 10)}.`)
+  }
+  return parts.join('\n')
+}
