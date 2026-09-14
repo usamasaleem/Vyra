@@ -2,7 +2,7 @@ import { createToolBoundary, type ToolCallRecord } from '../tools/boundary.js'
 import type { ToolContext } from '../tools/context.js'
 import type { ToolResult } from '../tools/result.js'
 import type { ModelAdapter, ModelResponse, TranscriptEntry } from './model.js'
-import { SYSTEM_PROMPT } from './prompt.js'
+import { systemPromptFor } from './prompt.js'
 
 /**
  * One turn: the model, the tool boundary, and a bound on both.
@@ -97,7 +97,10 @@ export async function runTurn(
   while (rounds < maxRounds) {
     rounds++
     const response: ModelResponse = await model.complete({
-      system: options.system ?? SYSTEM_PROMPT,
+      // Composed per turn so the model is told what day it is. It was not, for
+      // every turn before this, and could not resolve "the 20th" as a result.
+      system: options.system
+        ?? systemPromptFor({ now: ctx.now, timezone: ctx.timezone, enquiryId: ctx.enquiryId }),
       transcript: [...transcript],
       tools: boundary.definitions,
     })

@@ -42,7 +42,13 @@ export const recordEnquiryFieldsSchema = z.strictObject({
   fields: z.array(
     z.strictObject({
       field: z.enum(ENQUIRY_FIELDS).describe('Which enquiry field this value belongs to.'),
-      value: z.string().min(1).describe('The normalised value.'),
+      value: z.string().min(1).describe(
+        'The normalised value. start_at and end_at MUST be YYYY-MM-DD, already resolved against '
+        + 'the operator\'s today — "20 September", "next Friday" and "the 20th" are all rejected. '
+        + 'Resolving them is what lets the price be worked out; an unrecorded date means no quote '
+        + 'can be produced for this customer at all. Keep what they actually typed in '
+        + 'originalWording.',
+      ),
       originalWording: z.string().nullable()
         .describe('What the customer actually typed, if it differs from the value.'),
     }),
@@ -95,7 +101,9 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Work out the full price for the dates on this enquiry: total, deposit and the breakdown, ' +
     'calculated from the confirmed rate. Returns figures you may state. Does not send anything to the customer.',
   record_enquiry_fields:
-    'Save facts the customer has stated. Call this as soon as they say something, not at the end.',
+    'Save facts the customer has stated. Call this as soon as they say something, not at the end. '
+    + 'Dates must arrive resolved as YYYY-MM-DD: nothing downstream can price an enquiry whose dates '
+    + 'were never recorded, so a rejected date is a quote the customer never gets.',
   request_handoff:
     'Hand this conversation to a person. Stops automated replies immediately.',
   request_booking_review:

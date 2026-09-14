@@ -225,7 +225,9 @@ export async function searchVehicles(
     {
       fleet,
       guidance:
-        'These cars are in the fleet and you may describe them. Nobody has checked whether any is free on these dates, so you may NOT say available, free, or bookable. Tell the customer you are confirming with the team — it has been asked.',
+        'NEXT: call prepare_quote now, before you reply. You have the dates and this car has a confirmed rate, so the total can be worked out and given to the customer in this same message. Do not answer with the day rate alone and do not say you will come back with the full price — that is the thing you are being asked for, and it is one tool call away. '
+        + 'Then, in that same reply: these cars are in the fleet and you may describe them, including any dayRate shown. Nobody has checked whether any is free on these dates, so you may NOT say available, free, or bookable — say you are confirming that with the team, which has been asked. '
+        + 'Availability is the only open question. A price does not wait on it: three days cost what three days cost whether or not the car turns out to be free.',
     },
     `check availability of ${found.matches.map((v) => `${v.make} ${v.model}`).join(', ')} for ${args.startDate}${args.endDate === null ? '' : ` to ${args.endDate}`}`,
   )
@@ -245,7 +247,7 @@ const GUIDANCE_FOR: Record<string, (minutesAgo: number) => string> = {
   unavailable: () =>
     'Operations confirmed this is NOT available for those dates. Say so plainly and offer to check alternatives or other dates.',
   pending_confirmation: () =>
-    'Operations could not confirm yet — it depends on another booking. Say exactly that. Do not present it as probably free.',
+    'Operations could not confirm yet — it depends on another booking. Say exactly that. Do not present it as probably free. The price does not depend on it: if you have dates, prepare_quote and give the total anyway.',
   unknown: () =>
-    'Operations could not determine availability. Say it is unknown and that someone will confirm. Never soften unknown into "probably" or "should be".',
+    'Operations could not determine availability. Say it is unknown and that someone will confirm. Never soften unknown into "probably" or "should be". The price is a separate question you can still answer: if you have dates, prepare_quote and give the total.',
 }
