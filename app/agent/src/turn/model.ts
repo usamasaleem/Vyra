@@ -33,6 +33,15 @@ export type ModelRequest = {
   system: string
   transcript: TranscriptEntry[]
   tools: ToolDefinition[]
+  /**
+   * What happened before the transcript starts, in prose.
+   *
+   * Carried separately from `system` so the system prompt stays byte-identical
+   * across every conversation. That prefix is what the provider caches — about
+   * three quarters of the input tokens on a live turn — and folding a
+   * per-conversation summary into it would throw that away on every call.
+   */
+  summary?: string | null
 }
 
 /**

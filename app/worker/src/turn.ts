@@ -4,6 +4,7 @@ import {
   promiseMadeIn,
   PROMPT_VERSION,
   runTurn,
+  summariseConversation,
   type ModelAdapter,
   type ToolContext,
   type TurnEnd,
@@ -13,6 +14,8 @@ import {
   acceptTurnOutput,
   ensureEnquiry,
   recordAgentRun,
+  loadMessagesBeforeWindow,
+  saveConversationSummary,
   requestHandoff,
   recordOutstandingWork,
   recordRejectedTurn,
@@ -240,7 +243,11 @@ export async function runConversationTurn(
         text: m.body as string,
       }))
 
-    const outcome = await runTurn(deps.model, toolContext, transcript)
+    const outcome = await runTurn(deps.model, toolContext, transcript, {
+      // What fell out of the window. Null until a conversation is long enough
+      // to have lost anything.
+      summary: context.conversation.summary,
+    })
     end = {
       reply: outcome.reply,
       stoppedBecause: outcome.stoppedBecause,
@@ -467,6 +474,20 @@ export async function runConversationTurn(
     })
   }
 
+  /**
+   * Keep the notes current, after the customer already has their answer.
+   *
+   * Deliberately last, and deliberately not awaited for the customer's benefit:
+   * this is a second model call, and the reply must not wait behind it. It is
+   * still awaited by the job so a failure is visible and the worker does not
+   * exit mid-call.
+   *
+   * Regenerated only when enough new messages have fallen out of the window,
+   * not every turn. A summary rewritten on every message is a second model call
+   * per reply for a paragraph that barely changes.
+   */
+  await refreshSummaryIfStale(deps, context)
+
   // 'drafted' and 'queued' are different outcomes worth telling apart: a draft
   // was paid for and never reached the customer.
   await record(accepted.destination === 'draft' ? 'drafted' : 'queued')
@@ -474,4 +495,64 @@ export async function runConversationTurn(
   return accepted.destination === 'draft'
     ? { outcome: 'drafted', noteId: accepted.noteId }
     : { outcome: 'queued', messageId: accepted.queued.messageId }
+}
+
+
+/**
+ * How many messages beyond the window may accumulate before the notes are
+ * rewritten.
+ *
+ * Ten is a compromise between spending and staleness: at worst the agent is
+ * missing the ten oldest messages that just fell out, which are the least
+ * likely to matter, and a long conversation pays for one extra call per ten
+ * messages rather than one per reply.
+ */
+const RESUMMARISE_EVERY = 10
+
+/** Must match the window `loadConversationContext` actually uses. */
+const RECENT_WINDOW = 20
+
+async function refreshSummaryIfStale(
+  deps: TurnDependencies,
+  context: ConversationContext,
+): Promise<void> {
+  if (deps.model === null) return
+
+  const { messages, totalMessages } = await loadMessagesBeforeWindow(deps.run, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    windowSize: RECENT_WINDOW,
+  })
+
+  if (messages.length === 0) return
+
+  const covered = context.conversation.summaryThroughCount
+  const fallenOut = totalMessages - RECENT_WINDOW
+  if (fallenOut - covered < RESUMMARISE_EVERY && context.conversation.summary !== null) return
+
+  try {
+    const summary = await summariseConversation(deps.model, {
+      messages,
+      previous: context.conversation.summary,
+    })
+    if (summary === null) return
+
+    await saveConversationSummary(deps.run, {
+      conversationId: context.conversation.id,
+      operatorId: context.operator.id,
+      summary,
+      throughCount: fallenOut,
+    })
+  } catch (error) {
+    /**
+     * A failed summary must not fail a turn that already replied. The customer
+     * has their message; the worst case is that the notes stay one cycle old,
+     * and the next turn tries again.
+     */
+    console.error(JSON.stringify({
+      event: 'summary.failed',
+      conversationId: context.conversation.id,
+      error: error instanceof Error ? error.message : String(error),
+    }))
+  }
 }

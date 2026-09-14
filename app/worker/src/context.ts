@@ -32,6 +32,9 @@ export type ConversationContext = {
     bookingStatus: string
     ownerMembershipId: string | null
     lastCustomerMessageAt: Date | null
+    /** What happened before the recent window, or null if nothing has fallen out. */
+    summary: string | null
+    summaryThroughCount: number
   }
   contact: {
     id: string
@@ -60,6 +63,7 @@ const CONTEXT_SQL = `
     o.id as operator_id, o.name as operator_name, o.timezone,
     o.response_expectation, o.ai_sending_enabled, o.policy_version,
     v.id as conversation_id, v.revision, v.handler_mode, v.sales_stage,
+    v.summary, v.summary_through_count,
     v.waiting_reason, v.booking_status, v.owner_membership_id,
     v.last_customer_message_at,
     c.id as contact_id, c.channel_identifier, c.display_name, c.opted_out_at,
@@ -116,6 +120,8 @@ export async function loadConversationContext(
     conversation: {
       id: conversationId,
       revision: Number(row['revision']),
+      summary: (row['summary'] as string) ?? null,
+      summaryThroughCount: Number(row['summary_through_count'] ?? 0),
       handlerMode: row['handler_mode'] as 'ai' | 'human',
       salesStage: row['sales_stage'] as string,
       waitingReason: row['waiting_reason'] as string,

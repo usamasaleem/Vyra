@@ -96,6 +96,29 @@ export const conversations = pgTable(
      */
     revision: integer().notNull().default(0),
 
+    /**
+     * What happened earlier, in prose, for the messages that have fallen out of
+     * the recent window.
+     *
+     * §18.8 asks for summarisation and its absence is a correctness bug, not a
+     * refinement: the model is given the last twenty messages, so the
+     * twenty-first silently erases the first. A customer who chats over three
+     * days loses their own requirements, and the agent asks again for something
+     * they already answered.
+     *
+     * Prose, and deliberately only the part that is not already structured.
+     * Dates, vehicle and delivery live in field_evidence with the message that
+     * proved them, which is better than a summary in every way — it is exact,
+     * attributable and supersedable. What a summary adds is the rest: what they
+     * care about, what they objected to, what they were already told.
+     */
+    summary: text(),
+    /**
+     * How many messages the summary covers, so it is regenerated when enough
+     * new ones have fallen out of the window rather than on every turn.
+     */
+    summaryThroughCount: integer().notNull().default(0),
+
     /** Drives the 24-hour sending window, evaluated at dispatch — never earlier. */
     lastCustomerMessageAt: timestamp({ withTimezone: true }),
     lastStaffResponseAt: timestamp({ withTimezone: true }),

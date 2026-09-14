@@ -141,6 +141,13 @@
       "when": 1789416209768,
       "tag": "0019_ambitious_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789417252396,
+      "tag": "0020_special_rhino",
+      "breakpoints": true
     }
   ]
 }

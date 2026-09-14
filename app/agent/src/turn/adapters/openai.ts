@@ -59,6 +59,20 @@ export function openaiModel(options: {
         body: JSON.stringify({
           model: options.model,
           instructions: request.system,
+          /**
+           * Do not retain the request or the response.
+           *
+           * The Responses API stores both by default, which would leave real
+           * customers' phone numbers, dates and conversations sitting in a
+           * dashboard belonging to a third party for weeks. That is a separate
+           * question from training — the API does not train on this either way
+           * — and the honest answer for somebody else's customers is that we do
+           * not leave copies anywhere we did not have to.
+           *
+           * The conversation is already durable in our own database, which is
+           * where a salesperson reads it and where the audit trail lives.
+           */
+          store: false,
           ...(options.effort === undefined ? {} : { reasoning: { effort: options.effort } }),
           tools: request.tools.map((tool) => ({
             type: 'function',
@@ -142,6 +156,19 @@ function parseArguments(raw: string): unknown {
 
 function toInput(request: ModelRequest): unknown[] {
   const input: unknown[] = []
+
+  /**
+   * Earlier context first, and as a developer note rather than something a
+   * participant said. Presenting notes as a customer message would let the
+   * model answer them.
+   */
+  if (request.summary !== undefined && request.summary !== null && request.summary !== '') {
+    input.push({
+      role: 'developer',
+      content: `Earlier in this conversation, before the messages below:\n${request.summary}`,
+    })
+  }
+
   for (const entry of request.transcript) {
     if (entry.from === 'customer') {
       input.push({ role: 'user', content: entry.text })

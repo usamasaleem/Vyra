@@ -59,6 +59,8 @@ export type RunTurnOptions = {
   maxRounds?: number
   maxToolCalls?: number
   system?: string
+  /** What happened before the transcript starts. See ModelRequest.summary. */
+  summary?: string | null
 }
 
 /** A prior exchange, oldest first. The last entry is the message being answered. */
@@ -101,6 +103,7 @@ export async function runTurn(
       // every turn before this, and could not resolve "the 20th" as a result.
       system: options.system
         ?? systemPromptFor({ now: ctx.now, timezone: ctx.timezone, enquiryId: ctx.enquiryId }),
+      summary: options.summary ?? null,
       transcript: [...transcript],
       tools: boundary.definitions,
     })
