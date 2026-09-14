@@ -72,6 +72,29 @@ export default async function ConversationPage({
         {thread.optedOutAt !== null && <span className="tag">opted out</span>}
       </div>
 
+      {/*
+        Above the Take over button, because it is usually the reason someone
+        opened this conversation. Three different paths write this — a handoff,
+        a failed turn, and work the agent could not finish — and none of them
+        reached a screen until now: the agent told a customer "I'll confirm the
+        deposit", recorded it faithfully, and nobody could see it.
+      */}
+      {thread.nextAction !== null && (
+        <div
+          className="card"
+          style={{
+            marginBottom: '1.5rem',
+            borderLeft: '3px solid var(--accent, #b45309)',
+            background: 'color-mix(in srgb, var(--accent, #b45309) 8%, transparent)',
+          }}
+        >
+          <strong style={{ display: 'block', fontSize: '0.8rem', letterSpacing: '0.04em', opacity: 0.75 }}>
+            NEEDS A PERSON
+          </strong>
+          <p style={{ margin: '0.35rem 0 0' }}>{thread.nextAction}</p>
+        </div>
+      )}
+
       {canReply ? (
         <form action={humanOwned ? handBackToAi : takeOver} style={{ marginBottom: '1.5rem' }}>
           <input type="hidden" name="conversationId" value={thread.id} />

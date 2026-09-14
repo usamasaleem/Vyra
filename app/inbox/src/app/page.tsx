@@ -21,7 +21,9 @@ function when(date: Date | null): string {
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string; handler?: string; priority?: string; owner?: string }>
+  searchParams: Promise<{
+    stage?: string; handler?: string; priority?: string; owner?: string; needs?: string
+  }>
 }) {
   const actor = await requireActor()
   const filters = await searchParams
@@ -36,6 +38,7 @@ export default async function InboxPage({
       // 'mine' resolves to this actor's membership, so the link does not need
       // to carry an id that the browser could then change to someone else's.
       owner: filters.owner === 'mine' ? actor.membershipId : (filters.owner ?? null),
+      needsAttention: filters.needs === 'me',
     }),
   ])
 
@@ -76,6 +79,7 @@ export default async function InboxPage({
         <Link className="button secondary" href="/">All</Link>
         <Link className="button secondary" href="/?owner=mine">Mine</Link>
         <Link className="button secondary" href="/?owner=unassigned">Unassigned</Link>
+        <Link className="button secondary" href="/?needs=me">Waiting on you</Link>
         <Link className="button secondary" href="/?handler=human">Human-owned</Link>
         <Link className="button secondary" href="/?handler=ai">AI-owned</Link>
         <Link className="button secondary" href="/?priority=urgent">Urgent</Link>
@@ -103,6 +107,26 @@ export default async function InboxPage({
                   {c.lastMessageDirection === 'outbound' ? 'You: ' : ''}
                   {c.lastMessageBody ?? <em>no readable message</em>}
                 </p>
+                {/*
+                  Above the tags, not among them. This is the only line on the
+                  card that asks the reader to do something, and a tag beside
+                  "qualified" and "unassigned" reads as another label rather
+                  than a request.
+                */}
+                {c.nextAction !== null && (
+                  <p
+                    style={{
+                      margin: '0 0 0.6rem',
+                      fontSize: '0.85rem',
+                      padding: '0.45rem 0.6rem',
+                      borderLeft: '3px solid var(--accent, #b45309)',
+                      background: 'color-mix(in srgb, var(--accent, #b45309) 8%, transparent)',
+                      borderRadius: '0 4px 4px 0',
+                    }}
+                  >
+                    {c.nextAction}
+                  </p>
+                )}
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                   <span className="tag">{c.salesStage.replace(/_/g, ' ')}</span>
                   <span className="tag">{c.handlerMode === 'human' ? 'salesperson' : 'AI'}</span>

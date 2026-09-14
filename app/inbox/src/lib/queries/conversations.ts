@@ -27,12 +27,22 @@ export type ConversationSummary = {
   messageCount: number
   /** True when the customer spoke last and nobody has answered. */
   awaitingReply: boolean
+  /**
+   * What this conversation needs from a person, in one line.
+   *
+   * Written by three separate paths — a handoff, a failed turn, and work the
+   * agent could not finish — and until now read by none of them, because the
+   * column was never selected. The agent promised a customer "I'll confirm the
+   * deposit", recorded that faithfully, and a salesperson looking at this list
+   * saw an ordinary conversation.
+   */
+  nextAction: string | null
 }
 
 const LIST_SQL = `
   select
     v.id, v.sales_stage, v.handler_mode, v.waiting_reason, v.booking_status,
-    v.priority, v.owner_membership_id, v.last_customer_message_at,
+    v.priority, v.owner_membership_id, v.last_customer_message_at, v.next_action,
     c.display_name, c.channel_identifier,
     last_message.body   as last_message_body,
     last_message.direction as last_message_direction,
@@ -61,8 +71,13 @@ const LIST_SQL = `
     and ($5::text is null
          or ($5 = 'unassigned' and v.owner_membership_id is null)
          or v.owner_membership_id::text = $5)
+    -- Same argument: "what is waiting on me" is a queue, not a decoration.
+    and ($7::boolean is not true or v.next_action is not null)
   order by
     case v.priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end,
+    -- Within a priority, something waiting on a person outranks something that
+    -- is not.
+    (v.next_action is null),
     v.last_customer_message_at desc nulls last
   limit $6
 `
@@ -76,6 +91,8 @@ export async function listConversations(
     priority?: string | null
     /** A membership id, or the literal 'unassigned'. */
     owner?: string | null
+    /** Only conversations waiting on somebody. */
+    needsAttention?: boolean
     limit?: number
   } = {},
 ): Promise<ConversationSummary[]> {
@@ -86,6 +103,7 @@ export async function listConversations(
     filters.priority ?? null,
     filters.owner ?? null,
     filters.limit ?? 50,
+    filters.needsAttention ?? false,
   ])
 
   return rows.map((r) => ({
@@ -104,6 +122,7 @@ export async function listConversations(
     lastMessageDirection: (r['last_message_direction'] as 'inbound' | 'outbound') ?? null,
     messageCount: Number(r['message_count'] ?? 0),
     awaitingReply: r['last_message_direction'] === 'inbound',
+    nextAction: (r['next_action'] as string) ?? null,
   }))
 }
 
@@ -131,13 +150,15 @@ export type ConversationThread = {
   ownerMembershipId: string | null
   lastCustomerMessageAt: Date | null
   optedOutAt: Date | null
+  /** What this conversation needs from a person. See ConversationSummary. */
+  nextAction: string | null
   messages: ThreadMessage[]
 }
 
 const THREAD_SQL = `
   select v.id, v.sales_stage, v.handler_mode, v.waiting_reason, v.booking_status,
          v.priority, v.revision, v.owner_membership_id, v.last_customer_message_at,
-         c.display_name, c.channel_identifier, c.opted_out_at
+         v.next_action, c.display_name, c.channel_identifier, c.opted_out_at
   from conversations v
   join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
   where v.id = $1 and v.operator_id = $2
@@ -177,6 +198,7 @@ export async function getConversationThread(
     ownerMembershipId: (row['owner_membership_id'] as string) ?? null,
     lastCustomerMessageAt: toDateOrNull(row['last_customer_message_at']),
     optedOutAt: toDateOrNull(row['opted_out_at']),
+    nextAction: (row['next_action'] as string) ?? null,
     messages: messages.map((m) => ({
       id: m['id'] as string,
       direction: m['direction'] as 'inbound' | 'outbound',
