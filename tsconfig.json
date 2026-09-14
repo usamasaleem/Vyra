@@ -8,6 +8,9 @@
       "path": "./app/db"
     },
     {
+      "path": "./app/agent"
+    },
+    {
       "path": "./app/worker"
     },
     {

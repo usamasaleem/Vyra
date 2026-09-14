@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc -b && npm run build --workspace=app/inbox",
-    "typecheck": "tsc -b --force && tsc -p app/db/tsconfig.test.json && tsc -p app/worker/tsconfig.test.json && tsc -p app/evals/tsconfig.test.json && tsc -p app/contracts/tsconfig.test.json",
+    "typecheck": "tsc -b --force && tsc -p app/db/tsconfig.test.json && tsc -p app/worker/tsconfig.test.json && tsc -p app/evals/tsconfig.test.json && tsc -p app/contracts/tsconfig.test.json && tsc -p app/agent/tsconfig.test.json",
     "clean": "tsc -b --clean",
     "dev": "npm run dev --workspace=app/inbox",
     "dev:worker": "npm run dev --workspace=app/worker",
