@@ -58,6 +58,7 @@ export const language: EvalSuite = {
     },
     {
       id: 'ar-deposit-question',
+      policyTopicAsked: 'deposit',
       source: 'chat sales agent.md §5, MVP §4',
       customer: ['كم مبلغ التأمين المسترد؟'],
       mustDo: ['look up the operator policy', 'answer only from the approved answer'],

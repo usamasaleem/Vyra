@@ -64,7 +64,19 @@ export type Progress = {
 export async function runComparison(
   adapters: ModelAdapter[],
   suites: EvalSuite[],
-  options: RunTurnOptions & { world?: EvalWorld; onProgress?: (p: Progress) => void } = {},
+  options: RunTurnOptions & {
+    world?: EvalWorld
+    onProgress?: (p: Progress) => void
+    /**
+     * Called after every case with the scorecard built so far.
+     *
+     * A run is minutes of paid network calls, and the first one to be
+     * interrupted left nothing behind at all — the results existed only in
+     * memory until the last model finished. Partial results answer most of the
+     * questions a full run answers, so they are worth keeping.
+     */
+    onPartial?: (scorecard: Scorecard) => void
+  } = {},
 ): Promise<Scorecard> {
   const world = options.world ?? (await createEvalWorld())
   const owned = options.world === undefined
@@ -72,11 +84,31 @@ export async function runComparison(
     s.cases.map((evalCase) => ({ suite: s.name, evalCase })),
   )
 
-  try {
-    const models: ModelScore[] = []
+  const ranAt = new Date().toISOString()
+  const models: ModelScore[] = []
+  const assemble = (): Scorecard => ({
+    promptVersion: PROMPT_VERSION,
+    ranAt,
+    caseCount: cases.length,
+    models: [...models],
+  })
 
+  try {
     for (const [modelIndex, adapter] of adapters.entries()) {
       const results: CaseResult[] = []
+      // Pushed before the cases run, and re-scored in place after each one, so
+      // a partial scorecard always includes the model currently in flight.
+      const score: ModelScore = {
+        label: adapter.label,
+        modelId: adapter.modelId,
+        blockingFailures: 0,
+        needsReview: 0,
+        expectationsPassed: 0,
+        expectationsTotal: 0,
+        errors: 0,
+        cases: results,
+      }
+      models.push(score)
 
       for (const [caseIndex, { suite, evalCase }] of cases.entries()) {
         // A fresh conversation per case, so one model's turn cannot leave state
@@ -131,27 +163,19 @@ export async function runComparison(
           outcome: latest.error !== null ? 'error' : failed.length > 0 ? 'blocking' : 'ok',
           detail: latest.error ?? (failed[0]?.name ?? latest.toolCalls.join(' ') ?? ''),
         })
+
+        const allChecks = results.flatMap((r) => r.checks)
+        score.blockingFailures = allChecks.filter((c) => c.blocking && c.outcome === 'fail').length
+        score.needsReview = allChecks.filter((c) => c.outcome === 'review').length
+        score.expectationsPassed = allChecks.filter((c) => !c.blocking && c.outcome === 'pass').length
+        score.expectationsTotal = allChecks.filter((c) => !c.blocking).length
+        score.errors = results.filter((r) => r.error !== null).length
+
+        options.onPartial?.(assemble())
       }
-
-      const allChecks = results.flatMap((r) => r.checks)
-      models.push({
-        label: adapter.label,
-        modelId: adapter.modelId,
-        blockingFailures: allChecks.filter((c) => c.blocking && c.outcome === 'fail').length,
-        needsReview: allChecks.filter((c) => c.outcome === 'review').length,
-        expectationsPassed: allChecks.filter((c) => !c.blocking && c.outcome === 'pass').length,
-        expectationsTotal: allChecks.filter((c) => !c.blocking).length,
-        errors: results.filter((r) => r.error !== null).length,
-        cases: results,
-      })
     }
 
-    return {
-      promptVersion: PROMPT_VERSION,
-      ranAt: new Date().toISOString(),
-      caseCount: cases.length,
-      models,
-    }
+    return assemble()
   } finally {
     if (owned) await world.close()
   }

@@ -64,7 +64,12 @@ console.error(
   `${adapters.map((a) => a.label).join(', ')}\n`,
 )
 
+const outPath = process.env['EVAL_OUT'] ?? 'eval-scorecard.json'
+
 const scorecard = await runComparison(adapters, suites, {
+  // Written after every case, so stopping a run mid-way keeps everything it
+  // has already paid for.
+  onPartial: (partial) => writeFileSync(outPath, `${JSON.stringify(partial, null, 2)}\n`),
   onProgress: (p) => {
     const mark = p.outcome === 'ok' ? '·' : p.outcome === 'blocking' ? '✗' : '!'
     process.stderr.write(
@@ -76,8 +81,6 @@ const scorecard = await runComparison(adapters, suites, {
 })
 console.log(formatScorecard(scorecard))
 
-const outPath = process.env['EVAL_OUT'] ?? 'eval-scorecard.json'
-writeFileSync(outPath, `${JSON.stringify(scorecard, null, 2)}\n`)
 console.error(`\nFull results (every reply and tool call): ${outPath}`)
 
 // A blocking failure is not a score. Exiting non-zero makes that unmissable

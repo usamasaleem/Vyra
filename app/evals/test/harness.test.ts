@@ -227,8 +227,49 @@ describe('extraction is graded on the database, not the claim', () => {
 describe('the policy check', () => {
   it('fails a model that answers a policy question without asking for the approved answer', async () => {
     const { checks } = await grade(
-      testCase({ id: 'policy-1', customer: ['how many km are included?'], needsOperatorAnswer: true }),
+      testCase({
+        id: 'policy-1',
+        customer: ['how many km are included?'],
+        needsOperatorAnswer: true,
+        policyTopicAsked: 'included-kilometres',
+      }),
       [{ toolCalls: [], reply: 'Mileage is generous on all our cars.' }],
+    )
+    expect(check(checks, 'looked up the operator policy')).toMatchObject({ outcome: 'fail', blocking: true })
+  })
+})
+
+describe('the policy check only fires where the customer asked', () => {
+  /**
+   * Regression. This check was derived from `needsOperatorAnswer`, which marks
+   * a case whose expected *content* depends on the operator — a broader set.
+   * It failed `out-of-hours` and `goes-quiet`, where the customer asks nothing
+   * and the operator's answer is configuration the backend acts on, not a
+   * lookup the model performs mid-turn.
+   */
+  it('does not demand a lookup when the operator answer is configuration', async () => {
+    const { checks } = await grade(
+      testCase({
+        id: 'policy-2',
+        customer: ['hi, need a car tonight'],
+        needsOperatorAnswer: true, // hours are operator config...
+        // ...but the customer asked about a car, not about opening hours.
+      }),
+      [{ toolCalls: [], reply: "Let's get you sorted — which car did you have in mind?" }],
+    )
+    expect(checks.find((c) => c.name === 'looked up the operator policy')).toBeUndefined()
+    expect(checks.filter((c) => c.blocking && c.outcome === 'fail')).toEqual([])
+  })
+
+  it('still demands a lookup when the customer asked a policy question', async () => {
+    const { checks } = await grade(
+      testCase({
+        id: 'policy-3',
+        customer: ['what deposit do you take?'],
+        needsOperatorAnswer: true,
+        policyTopicAsked: 'deposit',
+      }),
+      [{ toolCalls: [], reply: 'Deposits vary by car.' }],
     )
     expect(check(checks, 'looked up the operator policy')).toMatchObject({ outcome: 'fail', blocking: true })
   })
@@ -335,6 +376,28 @@ describe('the scorecard', () => {
     const replies = scorecard.models[0]?.cases.map((c) => c.reply)
     expect(replies).toEqual(['Happy to help!', 'Happy to help!', 'Happy to help!'])
     expect(scorecard.models[0]?.blockingFailures).toBe(0)
+  })
+
+  /**
+   * Regression. Results lived only in memory until every model finished, so an
+   * interrupted run — which is minutes of paid network calls — left nothing at
+   * all behind.
+   */
+  it('hands back a usable scorecard after every case, not only at the end', async () => {
+    const suite = {
+      name: 'three cases',
+      cases: ['a', 'b', 'c'].map((id) => testCase({ id: `partial-${id}` })),
+    }
+    const model = scriptedModel('partial', [{ toolCalls: [], reply: 'Happy to help!' }])
+
+    const partials: number[] = []
+    await runComparison([model], [suite], {
+      world,
+      onPartial: (p) => partials.push(p.models[0]?.cases.length ?? 0),
+    })
+
+    // One per case, and each one already carries the model currently in flight.
+    expect(partials).toEqual([1, 2, 3])
   })
 
   it('records an adapter failure as an error rather than a pass', async () => {

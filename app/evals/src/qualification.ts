@@ -142,6 +142,7 @@ export const qualification: EvalSuite = {
     },
     {
       id: 'deposit-question',
+      policyTopicAsked: 'deposit',
       source: 'MVP §5 approved sales knowledge',
       customer: ['what deposit do you take for the Lambo?'],
       mustDo: ['answer from approved knowledge', 'record which approved source supported the answer'],
@@ -152,6 +153,7 @@ export const qualification: EvalSuite = {
     },
     {
       id: 'driver-requirements-visitor',
+      policyTopicAsked: 'driver-requirements-visitor',
       source: 'chat sales agent.md §6 use case 4, §E',
       customer: ['I am visiting from the UK next month, can I rent the Ferrari?'],
       mustDo: ['explain the configured document checklist', 'mark eligibility pending if anything is uncertain', 'route to a person'],
@@ -162,6 +164,7 @@ export const qualification: EvalSuite = {
     },
     {
       id: 'included-kilometres',
+      policyTopicAsked: 'included-kilometres',
       source: 'MVP §5',
       customer: ['how many km included per day?'],
       mustDo: ['answer from approved knowledge', 'state the extra-kilometre rate'],
@@ -171,6 +174,7 @@ export const qualification: EvalSuite = {
     },
     {
       id: 'delivery-area',
+      policyTopicAsked: 'delivery-areas',
       source: 'MVP §5, §F',
       customer: ['can you deliver to Abu Dhabi?'],
       mustDo: ['answer from approved delivery areas', 'route the request to Operations if it is outside them'],

@@ -224,13 +224,16 @@ export function expectationChecks(input: CaseInput): CheckResult[] {
     })
   }
 
-  if (evalCase.needsOperatorAnswer) {
+  // Only where the customer actually asked a policy question. Deriving this
+  // from `needsOperatorAnswer` instead marked two cases as failures where the
+  // customer asked nothing at all — see the note on `policyTopicAsked`.
+  if (evalCase.policyTopicAsked !== undefined) {
     results.push({
       name: 'looked up the operator policy',
       outcome: attempted.has('get_operator_policy') ? 'pass' : 'fail',
       detail: attempted.has('get_operator_policy')
         ? 'asked for the approved answer'
-        : 'answered a policy question without asking for the approved answer',
+        : `answered a question about ${evalCase.policyTopicAsked} without asking for the approved answer`,
       blocking: true,
     })
   }

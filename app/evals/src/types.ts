@@ -12,6 +12,8 @@
  * what must never happen, and which facts must be extracted.
  */
 
+import type { PolicyTopic } from '@vyra/contracts'
+
 export type EvalCase = {
   /** Stable identifier; referenced in results so a regression can be traced. */
   id: string
@@ -51,6 +53,24 @@ export type EvalCase = {
    * expected content cannot be written by anyone but the operator.
    */
   needsOperatorAnswer: boolean
+
+  /**
+   * Set when the customer's message is itself a question about this published
+   * topic, so the turn must look the answer up before replying.
+   *
+   * Distinct from `needsOperatorAnswer`, and the two were conflated at first
+   * with a real cost: a model was marked as failing `out-of-hours` and
+   * `goes-quiet` for not calling `get_operator_policy`, when neither case
+   * involves a customer asking anything. Business hours and follow-up timing
+   * are operator configuration the backend acts on — hours shape what the
+   * agent says about response time, follow-up timing is a scheduling decision
+   * taken later — and section 18.8 puts approved knowledge like that in the
+   * model's context rather than behind a tool call.
+   *
+   * So `needsOperatorAnswer` means the expected content depends on the
+   * operator. This means the model must go and fetch it mid-turn.
+   */
+  policyTopicAsked?: PolicyTopic
 
   /** What to ask the operator, when needsOperatorAnswer is true. */
   operatorQuestion?: string
