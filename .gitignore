@@ -22,3 +22,6 @@ coverage/
 
 # next
 next-env.d.ts
+
+# eval comparison output
+eval-scorecard.json

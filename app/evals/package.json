@@ -13,6 +13,15 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "clean": "tsc -b --clean"
+    "clean": "tsc -b --clean",
+    "compare": "tsx --env-file-if-exists=../inbox/.env.local src/cli/compare.ts"
+  },
+  "dependencies": {
+    "@vyra/agent": "*",
+    "@vyra/contracts": "*",
+    "@vyra/db": "*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
   }
 }

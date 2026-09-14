@@ -2,7 +2,7 @@
   "name": "vyra",
   "version": "0.0.0",
   "private": true,
-  "description": "Vyra — WhatsApp AI sales assistant for Dubai luxury car rental operators",
+  "description": "Vyra \u2014 WhatsApp AI sales assistant for Dubai luxury car rental operators",
   "workspaces": [
     "app/*"
   ],
@@ -19,7 +19,8 @@
     "test:watch": "vitest --passWithNoTests",
     "failures": "npm run failures --workspace=app/worker --",
     "db:generate": "npm run generate --workspace=app/db",
-    "db:migrate": "npm run migrate --workspace=app/db"
+    "db:migrate": "npm run migrate --workspace=app/db",
+    "evals:compare": "npm run compare --workspace=app/evals"
   },
   "dependencies": {
     "@netlify/blobs": "^10.0.0"

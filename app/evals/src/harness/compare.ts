@@ -1,0 +1,189 @@
+import type { EvalCase, EvalSuite } from '../types.js'
+import { gradeCase, type CheckResult } from './checks.js'
+import type { ModelAdapter } from './model.js'
+import { PROMPT_VERSION } from './prompt.js'
+import { runTurn, type RunTurnOptions } from './run-turn.js'
+import { createEvalWorld, type EvalWorld } from './world.js'
+
+/**
+ * Run the same acceptance set against several models and report what happened.
+ *
+ * Section 18.8: "Select the production model after evaluating representative
+ * English, Arabic and mixed-language cases against the same acceptance set; no
+ * specific model, price or performance is assumed here." The last clause is the
+ * instruction this file follows most literally — it knows nothing about any
+ * provider, and the only thing that distinguishes one column of the scorecard
+ * from another is which adapter was passed in.
+ */
+
+export type CaseResult = {
+  caseId: string
+  suite: string
+  source: string
+  checks: CheckResult[]
+  reply: string | null
+  /** Names in call order, refusals included — the cheapest thing to eyeball. */
+  toolCalls: string[]
+  rounds: number
+  stoppedBecause: string
+  error: string | null
+}
+
+export type ModelScore = {
+  label: string
+  modelId: string
+  /** Safety failures. Section 12 of the MVP: a release blocker, not a score. */
+  blockingFailures: number
+  /** Heuristic flags. A human reads these; they are not counted against anyone. */
+  needsReview: number
+  expectationsPassed: number
+  expectationsTotal: number
+  /** Cases where the harness itself broke. Never silently counted as a pass. */
+  errors: number
+  cases: CaseResult[]
+}
+
+export type Scorecard = {
+  promptVersion: string
+  ranAt: string
+  caseCount: number
+  models: ModelScore[]
+}
+
+export async function runComparison(
+  adapters: ModelAdapter[],
+  suites: EvalSuite[],
+  options: RunTurnOptions & { world?: EvalWorld } = {},
+): Promise<Scorecard> {
+  const world = options.world ?? (await createEvalWorld())
+  const owned = options.world === undefined
+  const cases: Array<{ suite: string; evalCase: EvalCase }> = suites.flatMap((s) =>
+    s.cases.map((evalCase) => ({ suite: s.name, evalCase })),
+  )
+
+  try {
+    const models: ModelScore[] = []
+
+    for (const adapter of adapters) {
+      const results: CaseResult[] = []
+
+      for (const { suite, evalCase } of cases) {
+        // A fresh conversation per case, so one model's turn cannot leave state
+        // that changes how the next case is graded.
+        const ctx = await world.contextFor(`${adapter.label}-${evalCase.id}`, evalCase.customer)
+
+        try {
+          const outcome = await runTurn(adapter, ctx, evalCase.customer, options)
+          const recordedFields = await world.recordedFields(ctx)
+          results.push({
+            caseId: evalCase.id,
+            suite,
+            source: evalCase.source,
+            checks: gradeCase({ evalCase, outcome, recordedFields }),
+            reply: outcome.reply,
+            toolCalls: outcome.toolCalls.map((c) =>
+              c.status === 'ok' ? c.requestedName : `${c.requestedName}(${c.reason ?? 'threw'})`,
+            ),
+            rounds: outcome.rounds,
+            stoppedBecause: outcome.stoppedBecause,
+            error: null,
+          })
+        } catch (error) {
+          // A provider timing out is a fact about that provider, and a run that
+          // hid it would quietly score a model on the cases that happened to
+          // succeed.
+          results.push({
+            caseId: evalCase.id,
+            suite,
+            source: evalCase.source,
+            checks: [],
+            reply: null,
+            toolCalls: [],
+            rounds: 0,
+            stoppedBecause: 'error',
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+
+      const allChecks = results.flatMap((r) => r.checks)
+      models.push({
+        label: adapter.label,
+        modelId: adapter.modelId,
+        blockingFailures: allChecks.filter((c) => c.blocking && c.outcome === 'fail').length,
+        needsReview: allChecks.filter((c) => c.outcome === 'review').length,
+        expectationsPassed: allChecks.filter((c) => !c.blocking && c.outcome === 'pass').length,
+        expectationsTotal: allChecks.filter((c) => !c.blocking).length,
+        errors: results.filter((r) => r.error !== null).length,
+        cases: results,
+      })
+    }
+
+    return {
+      promptVersion: PROMPT_VERSION,
+      ranAt: new Date().toISOString(),
+      caseCount: cases.length,
+      models,
+    }
+  } finally {
+    if (owned) await world.close()
+  }
+}
+
+/**
+ * The scorecard as a person reads it.
+ *
+ * Blocking failures first and alone, because they are not a score to be traded
+ * off against a better one elsewhere. A model that invents a deposit figure
+ * twice is not competing on points.
+ */
+export function formatScorecard(scorecard: Scorecard): string {
+  const lines: string[] = []
+  lines.push(`prompt ${scorecard.promptVersion} · ${scorecard.caseCount} cases · ${scorecard.ranAt}`)
+  lines.push('')
+
+  const width = Math.max(12, ...scorecard.models.map((m) => m.label.length))
+  lines.push(
+    `${'model'.padEnd(width)}  ${'blocking'.padStart(8)}  ${'review'.padStart(6)}  ${'expectations'.padStart(12)}  ${'errors'.padStart(6)}`,
+  )
+  for (const model of scorecard.models) {
+    lines.push(
+      `${model.label.padEnd(width)}  ${String(model.blockingFailures).padStart(8)}  ` +
+      `${String(model.needsReview).padStart(6)}  ` +
+      `${`${model.expectationsPassed}/${model.expectationsTotal}`.padStart(12)}  ` +
+      `${String(model.errors).padStart(6)}`,
+    )
+  }
+
+  for (const model of scorecard.models) {
+    const blocking = model.cases.filter((c) => c.checks.some((k) => k.blocking && k.outcome === 'fail'))
+    const review = model.cases.filter((c) => c.checks.some((k) => k.outcome === 'review'))
+    if (blocking.length === 0 && review.length === 0 && model.errors === 0) continue
+
+    lines.push('', `── ${model.label} (${model.modelId})`)
+    for (const result of blocking) {
+      for (const check of result.checks.filter((k) => k.blocking && k.outcome === 'fail')) {
+        lines.push(`  BLOCKING  ${result.caseId}: ${check.name} — ${check.detail}`)
+        lines.push(`            said: ${truncate(result.reply)}`)
+        lines.push(`            tools: ${result.toolCalls.join(', ') || 'none'}`)
+      }
+    }
+    for (const result of review) {
+      for (const check of result.checks.filter((k) => k.outcome === 'review')) {
+        lines.push(`  REVIEW    ${result.caseId}: ${check.name} — ${check.detail}`)
+        lines.push(`            said: ${truncate(result.reply)}`)
+      }
+    }
+    for (const result of model.cases.filter((c) => c.error !== null)) {
+      lines.push(`  ERROR     ${result.caseId}: ${result.error}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+function truncate(text: string | null, limit = 160): string {
+  if (text === null) return '(no reply)'
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length <= limit ? flat : `${flat.slice(0, limit - 1)}…`
+}
