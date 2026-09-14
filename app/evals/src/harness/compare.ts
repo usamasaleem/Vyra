@@ -50,10 +50,21 @@ export type Scorecard = {
   models: ModelScore[]
 }
 
+export type Progress = {
+  model: string
+  modelIndex: number
+  modelCount: number
+  caseId: string
+  caseIndex: number
+  caseCount: number
+  outcome: 'ok' | 'blocking' | 'error'
+  detail: string
+}
+
 export async function runComparison(
   adapters: ModelAdapter[],
   suites: EvalSuite[],
-  options: RunTurnOptions & { world?: EvalWorld } = {},
+  options: RunTurnOptions & { world?: EvalWorld; onProgress?: (p: Progress) => void } = {},
 ): Promise<Scorecard> {
   const world = options.world ?? (await createEvalWorld())
   const owned = options.world === undefined
@@ -64,10 +75,10 @@ export async function runComparison(
   try {
     const models: ModelScore[] = []
 
-    for (const adapter of adapters) {
+    for (const [modelIndex, adapter] of adapters.entries()) {
       const results: CaseResult[] = []
 
-      for (const { suite, evalCase } of cases) {
+      for (const [caseIndex, { suite, evalCase }] of cases.entries()) {
         // A fresh conversation per case, so one model's turn cannot leave state
         // that changes how the next case is graded.
         const ctx = await world.contextFor(`${adapter.label}-${evalCase.id}`, evalCase.customer)
@@ -104,6 +115,22 @@ export async function runComparison(
             error: error instanceof Error ? error.message : String(error),
           })
         }
+
+        // A run is hundreds of sequential network calls. Without this the only
+        // signal for several minutes is a blinking cursor, and a run that has
+        // silently failed on every case looks exactly like one that is working.
+        const latest = results.at(-1)!
+        const failed = latest.checks.filter((c) => c.blocking && c.outcome === 'fail')
+        options.onProgress?.({
+          model: adapter.label,
+          modelIndex: modelIndex + 1,
+          modelCount: adapters.length,
+          caseId: evalCase.id,
+          caseIndex: caseIndex + 1,
+          caseCount: cases.length,
+          outcome: latest.error !== null ? 'error' : failed.length > 0 ? 'blocking' : 'ok',
+          detail: latest.error ?? (failed[0]?.name ?? latest.toolCalls.join(' ') ?? ''),
+        })
       }
 
       const allChecks = results.flatMap((r) => r.checks)

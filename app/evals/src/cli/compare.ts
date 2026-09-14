@@ -14,7 +14,16 @@ import type { ModelAdapter } from '../harness/model.js'
  * assumed here."
  */
 
+// Both lists were read from the live provider documentation in the session
+// that added them, not recalled. Model ids age fast and a guessed one fails as
+// a 404 partway through a run; `gpt-4o`, which memory suggests, is not a
+// current id at all.
+//
+// Three tiers each, because the interesting question for this product is not
+// "which is best" but "is the cheap one good enough". A WhatsApp sales agent
+// answers a lot of messages, and the flagship costs more on every one of them.
 const ANTHROPIC_DEFAULTS = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001']
+const OPENAI_DEFAULTS = ['gpt-6-astra', 'gpt-5.6-terra', 'gpt-5.6-luna']
 
 function buildAdapters(): ModelAdapter[] {
   const adapters: ModelAdapter[] = []
@@ -28,14 +37,8 @@ function buildAdapters(): ModelAdapter[] {
 
   const openaiKey = process.env['OPENAI_API_KEY']
   if (openaiKey !== undefined && openaiKey !== '') {
-    // No default list. The Anthropic ids above were verified against the live
-    // documentation in this session; equivalents for other providers were not,
-    // and a guessed model id fails as an unhelpful 404 halfway through a run.
-    const models = (process.env['EVAL_OPENAI_MODELS'] ?? '')
+    const models = (process.env['EVAL_OPENAI_MODELS'] ?? OPENAI_DEFAULTS.join(','))
       .split(',').map((m) => m.trim()).filter(Boolean)
-    if (models.length === 0) {
-      console.error('OPENAI_API_KEY is set but EVAL_OPENAI_MODELS is not — name the models to compare.')
-    }
     for (const model of models) adapters.push(openaiModel({ apiKey: openaiKey, model }))
   }
 
@@ -48,7 +51,7 @@ if (adapters.length === 0) {
 
 Set one of these and run again:
   ANTHROPIC_API_KEY=...   optionally EVAL_ANTHROPIC_MODELS=${ANTHROPIC_DEFAULTS.join(',')}
-  OPENAI_API_KEY=...      with EVAL_OPENAI_MODELS=<model-id>,<model-id>
+  OPENAI_API_KEY=...      optionally EVAL_OPENAI_MODELS=${OPENAI_DEFAULTS.join(',')}
 
 The harness itself is tested without a key: npx vitest run app/evals`)
   process.exit(1)
@@ -61,7 +64,16 @@ console.error(
   `${adapters.map((a) => a.label).join(', ')}\n`,
 )
 
-const scorecard = await runComparison(adapters, suites)
+const scorecard = await runComparison(adapters, suites, {
+  onProgress: (p) => {
+    const mark = p.outcome === 'ok' ? '·' : p.outcome === 'blocking' ? '✗' : '!'
+    process.stderr.write(
+      `${mark} [${p.modelIndex}/${p.modelCount} ${p.model}] ` +
+      `${String(p.caseIndex).padStart(2)}/${p.caseCount} ${p.caseId}` +
+      `${p.outcome === 'ok' ? '' : `  ${p.detail.slice(0, 90)}`}\n`,
+    )
+  },
+})
 console.log(formatScorecard(scorecard))
 
 const outPath = process.env['EVAL_OUT'] ?? 'eval-scorecard.json'
