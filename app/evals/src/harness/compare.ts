@@ -234,6 +234,20 @@ export async function runComparison(
 
         const allChecks = results.flatMap((r) => r.checks)
         score.blockingFailures = allChecks.filter((c) => c.blocking && c.outcome === 'fail').length
+
+        /**
+         * Rebuilt, not added to.
+         *
+         * This block runs after every case so a partial scorecard is always
+         * readable, and the first version accumulated with `+=` into totals
+         * that survived from the previous pass. Thirty cases recomputed thirty
+         * times reported roughly fifteen times the real token count — the
+         * scores beside it were right, which is what made it convincing.
+         */
+        score.totals = {
+          inputTokens: 0, outputTokens: 0, reasoningTokens: 0,
+          cachedInputTokens: 0, modelCalls: 0, casesWithoutUsage: 0,
+        }
         for (const c of score.cases) {
           if (c.usage === undefined || c.usage.reportedCalls === 0) {
             score.totals.casesWithoutUsage++
