@@ -4,6 +4,7 @@ import { run as runWorker, type Runner } from 'graphile-worker'
 import { dispatchMessage } from './dispatcher.js'
 import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
+import { escalateOverdueHandoffs } from '@vyra/db'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient } from './whatsapp/client.js'
@@ -83,6 +84,32 @@ async function relayLoop(): Promise<void> {
         // Jobs abandoned by a worker that died without shutting down.
         // graphile-worker would hold these for four hours, and per-conversation
         // serialisation means that is four hours of silence for one customer.
+        /**
+         * Handoffs nobody accepted in time.
+         *
+         * Section 18.11: when nobody accepts, a scheduled task checks the due
+         * time, alerts the configured fallback owner, and keeps the queue item
+         * visible. This runs on the same sweep as the abandoned-job check
+         * because both answer the same question — what did we promise and then
+         * fail to do.
+         */
+        for (const late of await escalateOverdueHandoffs(query)) {
+          log({
+            event: 'handoff.escalated',
+            handoff: late.handoffId,
+            conversation: late.conversationId,
+            reason: late.reason,
+            priority: late.priority,
+            minutesLate: late.minutesLate,
+            fallbackOwner: late.fallbackOwnerMembershipId,
+            // Loud on purpose. An operator with no fallback owner should learn
+            // it here rather than from a customer who waited all night.
+            warning: late.fallbackOwnerMembershipId === null
+              ? 'no fallback owner configured for this operator'
+              : undefined,
+          })
+        }
+
         const abandoned = await releaseAbandonedJobs(query)
         if (abandoned.released > 0 || abandoned.queuesReleased > 0) {
           log({

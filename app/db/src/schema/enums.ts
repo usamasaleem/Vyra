@@ -156,3 +156,31 @@ export const fleetProvenance = pgEnum('fleet_provenance', [
   'placeholder',
   'operator_confirmed',
 ])
+
+/**
+ * Why a conversation reached a person. Section 8 of the MVP lists the triggers;
+ * these are those, grouped by what a salesperson does about them.
+ */
+export const handoffReason = pgEnum('handoff_reason', [
+  'customer_asked',
+  'qualified_lead',
+  'discount_requested',
+  'cannot_verify',
+  'payment_or_dispute',
+  'safety_or_accident',
+  'non_text_message',
+  'agent_uncertain',
+  'turn_failed',
+])
+
+/**
+ * `escalated` is distinct from `waiting` on purpose: a handoff nobody accepted
+ * in time is a different thing from one that is merely new, and collapsing them
+ * would hide exactly the failure escalation exists to surface.
+ */
+export const handoffState = pgEnum('handoff_state', [
+  'waiting',
+  'accepted',
+  'escalated',
+  'resolved',
+])

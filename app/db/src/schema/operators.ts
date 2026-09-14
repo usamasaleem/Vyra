@@ -38,6 +38,24 @@ export const operators = pgTable('operators', {
    */
   aiSendingEnabled: boolean().notNull().default(false),
 
+  /**
+   * How long a handoff may sit unaccepted before the fallback owner is told.
+   *
+   * The operator's number, not ours. What counts as slow for a Rolls-Royce
+   * enquiry at 2am is their judgement about their own business.
+   */
+  handoffSlaMinutes: integer().notNull().default(30),
+
+  /**
+   * Who hears about a handoff nobody accepted.
+   *
+   * Nullable, and the escalation says so rather than failing silently: an
+   * operator who has not named a fallback should find out from a visible
+   * warning, not from a customer who waited all night. Set as a plain uuid —
+   * a foreign key back to memberships would be circular at table-creation time.
+   */
+  fallbackOwnerMembershipId: uuid(),
+
   /** Retention window for conversations, contacts and uploads. */
   retentionDays: integer().notNull().default(730),
 

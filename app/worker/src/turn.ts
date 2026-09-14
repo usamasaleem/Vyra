@@ -11,6 +11,7 @@ import {
   recordOutstandingWork,
   recordRejectedTurn,
   recordTurnFailure,
+  raiseHandoff,
   type TurnDestination,
 } from '@vyra/db'
 import type { QueryRunner, Transactor } from '@vyra/db'
@@ -92,10 +93,24 @@ export async function handleNonTextMessage(
 ): Promise<TurnResult> {
   const body = NON_TEXT_ACKNOWLEDGEMENT[context.message.kind] ?? DEFAULT_ACKNOWLEDGEMENT
 
+  const description = NON_TEXT_DESCRIPTION[context.message.kind]
+    ?? `a ${context.message.kind} message`
+  const summary = `Customer sent ${description} the agent cannot read — review it and reply.`
+
   await requestHandoff(deps.run, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
-    reason: `Customer sent ${NON_TEXT_DESCRIPTION[context.message.kind] ?? `a ${context.message.kind} message`} the agent cannot read — review it and reply.`,
+    reason: summary,
+  })
+
+  // The task, not just the pause. Section 18.11: a handoff summary without an
+  // assigned task is not a completed handoff.
+  await raiseHandoff(deps.run, {
+    operatorId: context.operator.id,
+    conversationId: context.conversation.id,
+    reason: 'non_text_message',
+    summary,
+    triggerMessageId: context.message.id,
   })
 
   /**
@@ -201,6 +216,13 @@ export async function runConversationTurn(
       detail: failure.detail,
       messageId: context.message.id,
     })
+    await raiseHandoff(deps.run, {
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+      reason: 'turn_failed',
+      summary: `The agent could not reply (${failure.kind}) — answer this customer manually.`,
+      triggerMessageId: context.message.id,
+    })
     return { outcome: 'failed', kind: failure.kind, detail: failure.detail }
   }
 
@@ -214,6 +236,30 @@ export async function runConversationTurn(
   const ownHandoff = end.toolCalls.some(
     (call) => call.requestedName === 'request_handoff' && call.status === 'ok',
   )
+
+  /**
+   * The model decided a person is needed, so a person gets a task with a clock
+   * on it. Raised before acceptance, because the handoff already happened
+   * inside the tool call — if the reply is then rejected as superseded, the
+   * work is still real and someone should still see it.
+   */
+  if (ownHandoff) {
+    // Read fresh: request_handoff wrote the reason into next_action a moment
+    // ago, after this turn's context was loaded. The model's own sentence about
+    // why it handed over is better than anything generic written here.
+    const [current] = await deps.run(
+      `select next_action from conversations where id = $1 and operator_id = $2`,
+      [context.conversation.id, context.operator.id],
+    )
+    await raiseHandoff(deps.run, {
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+      reason: 'customer_asked',
+      summary: (current?.['next_action'] as string)
+        ?? 'The agent handed this conversation to a person.',
+      triggerMessageId: context.message.id,
+    })
+  }
 
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
