@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { assignTo, changePriority, handBackToAi, takeOver } from '@/app/actions'
 import { LiveRefresh } from '@/app/live-refresh'
+import { SiteNav } from '@/app/site-nav'
 import { permissions, requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
 import { getConversationThread } from '@/lib/queries/conversations'
@@ -51,6 +52,7 @@ export default async function ConversationPage({
   return (
     <main className="shell">
       <LiveRefresh conversationId={thread.id} />
+      <SiteNav current="inbox" operatorId={actor.operatorId} />
       <div className="topbar">
         <div>
           <h1>{thread.contactName ?? thread.channelIdentifier}</h1>

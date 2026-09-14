@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SiteNav } from '../site-nav'
 import { formatMoney, listDraftQuotes, listOpenOperationsRequests } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
@@ -27,17 +28,12 @@ export default async function OperationsPage() {
 
   return (
     <main className="shell">
+      <SiteNav current="operations" operatorId={actor.operatorId} />
       <h1>Operations requests</h1>
       <p className="muted">
         Questions the agent could not answer. A customer is waiting on each of these, and the
         agent will not state availability until somebody here does.
       </p>
-
-      <div style={{ display: 'flex', gap: '0.5rem', margin: '1.5rem 0 1rem' }}>
-        <Link className="button secondary" href="/">Conversations</Link>
-        <Link className="button secondary" href="/handoffs">Handoffs</Link>
-        <Link className="button secondary" href="/rates">Rates</Link>
-      </div>
 
       {/*
         Quotes first. A customer waiting on a price has been told one is coming,

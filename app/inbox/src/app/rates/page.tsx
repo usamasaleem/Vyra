@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { SiteNav } from '../site-nav'
 import { listRates } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
@@ -21,16 +21,12 @@ export default async function RatesPage() {
 
   return (
     <main className="shell">
+      <SiteNav current="rates" operatorId={actor.operatorId} />
       <h1>Rates</h1>
       <p className="muted">
         The agent prices from these and from nothing else. A vehicle with no rate cannot be
         quoted — it says so rather than estimating.
       </p>
-
-      <div style={{ display: 'flex', gap: '0.5rem', margin: '1.5rem 0 1rem' }}>
-        <Link className="button secondary" href="/">Conversations</Link>
-        <Link className="button secondary" href="/operations">Operations</Link>
-      </div>
 
       {unpriced > 0 && (
         <p className="card" style={{ borderLeft: '3px solid var(--accent, #b45309)' }}>

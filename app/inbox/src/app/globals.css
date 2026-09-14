@@ -88,3 +88,21 @@ a { color: var(--accent); }
   grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
 }
 .measures .card { padding: 0.9rem 1rem; }
+
+/* The section navigation. Visually distinct from the filter rows below it:
+   filters narrow the page you are on, these change which page you are on, and
+   when both were the same grey button nobody noticed a missing destination. */
+.sitenav {
+  display: flex; flex-wrap: wrap; gap: 0.15rem;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 1.25rem; padding-bottom: 0.1rem;
+}
+.sitenav-item {
+  font-size: 0.9rem; text-decoration: none; color: var(--muted);
+  padding: 0.45rem 0.7rem; border-radius: 7px 7px 0 0;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+a.sitenav-item:hover { color: var(--text); background: var(--surface); }
+.sitenav-item.is-current {
+  color: var(--text); font-weight: 600; border-bottom-color: var(--accent);
+}

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SiteNav } from '../site-nav'
 import { formatDuration, getMetrics } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
@@ -54,6 +55,7 @@ export default async function ReportsPage({
 
   return (
     <main className="shell">
+      <SiteNav current="reports" operatorId={actor.operatorId} />
       <h1>Reporting</h1>
       <p className="muted">
         The ten sales measures. Fleet, utilisation, payments and maintenance belong to Operations,
@@ -64,7 +66,6 @@ export default async function ReportsPage({
         <Link className="button secondary" href="/reports?range=today">Today</Link>
         <Link className="button secondary" href="/reports?range=week">7 days</Link>
         <Link className="button secondary" href="/reports?range=month">30 days</Link>
-        <Link className="button secondary" href="/">Conversations</Link>
       </div>
 
       <div className="measures">

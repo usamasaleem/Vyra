@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SiteNav } from '../site-nav'
 import { listOpenHandoffs } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
@@ -46,6 +47,7 @@ export default async function HandoffsPage({
 
   return (
     <main className="shell">
+      <SiteNav current="handoffs" operatorId={actor.operatorId} />
       <h1>Handoff queue</h1>
       <p className="muted">
         Conversations the agent could not finish. Accepting one assigns the conversation to you.
@@ -54,7 +56,6 @@ export default async function HandoffsPage({
       <div style={{ display: 'flex', gap: '0.5rem', margin: '1.5rem 0 1rem' }}>
         <Link className="button secondary" href="/handoffs">Unclaimed</Link>
         <Link className="button secondary" href="/handoffs?mine=all">All open</Link>
-        <Link className="button secondary" href="/">Conversations</Link>
       </div>
 
       {handoffs.length === 0 ? (
