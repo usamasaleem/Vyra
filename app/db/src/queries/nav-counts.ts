@@ -16,6 +16,14 @@ export type NavCounts = {
   unclaimedHandoffs: number
   /** Questions the agent could not answer and is waiting on a person for. */
   openOperationsRequests: number
+  /**
+   * Customers who messaged a conversation a person owns, and have had no reply.
+   *
+   * The one nobody was counting. The agent hands over correctly, a salesperson
+   * accepts, the customer asks one more thing, and the AI is not allowed to
+   * answer it — so they get silence and nothing says so.
+   */
+  customersWaiting: number
 }
 
 export async function getNavCounts(run: QueryRunner, operatorId: string): Promise<NavCounts> {
@@ -26,12 +34,23 @@ export async function getNavCounts(run: QueryRunner, operatorId: string): Promis
            and h.state in ('waiting', 'escalated', 'accepted')
            and h.owner_membership_id is null) as unclaimed_handoffs,
        (select count(*) from operations_requests r
-         where r.operator_id = $1 and r.state = 'open') as open_requests`,
+         where r.operator_id = $1 and r.state = 'open') as open_requests,
+       (select count(*) from conversations v
+         join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
+         join lateral (
+           select direction from messages m
+           where m.conversation_id = v.id and m.operator_id = v.operator_id
+           order by m.created_at desc limit 1
+         ) last_in on true
+        where v.operator_id = $1 and v.handler_mode = 'human'
+          and last_in.direction = 'inbound' and c.opted_out_at is null) as customers_waiting`,
     [operatorId],
   )
 
   const row = rows[0]
-  if (row === undefined) return { unclaimedHandoffs: 0, openOperationsRequests: 0 }
+  if (row === undefined) {
+    return { unclaimedHandoffs: 0, openOperationsRequests: 0, customersWaiting: 0 }
+  }
 
   // count(*) is bigint; postgres.js hands that back as a string, PGlite as a
   // number. Number() is right for both, and these counts cannot reach a size
@@ -39,5 +58,6 @@ export async function getNavCounts(run: QueryRunner, operatorId: string): Promis
   return {
     unclaimedHandoffs: Number(row['unclaimed_handoffs']),
     openOperationsRequests: Number(row['open_requests']),
+    customersWaiting: Number(row['customers_waiting']),
   }
 }

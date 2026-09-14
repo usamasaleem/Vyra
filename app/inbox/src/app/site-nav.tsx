@@ -35,6 +35,8 @@ export async function SiteNav({ current, operatorId }: { current: NavKey; operat
    * people to stop reading the number.
    */
   const badge = (key: NavKey): number | null => {
+    // On Conversations, because that is where somebody goes to answer one.
+    if (key === 'inbox' && counts.customersWaiting > 0) return counts.customersWaiting
     if (key === 'handoffs' && counts.unclaimedHandoffs > 0) return counts.unclaimedHandoffs
     if (key === 'operations' && counts.openOperationsRequests > 0) return counts.openOperationsRequests
     return null

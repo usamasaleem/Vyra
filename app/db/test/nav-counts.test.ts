@@ -64,6 +64,7 @@ describe('getNavCounts', () => {
     expect(await getNavCounts(run, OP)).toEqual({
       unclaimedHandoffs: 0,
       openOperationsRequests: 0,
+      customersWaiting: 0,
     })
   })
 
@@ -75,6 +76,7 @@ describe('getNavCounts', () => {
     expect(await getNavCounts(run, OP)).toEqual({
       unclaimedHandoffs: 2,
       openOperationsRequests: 1,
+      customersWaiting: 0,
     })
   })
 
@@ -116,6 +118,38 @@ describe('getNavCounts', () => {
    * operator filter here would put one operator's queue depth in front of
    * another's staff.
    */
+  /**
+   * The one nobody was counting. A conversation a person owns whose last
+   * message is the customer's is a customer being kept waiting, and it looked
+   * like a bug in the agent three times before anything counted it.
+   */
+  it('counts a customer left waiting on a person', async () => {
+    await run(`update conversations set handler_mode = 'human' where id = $1`, [CONV])
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', 'any update?', 'wamid.waiting')`,
+      [OP, CONV],
+    )
+
+    expect((await getNavCounts(run, OP)).customersWaiting).toBe(1)
+  })
+
+  it('stops counting a waiting customer once somebody replies', async () => {
+    await run(`update conversations set handler_mode = 'human' where id = $1`, [CONV])
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id, created_at)
+       values ($1, $2, 'inbound', 'text', 'any update?', 'wamid.w1', now() - interval '5 minutes')`,
+      [OP, CONV],
+    )
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'outbound', 'text', 'Here you go.', 'wamid.w2')`,
+      [OP, CONV],
+    )
+
+    expect((await getNavCounts(run, OP)).customersWaiting).toBe(0)
+  })
+
   it('counts nothing for an operator that owns none of it', async () => {
     await raise()
     await ask()
@@ -123,6 +157,7 @@ describe('getNavCounts', () => {
     expect(await getNavCounts(run, OTHER_OP)).toEqual({
       unclaimedHandoffs: 0,
       openOperationsRequests: 0,
+      customersWaiting: 0,
     })
   })
 })

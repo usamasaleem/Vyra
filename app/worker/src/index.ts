@@ -4,7 +4,7 @@ import { run as runWorker, type Runner } from 'graphile-worker'
 import { dispatchMessage } from './dispatcher.js'
 import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
-import { escalateOverdueHandoffs } from '@vyra/db'
+import { escalateAbandonedConversations, escalateOverdueHandoffs } from '@vyra/db'
 import { sendDueFollowUps } from './follow-ups.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
@@ -108,6 +108,28 @@ async function relayLoop(): Promise<void> {
             warning: late.fallbackOwnerMembershipId === null
               ? 'no fallback owner configured for this operator'
               : undefined,
+          })
+        }
+
+        /**
+         * Conversations a person took and then stopped answering.
+         *
+         * The check above finds handoffs nobody accepted. This one finds the
+         * opposite and worse case: somebody accepted, the customer asked one
+         * more thing, and the AI is no longer allowed to answer it. The
+         * conversation looks handled from the inside and silent from the
+         * customer's side, and nothing was counting.
+         *
+         * Back to the queue it goes, owner intact — knowing who let it go is
+         * part of what makes this worth recording.
+         */
+        for (const stalled of await escalateAbandonedConversations(query)) {
+          log({
+            event: 'conversation.customer_waiting',
+            handoff: stalled.handoffId,
+            conversation: stalled.conversationId,
+            waitingMinutes: stalled.waitingMinutes,
+            owner: stalled.ownerMembershipId,
           })
         }
 
