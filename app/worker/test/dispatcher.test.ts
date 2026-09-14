@@ -18,7 +18,7 @@ let run: QueryRunner
 
 const baseIntent = (overrides: Partial<SendIntent> = {}): SendIntent => ({
   messageId: 'm1', operatorId: OPERATOR, conversationId: CONVERSATION,
-  body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text',
+  body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text', replyButtons: null,
   sentByMembershipId: null, revisionAtSend: 0, conversationRevision: 0,
   handlerMode: 'ai', ownerMembershipId: null, lastCustomerMessageAt: new Date(NOW.getTime() - 60_000),
   recipient: '971500000001', optedOutAt: null, phoneNumberId: '111',
@@ -129,10 +129,11 @@ describe('dispatching against the database', () => {
   const queueOutbound = async (fields: Record<string, unknown> = {}) => {
     const rows = await run(
       `insert into messages (operator_id, conversation_id, direction, kind, body, delivery_state,
-                             revision_at_send, sent_by_membership_id, idempotency_key)
-       values ($1, $2, 'outbound', 'text', $3, 'pending', $4, $5, $6) returning id`,
+                             revision_at_send, sent_by_membership_id, idempotency_key, reply_buttons)
+       values ($1, $2, 'outbound', 'text', $3, 'pending', $4, $5, $6, $7::jsonb) returning id`,
       [OPERATOR, CONVERSATION, fields.body ?? 'Here are two options.',
-       fields.revisionAtSend ?? 0, fields.sentBy ?? null, fields.key ?? `turn-${Math.random()}`],
+       fields.revisionAtSend ?? 0, fields.sentBy ?? null, fields.key ?? `turn-${Math.random()}`,
+       fields.replyButtons === undefined ? null : JSON.stringify(fields.replyButtons)],
     )
     return rows[0]!.id as string
   }
@@ -168,7 +169,29 @@ describe('dispatching against the database', () => {
     expect(result).toEqual({ outcome: 'sent', providerMessageId: 'wamid.REAL' })
     expect(await stateOf(id)).toMatchObject({ delivery_state: 'accepted', provider_id: 'wamid.REAL' })
     expect(client.sendText).toHaveBeenCalledWith({
-      to: '971500000001', body: 'Here are two options.',
+      to: '971500000001', body: 'Here are two options.', buttons: null,
+    })
+  })
+
+  /**
+   * Buttons are stored on the message rather than decided at send time, so
+   * what the customer was offered survives a retry and a restart. A tapped
+   * "Yes, correct" means nothing without the question it answered.
+   */
+  it('sends the reply buttons that were stored with the message', async () => {
+    const buttons = [
+      { id: 'dates_confirmed', title: 'Yes, correct' },
+      { id: 'dates_wrong', title: 'Different dates' },
+    ]
+    const id = await queueOutbound({
+      body: '20th to 23rd September — that right?',
+      replyButtons: buttons,
+    })
+    const client = sending('wamid.BUTTONS')
+    await dispatchMessage(run, client, id)
+
+    expect(client.sendText).toHaveBeenCalledWith({
+      to: '971500000001', body: '20th to 23rd September — that right?', buttons,
     })
   })
 

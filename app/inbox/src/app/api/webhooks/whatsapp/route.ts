@@ -1,7 +1,7 @@
 import { queryRunner } from '@/lib/db'
 import { serverEnv } from '@/lib/env'
 import { applyMessageStatus, storeInboundEventOnly, storeInboundMessage } from '@/lib/whatsapp/ingest'
-import { toDate, toMessageKind, webhookPayloadSchema } from '@/lib/whatsapp/payload'
+import { toDate, toInboundKind, toMessageBody, webhookPayloadSchema } from '@/lib/whatsapp/payload'
 import { isValidSignature, isValidVerifyToken } from '@/lib/whatsapp/signature'
 
 /**
@@ -141,12 +141,12 @@ export async function POST(request: Request): Promise<Response> {
             waId: message.from,
             profileName: profileByWaId.get(message.from) ?? null,
             providerMessageId: message.id,
-            kind: toMessageKind(message.type),
-            body: message.text?.body ?? null,
+            kind: toInboundKind(message),
+            body: toMessageBody(message),
             media: mediaPointer(message),
             sentAt: toDate(message.timestamp),
           })
-          stored.push({ kind: toMessageKind(message.type), ...outcome })
+          stored.push({ kind: toInboundKind(message), ...outcome })
         }
 
         for (const status of change.value.statuses ?? []) {

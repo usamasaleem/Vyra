@@ -1,4 +1,4 @@
-import { detectDiscountRequest } from '@vyra/contracts'
+import { buttonsFor, detectDiscountRequest } from '@vyra/contracts'
 import {
   classifyTurnEnd,
   promiseMadeIn,
@@ -321,6 +321,12 @@ export async function runConversationTurn(
     operatorId: context.operator.id,
     revisionAtTurnStart,
     body: end.reply as string,
+    /**
+     * Two closed questions get a tap instead of a typed answer. Everything
+     * else — which is nearly everything — goes as plain text, because a menu
+     * on an open question is the fixed-flow bot this is not.
+     */
+    replyButtons: buttonsFor(end.reply),
     // Per inbound message, so a retried job cannot produce a second reply to
     // the same customer message.
     idempotencyKey: `turn:${context.message.id}`,

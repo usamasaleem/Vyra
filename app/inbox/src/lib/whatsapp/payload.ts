@@ -1,3 +1,4 @@
+import { meaningOfButton } from '@vyra/contracts'
 import { z } from 'zod'
 
 /**
@@ -29,6 +30,15 @@ const messageSchema = z.object({
   timestamp: z.string(),
   type: z.string(),
   text: z.object({ body: z.string() }).optional(),
+  /**
+   * A tapped reply button. Meta sends the id we chose and the title the
+   * customer saw; both matter, and the id is the one that cannot be mistyped.
+   */
+  interactive: z.object({
+    type: z.string(),
+    button_reply: z.object({ id: z.string(), title: z.string() }).optional(),
+    list_reply: z.object({ id: z.string(), title: z.string() }).optional(),
+  }).optional(),
 })
 
 const statusSchema = z.object({
@@ -89,4 +99,33 @@ export function toMessageKind(providerType: string): string {
 /** Meta sends Unix seconds as a string. */
 export function toDate(unixSeconds: string): Date {
   return new Date(Number(unixSeconds) * 1000)
+}
+
+/**
+ * The text of an inbound message, including a tapped button.
+ *
+ * A tap becomes words so the rest of the system stays unchanged: the turn, the
+ * transcript, the extraction and the inbox all work on sentences, and a tap
+ * then reads in the history exactly as a typed answer would. Without this a
+ * button reply arrives with no body at all and is held for a person — the
+ * customer answers the question they were asked and the conversation stops.
+ */
+export function toMessageBody(message: InboundMessage): string | null {
+  if (message.text?.body !== undefined) return message.text.body
+
+  const tapped = message.interactive?.button_reply ?? message.interactive?.list_reply
+  if (tapped !== undefined) return meaningOfButton(tapped.id, tapped.title)
+
+  return null
+}
+
+/**
+ * A tapped button is a text message as far as everything downstream is
+ * concerned. Meta types it `interactive`, which would otherwise route it to the
+ * non-text path and hold it.
+ */
+export function toInboundKind(message: InboundMessage): string {
+  const tapped = message.interactive?.button_reply ?? message.interactive?.list_reply
+  if (tapped !== undefined) return 'text'
+  return toMessageKind(message.type)
 }

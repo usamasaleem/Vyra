@@ -88,6 +88,8 @@ export async function acceptTurnOutput(
      * message is what deserves an answer.
      */
     ownHandoff?: boolean
+    /** Reply buttons to offer with this message, or null for plain text. */
+    replyButtons?: Array<{ id: string; title: string }> | null
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -153,6 +155,7 @@ export async function acceptTurnOutput(
     // Through the one and only path that creates an outbound message. Section
     // 18.12: never build a second way to send.
     const queued = await queueOutboundText(tx, {
+      replyButtons: input.replyButtons ?? null,
       conversationId: input.conversationId,
       operatorId: input.operatorId,
       body: input.body,

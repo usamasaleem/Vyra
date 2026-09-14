@@ -19,10 +19,12 @@ with conversation as (
 intent as (
   insert into messages (
     operator_id, conversation_id, direction, kind, body,
-    delivery_state, idempotency_key, revision_at_send, sent_by_membership_id
+    delivery_state, idempotency_key, revision_at_send, sent_by_membership_id,
+    reply_buttons
   )
   select v.operator_id, v.id, 'outbound', 'text', $3, 'pending', $4,
-         case when $5::uuid is null then v.revision else null end, $5::uuid
+         case when $5::uuid is null then v.revision else null end, $5::uuid,
+         $6::jsonb
   from conversation v
   on conflict do nothing
   returning id, operator_id, conversation_id
@@ -54,6 +56,8 @@ export async function queueOutboundText(
     idempotencyKey: string
     /** Set for a salesperson's own message; null for AI output. */
     sentByMembershipId?: string | null
+    /** Reply buttons to offer with this message. Null sends plain text. */
+    replyButtons?: Array<{ id: string; title: string }> | null
   },
 ): Promise<QueuedOutbound> {
   const rows = await run(QUEUE_OUTBOUND_SQL, [
@@ -62,6 +66,9 @@ export async function queueOutboundText(
     input.body,
     input.idempotencyKey,
     input.sentByMembershipId ?? null,
+    input.replyButtons === undefined || input.replyButtons === null
+      ? null
+      : JSON.stringify(input.replyButtons),
   ])
   const row = rows[0]
   const messageId = (row?.['message_id'] as string) ?? null

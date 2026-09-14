@@ -40,6 +40,13 @@ export class MetaUnknownOutcomeError extends Error {
 export type SendTextInput = {
   to: string
   body: string
+  /**
+   * Reply buttons to offer, or nothing for an ordinary text message.
+   *
+   * Almost always nothing. Only two closed questions in this product earn a
+   * tap; see the confirmations module for why that restraint is the design.
+   */
+  buttons?: Array<{ id: string; title: string }> | null
 }
 
 export type SendTextResult = {
@@ -66,15 +73,45 @@ export function createWhatsAppClient(config: {
   const timeoutMs = config.timeoutMs ?? 15_000
 
   return {
-    async sendText({ to, body }) {
+    async sendText({ to, body, buttons }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
-      const payload = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to,
-        type: 'text',
-        text: { preview_url: false, body },
-      }
+
+      /**
+       * An interactive body is capped at 1024 characters where a text message
+       * allows 4096, so a long reply sends as plain text rather than failing.
+       * Losing two buttons is a smaller loss than losing the message.
+       */
+      const useButtons =
+        buttons !== undefined && buttons !== null && buttons.length > 0
+        && buttons.length <= 3 && body.length <= 1024
+
+      const payload = useButtons
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'interactive',
+            interactive: {
+              type: 'button',
+              body: { text: body },
+              action: {
+                buttons: buttons.map((b) => ({
+                  type: 'reply',
+                  // Titles are capped at 20 characters by Meta. Truncated here
+                  // as a last resort so a long one degrades instead of
+                  // rejecting the whole send.
+                  reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) },
+                })),
+              },
+            },
+          }
+        : {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'text',
+            text: { preview_url: false, body },
+          }
 
       let response: Response
       try {

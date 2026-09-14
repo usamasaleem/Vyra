@@ -174,6 +174,17 @@ export const messages = pgTable(
     /** Media pointer and provider metadata. Never the file itself. */
     media: jsonb().$type<Record<string, unknown> | null>(),
 
+    /**
+     * Reply buttons to send with an outbound message, as [{id, title}].
+     *
+     * Null for the overwhelming majority: a rental enquiry is a conversation,
+     * and only two closed questions earn a tap. Stored on the message rather
+     * than decided at send time so what the customer was offered is recoverable
+     * afterwards — a tapped "Yes, correct" means nothing without the question
+     * it answered.
+     */
+    replyButtons: jsonb().$type<Array<{ id: string; title: string }> | null>(),
+
     deliveryState: deliveryState().notNull().default('pending'),
     errorCode: text(),
     errorDetail: text(),
