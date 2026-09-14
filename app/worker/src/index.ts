@@ -9,7 +9,7 @@ import { sendDueFollowUps } from './follow-ups.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient } from './whatsapp/client.js'
-import { openaiModel, type ModelAdapter } from '@vyra/agent'
+import { openaiModel, PROMPT_VERSION, type ModelAdapter } from '@vyra/agent'
 import { handleNonTextMessage, runConversationTurn } from './turn.js'
 
 const env = parseServerEnv()
@@ -362,10 +362,27 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGINT', () => void shutdown('SIGINT'))
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
 
+/**
+ * Which build is actually running.
+ *
+ * Read straight from process.env rather than the env schema because it is a
+ * diagnostic, not configuration: the service runs identically without it, and
+ * requiring it would make the worker refuse to boot anywhere but Render.
+ *
+ * This exists because of a question that could not be answered. A fix was
+ * pushed, the agent kept giving the old reply, and there was no way to tell
+ * whether the deploy had landed or the change had not worked — nothing records
+ * which code produced a live reply. Two candidate explanations and no evidence
+ * between them is the position this line is meant to prevent.
+ */
+const commit = process.env['RENDER_GIT_COMMIT'] ?? 'unknown'
+
 log({
   event: 'worker.start',
   node: process.version,
   nodeEnv: env.NODE_ENV,
+  commit: commit === 'unknown' ? 'unknown' : commit.slice(0, 7),
+  promptVersion: PROMPT_VERSION,
   aiSendingEnabled: env.AI_SENDING_ENABLED,
   aiModel: model?.modelId ?? 'none configured',
   aiAutosend: env.AI_AUTOSEND_ENABLED,
