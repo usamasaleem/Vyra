@@ -69,6 +69,7 @@ describe('schema v1 applies', () => {
       'knowledge_entries',
       'memberships',
       'messages',
+      'operations_requests',
       'operators',
       'outbox',
       'vehicles',

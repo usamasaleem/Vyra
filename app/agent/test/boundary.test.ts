@@ -237,18 +237,46 @@ describe('search_vehicles with a fleet', () => {
       vehicle, startDate: '2026-09-20', endDate: '2026-09-23',
     })
 
-  it('describes the car, and refuses to say it is available', async () => {
+  it('describes the car, and refuses to say it is available until someone checks', async () => {
     await addVehicle()
     const result = await search('ferrari')
     expect(result).toMatchObject({
       status: 'ok',
-      data: {
-        availabilityChecked: false,
-        fleet: [{ make: 'Ferrari', model: '488', colour: 'Giallo Modena (yellow)', powerHp: 661 }],
-      },
+      data: { fleet: [{ make: 'Ferrari', model: '488', colour: 'Giallo Modena (yellow)', powerHp: 661 }] },
     })
-    const detail = JSON.stringify(result)
-    expect(detail).toContain('NOT say any of them is available')
+    // No availability field at all: absent means nobody looked, which is not
+    // the same as "no" and must not be representable as one.
+    expect((result as { data: { availability?: unknown } }).data.availability).toBeUndefined()
+    expect(JSON.stringify(result)).toContain('may NOT say available')
+  })
+
+  /**
+   * Section 6: the agent sends a structured request to the Operations queue. An
+   * availability question that produces no request is a customer told "I'll
+   * check" by a system that will not.
+   */
+  it('puts the question in front of Operations', async () => {
+    await addVehicle()
+    await search('ferrari')
+
+    const [request] = await run(
+      `select kind::text as kind, state::text as state, start_date, end_date,
+              requested_vehicle, checked_at
+       from operations_requests where operator_id = $1`, [OP],
+    )
+    expect(request).toMatchObject({
+      kind: 'availability', state: 'open', requested_vehicle: 'ferrari',
+    })
+    // Never defaulted. A row nobody has looked at must not claim a check time.
+    expect(request!['checked_at']).toBeNull()
+  })
+
+  it('asks once, however many customers ask the same thing', async () => {
+    await addVehicle()
+    await search('ferrari')
+    await search('488')
+    const rows = await run(`select id from operations_requests where operator_id = $1`, [OP])
+    expect(rows).toHaveLength(1)
   })
 
   /** The model has no use for an identifier and every opportunity to misuse one. */
@@ -313,6 +341,100 @@ describe('search_vehicles with a fleet', () => {
     const result = await search('bugatti')
     expect(result).toMatchObject({ status: 'ok', data: { fleet: [] } })
     expect(JSON.stringify(result)).toContain('do not invent a car')
+  })
+
+  async function answerWith(opts: {
+    answer: string
+    checkedMinutesAgo?: number
+    validMinutes?: number
+    source?: string
+  }) {
+    const [req] = await run(
+      `select id from operations_requests where operator_id = $1 order by created_at desc limit 1`, [OP],
+    )
+    const checkedAt = new Date(Date.now() - (opts.checkedMinutesAgo ?? 5) * 60_000)
+    await run(
+      `update operations_requests
+       set state='answered', answer=$2::operations_answer, source=$3, checked_at=$4::timestamptz,
+           answer_valid_until=$4::timestamptz + make_interval(mins => $5)
+       where id = $1`,
+      [req!['id'], opts.answer, opts.source ?? 'fleet calendar', checkedAt.toISOString(),
+       opts.validMinutes ?? 240],
+    )
+  }
+
+  describe('once a person has checked', () => {
+    it('relays the answer with when it was checked', async () => {
+      await addVehicle()
+      await search('ferrari')
+      await answerWith({ answer: 'available', checkedMinutesAgo: 12 })
+
+      const result = await search('ferrari')
+      expect(result).toMatchObject({
+        status: 'ok',
+        data: { availability: { status: 'available', source: 'fleet calendar', checkedMinutesAgo: 12 } },
+      })
+      expect(JSON.stringify(result)).toContain('say when it was checked')
+    })
+
+    it('relays unavailable plainly', async () => {
+      await addVehicle()
+      await search('ferrari')
+      await answerWith({ answer: 'unavailable' })
+      const result = await search('ferrari')
+      expect(result).toMatchObject({ status: 'ok', data: { availability: { status: 'unavailable' } } })
+      expect(JSON.stringify(result)).toContain('NOT available')
+    })
+
+    /** Section 6: never softened into a maybe. */
+    it('tells the model not to soften unknown', async () => {
+      await addVehicle()
+      await search('ferrari')
+      await answerWith({ answer: 'unknown' })
+      const result = await search('ferrari')
+      expect(JSON.stringify(result)).toContain('Never soften unknown')
+    })
+
+    /** "An expired answer is rechecked before it is reused." */
+    it('will not reuse an expired answer', async () => {
+      await addVehicle()
+      await search('ferrari')
+      await answerWith({ answer: 'available', checkedMinutesAgo: 500, validMinutes: 240 })
+
+      const result = await search('ferrari')
+      expect((result as { data: { availability?: unknown } }).data.availability).toBeUndefined()
+      expect(JSON.stringify(result)).toContain('may NOT say available')
+    })
+
+    /**
+     * The whole reason checked_at is nullable and never defaulted: a row nobody
+     * looked at must be unusable, not merely unlikely.
+     */
+    it('will not use an answer with no time checked', async () => {
+      await addVehicle()
+      await search('ferrari')
+      const [req] = await run(
+        `select id from operations_requests where operator_id = $1`, [OP],
+      )
+      // The database refuses this outright — the constraint is the guarantee,
+      // the read path is the second line.
+      await expect(
+        run(`update operations_requests set state='answered', answer='available' where id=$1`,
+            [req!['id']]),
+      ).rejects.toThrow(/operations_requests_answer_is_checked/)
+    })
+
+    it('does not use an answer for dates it does not cover', async () => {
+      await addVehicle()
+      await search('ferrari')
+      await answerWith({ answer: 'available' })
+
+      // The answer covers 20-23; this asks about 25.
+      const later = await createToolBoundary(ctx).call('search_vehicles', {
+        vehicle: 'ferrari', startDate: '2026-09-25', endDate: '2026-09-26',
+      })
+      expect((later as { data: { availability?: unknown } }).data.availability).toBeUndefined()
+    })
   })
 
   it('still refuses a date in the past before it looks at the fleet', async () => {

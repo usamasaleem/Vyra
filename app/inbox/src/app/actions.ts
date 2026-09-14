@@ -3,6 +3,7 @@
 import {
   acceptHandoff,
   addNote,
+  answerOperationsRequest,
   assignConversation,
   queueOutboundText,
   resumeAi,
@@ -205,5 +206,56 @@ export async function claimHandoff(
         : 'Someone else accepted this a moment ago.',
     }
   }
+  return { error: null }
+}
+
+/**
+ * Answering an Operations request.
+ *
+ * `checkedAt` comes from the form rather than from `now()`, because a person
+ * may be recording something they looked at ten minutes ago and the difference
+ * is what the customer is told. The validity window runs from that moment, so
+ * a late-recorded answer expires earlier rather than later.
+ *
+ * The source is required and not defaulted. "An answer carries its source and
+ * the time it was checked" — a blank source with a plausible timestamp is
+ * exactly the unverifiable answer section 6 forbids.
+ */
+export async function answerOperations(
+  _previous: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const actor = await requireActor()
+  const requestId = String(formData.get('requestId') ?? '')
+  const answer = String(formData.get('answer') ?? '')
+  const source = String(formData.get('source') ?? '').trim()
+  const note = String(formData.get('note') ?? '').trim()
+  const checkedMinutesAgo = Number(formData.get('checkedMinutesAgo') ?? 0)
+
+  if (!['available', 'unavailable', 'pending_confirmation', 'unknown'].includes(answer)) {
+    return { error: 'Choose an answer.' }
+  }
+  if (source === '') {
+    return { error: 'Say where you checked. An answer without a source cannot be given to a customer.' }
+  }
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'answer an Operations request')
+  } catch {
+    return { error: 'Your role cannot answer Operations requests.' }
+  }
+
+  const result = await answerOperationsRequest(queryRunner(), {
+    requestId,
+    operatorId: actor.operatorId,
+    membershipId: actor.membershipId,
+    answer: answer as 'available' | 'unavailable' | 'pending_confirmation' | 'unknown',
+    source,
+    note: note === '' ? null : note,
+    checkedAt: new Date(Date.now() - Math.max(0, checkedMinutesAgo) * 60_000),
+  })
+
+  revalidatePath('/operations')
+  if (!result.answered) return { error: 'That request was already answered or cancelled.' }
   return { error: null }
 }

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { LiveRefresh } from './live-refresh'
 import { signOut } from './login/actions'
 import { toggleAiSending } from './actions'
-import { listOpenHandoffs } from '@vyra/db'
+import { listOpenHandoffs, listOpenOperationsRequests } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
 import { listConversations } from '@/lib/queries/conversations'
@@ -30,9 +30,10 @@ export default async function InboxPage({
   const filters = await searchParams
   const run = queryRunner()
 
-  const [status, waitingHandoffs, conversations] = await Promise.all([
+  const [status, waitingHandoffs, openRequests, conversations] = await Promise.all([
     getOperatorStatus(run, actor.operatorId),
     listOpenHandoffs(run, actor.operatorId, { unclaimedOnly: true }),
+    listOpenOperationsRequests(run, actor.operatorId),
     listConversations(run, actor.operatorId, {
       salesStage: filters.stage ?? null,
       handlerMode: filters.handler ?? null,
@@ -93,6 +94,13 @@ export default async function InboxPage({
           style={waitingHandoffs.length > 0 ? { fontWeight: 600 } : undefined}
         >
           Handoffs{waitingHandoffs.length > 0 ? ` (${waitingHandoffs.length})` : ''}
+        </Link>
+        <Link
+          className="button secondary"
+          href="/operations"
+          style={openRequests.length > 0 ? { fontWeight: 600 } : undefined}
+        >
+          Operations{openRequests.length > 0 ? ` (${openRequests.length})` : ''}
         </Link>
         <Link className="button secondary" href="/?handler=human">Human-owned</Link>
         <Link className="button secondary" href="/?handler=ai">AI-owned</Link>

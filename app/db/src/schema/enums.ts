@@ -184,3 +184,27 @@ export const handoffState = pgEnum('handoff_state', [
   'escalated',
   'resolved',
 ])
+
+export const operationsRequestKind = pgEnum('operations_request_kind', [
+  'availability',
+  'pricing',
+])
+
+export const operationsRequestState = pgEnum('operations_request_state', [
+  'open',
+  'answered',
+  'cancelled',
+])
+
+/**
+ * Section 6 of the MVP names these four exactly, and the fourth is the one that
+ * matters: "An unknown answer is communicated as unknown, with a next action.
+ * It is never softened into a maybe." There is deliberately no value between
+ * unavailable and available.
+ */
+export const operationsAnswer = pgEnum('operations_answer', [
+  'available',
+  'unavailable',
+  'pending_confirmation',
+  'unknown',
+])

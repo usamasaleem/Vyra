@@ -56,6 +56,15 @@ export const operators = pgTable('operators', {
    */
   fallbackOwnerMembershipId: uuid(),
 
+  /**
+   * How long an Operations answer stays usable before it must be rechecked.
+   *
+   * Section 6: "An expired answer is rechecked before it is reused."
+   * Availability at 9am says nothing about 4pm, and four hours is a starting
+   * point the operator should change once they know their own churn.
+   */
+  answerValidMinutes: integer().notNull().default(240),
+
   /** Retention window for conversations, contacts and uploads. */
   retentionDays: integer().notNull().default(730),
 

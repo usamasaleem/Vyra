@@ -1,5 +1,5 @@
 import { civilDateIn, formatCivil } from '@vyra/contracts'
-import { searchFleet } from '@vyra/db'
+import { findCurrentAnswer, raiseOperationsRequest, searchFleet } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { searchVehiclesSchema } from './schemas.js'
@@ -31,8 +31,20 @@ export type VehicleSearchResult = {
     powerHp: number | null
     seats: number | null
   }>
-  /** Always false until Operations can record who checked and when. */
-  availabilityChecked: false
+  /**
+   * Present only when a person has checked and the answer has not expired.
+   *
+   * Absent is not "no" — it is "nobody has looked", which the guidance says in
+   * words the model can relay. Section 6: an unknown answer is communicated as
+   * unknown, never softened into a maybe.
+   */
+  availability?: {
+    status: 'available' | 'unavailable' | 'pending_confirmation' | 'unknown'
+    note: string | null
+    /** Where the person looked. */
+    source: string
+    checkedMinutesAgo: number
+  }
   /** What the model must do with this, in words it can relay to the customer. */
   guidance: string
 }
@@ -111,26 +123,97 @@ export async function searchVehicles(
     )
   }
 
-  return ok({
-    fleet: found.matches.map((v) => ({
-      make: v.make,
-      model: v.model,
-      variant: v.variant,
-      year: v.year,
-      colour: v.colour,
-      category: v.category,
-      engine: v.engine,
-      powerHp: v.powerHp,
-      seats: v.seats,
-    })),
-    availabilityChecked: false,
-    guidance: found.matches.length === 0
-      ? 'No car in the fleet matches that description. Say so plainly and offer to check what else might suit — do not invent a car.'
-      : 'These cars are in the fleet. You may describe them. You may NOT say any of them is available, free, or bookable on these dates: nobody has checked. Tell the customer you are confirming availability with the team.',
-  },
-  // Only when a car was actually matched: asking whether they stock Bugattis
-  // leaves nobody anything to check.
-  found.matches.length === 0
-    ? undefined
-    : `check availability of ${found.matches.map((v) => `${v.make} ${v.model}`).join(', ')} for ${args.startDate}${args.endDate === null ? '' : ` to ${args.endDate}`}`)
+  const fleet = found.matches.map((v) => ({
+    make: v.make,
+    model: v.model,
+    variant: v.variant,
+    year: v.year,
+    colour: v.colour,
+    category: v.category,
+    engine: v.engine,
+    powerHp: v.powerHp,
+    seats: v.seats,
+  }))
+
+  if (found.matches.length === 0) {
+    return ok({
+      fleet,
+      guidance:
+        'No car in the fleet matches that description. Say so plainly and offer to check what else might suit — do not invent a car.',
+    })
+  }
+
+  /**
+   * One car, one answer. With several matches there is no single availability
+   * fact to state, so the agent describes them and asks which one — which is
+   * what a salesperson would do rather than reading out three calendars.
+   */
+  const only = found.matches.length === 1 ? found.matches[0]! : null
+
+  const current = only === null
+    ? null
+    : await findCurrentAnswer(ctx.run, {
+        operatorId: ctx.operatorId,
+        vehicleId: only.id,
+        startDate: args.startDate,
+        endDate: args.endDate,
+      })
+
+  if (current !== null) {
+    return ok({
+      fleet,
+      availability: {
+        status: current.answer,
+        note: current.note,
+        source: current.source,
+        checkedMinutesAgo: current.checkedMinutesAgo,
+      },
+      // Falls back to the unknown wording rather than to silence: a new answer
+      // value added later must not slip out with no instruction attached.
+      guidance: (GUIDANCE_FOR[current.answer] ?? GUIDANCE_FOR['unknown']!)(current.checkedMinutesAgo),
+    })
+  }
+
+  /**
+   * Nobody has checked, so ask. The request is raised here rather than left to
+   * the model, because an availability question that produces no request is a
+   * customer told "I'll check" by a system that will not.
+   */
+  await raiseOperationsRequest(ctx.run, {
+    operatorId: ctx.operatorId,
+    conversationId: ctx.conversationId,
+    kind: 'availability',
+    vehicleId: only?.id ?? null,
+    requestedVehicle: args.vehicle,
+    startDate: args.startDate,
+    endDate: args.endDate,
+  })
+
+  return ok(
+    {
+      fleet,
+      guidance:
+        'These cars are in the fleet and you may describe them. Nobody has checked whether any is free on these dates, so you may NOT say available, free, or bookable. Tell the customer you are confirming with the team — it has been asked.',
+    },
+    `check availability of ${found.matches.map((v) => `${v.make} ${v.model}`).join(', ')} for ${args.startDate}${args.endDate === null ? '' : ` to ${args.endDate}`}`,
+  )
+}
+
+/**
+ * What the model may say, per answer.
+ *
+ * The wording carries the check time, because section 9 requires an
+ * availability answer to be given with when it was verified — "free as of an
+ * hour ago" is a different promise from "free", and only one of them is one the
+ * operator can stand behind.
+ */
+const GUIDANCE_FOR: Record<string, (minutesAgo: number) => string> = {
+  available: (m) =>
+    `Operations confirmed this was free, checked ${m} minute(s) ago. You may say so, and say when it was checked. Do not say it is booked or held for them — that is a separate step a person takes.`,
+  unavailable: () =>
+    'Operations confirmed this is NOT available for those dates. Say so plainly and offer to check alternatives or other dates.',
+  pending_confirmation: () =>
+    'Operations could not confirm yet — it depends on another booking. Say exactly that. Do not present it as probably free.',
+  unknown: () =>
+    'Operations could not determine availability. Say it is unknown and that someone will confirm. Never soften unknown into "probably" or "should be".',
 }
