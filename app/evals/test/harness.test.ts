@@ -471,6 +471,26 @@ describe('the scorecard', () => {
     expect(partials).toEqual([1, 2, 3])
   })
 
+  /**
+   * Regression. An unsupported reasoning effort produced the same 400 for all
+   * twenty-eight cases, one request at a time, learning nothing after the first.
+   */
+  it('abandons a model that fails every case the same way', async () => {
+    const suite = {
+      name: 'many cases',
+      cases: Array.from({ length: 10 }, (_, i) => testCase({ id: `misconfig-${i}` })),
+    }
+    let calls = 0
+    const misconfigured = {
+      label: 'misconfigured', modelId: 'misconfigured:1',
+      complete: async () => { calls++; throw new Error('400 unsupported value') },
+    }
+
+    const scorecard = await runComparison([misconfigured], [suite], { world })
+    expect(calls).toBe(3)
+    expect(scorecard.models[0]?.errors).toBe(3)
+  })
+
   it('records an adapter failure as an error rather than a pass', async () => {
     const broken = {
       label: 'broken', modelId: 'broken:1',

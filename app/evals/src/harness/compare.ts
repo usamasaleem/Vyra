@@ -57,6 +57,9 @@ export type Scorecard = {
   models: ModelScore[]
 }
 
+/** Enough repeats to be sure it is systematic, few enough to fail fast. */
+const ABANDON_AFTER_ERRORS = 3
+
 export type Progress = {
   model: string
   modelIndex: number
@@ -116,8 +119,27 @@ export async function runComparison(
         cases: results,
       }
       models.push(score)
+      let consecutiveErrors = 0
 
       for (const [caseIndex, { suite, evalCase }] of cases.entries()) {
+        /**
+         * Give up on a model that is failing every case the same way.
+         *
+         * An unsupported reasoning effort produced the identical 400 for all
+         * twenty-eight cases, one request at a time. Nothing was learned after
+         * the first, and a run that is systematically misconfigured should say
+         * so in seconds rather than working patiently through the whole suite.
+         */
+        if (consecutiveErrors >= ABANDON_AFTER_ERRORS) {
+          options.onProgress?.({
+            model: adapter.label, modelIndex: modelIndex + 1, modelCount: adapters.length,
+            caseId: evalCase.id, caseIndex: caseIndex + 1, caseCount: cases.length,
+            outcome: 'error',
+            detail: `skipped — ${consecutiveErrors} consecutive failures, this model looks misconfigured`,
+          })
+          continue
+        }
+
         // A fresh conversation per case, so one model's turn cannot leave state
         // that changes how the next case is graded.
         const ctx = await world.contextFor(`${adapter.label}-${evalCase.id}`, evalCase.customer)
@@ -139,7 +161,9 @@ export async function runComparison(
             stoppedBecause: outcome.stoppedBecause,
             error: null,
           })
+          consecutiveErrors = 0
         } catch (error) {
+          consecutiveErrors++
           // A provider timing out is a fact about that provider, and a run that
           // hid it would quietly score a model on the cases that happened to
           // succeed.

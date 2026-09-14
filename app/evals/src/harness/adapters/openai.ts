@@ -13,6 +13,16 @@ import type { ModelAdapter, ModelRequest, ModelResponse, ModelToolCall } from '.
  * in circulation, and writing this from memory would have produced the wrong
  * one.
  */
+/**
+ * Support varies by model, and the documentation is not a reliable guide.
+ *
+ * The reasoning guide states that the gpt-5.6 family supports every value.
+ * gpt-5.6-luna rejects `minimal` outright: "Supported values are: 'none',
+ * 'low', 'medium', 'high', 'xhigh', and 'max'." That was found by running it,
+ * after deliberately reading the documentation instead of trusting memory —
+ * so checking the docs raised the floor without making the answer certain.
+ * The API is the only authority on what a specific model accepts.
+ */
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export function openaiModel(options: {
