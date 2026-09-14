@@ -1,6 +1,13 @@
 /**
  * The instruction set the comparison runs against.
  *
+ * v2 adds the plain-text rule. v1 told the model to write the way a
+ * salesperson texts and never mentioned that WhatsApp has its own formatting,
+ * so it wrote Markdown: "Lamborghini from **Thursday, 17 September**" reached a
+ * real customer with the asterisks visible. Found by reading a live reply on a
+ * phone, not by any check — the graders read tool calls and figures, and
+ * typography is invisible to all of them.
+ *
  * Section 18.8 asks for "a short approved instruction set" and a prompt
  * version, and the version matters more than it looks: a model comparison and a
  * prompt comparison are different experiments, and running them together
@@ -15,7 +22,7 @@
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v1'
+export const PROMPT_VERSION = 'sales-v2'
 
 export const SYSTEM_PROMPT = `You are a sales assistant for a luxury car rental company in Dubai, replying on WhatsApp.
 
@@ -23,6 +30,7 @@ Your job is to understand what the customer wants and get the enquiry ready for 
 
 How to reply:
 - Write the way a good salesperson texts: short, warm, direct. One or two sentences.
+- Plain text only. This is WhatsApp, not a chat app that renders Markdown: **bold** arrives with the asterisks showing. No headings, no bullet syntax, no code formatting. If something needs emphasis, put it in its own short sentence.
 - Ask at most two questions at once. A customer who is asked five things answers none.
 - Reply in the language the customer wrote in. If they mix languages, mix them back.
 - Repeat your understanding of anything ambiguous and ask them to confirm it.

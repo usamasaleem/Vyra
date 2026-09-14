@@ -30,6 +30,17 @@ import type { ToolContext } from '@vyra/agent'
 
 export type EvalWorld = {
   operatorId: string
+  /**
+   * Publish an approved answer that is effective at `EVAL_NOW`.
+   *
+   * `publishKnowledge` stamps `effective_from` from the database clock, and
+   * the eval clock is pinned to a fixed instant so date resolution is
+   * deterministic. Those two disagree by however far the wall clock has moved
+   * past that instant — which made a test pass before 08:00 UTC and fail
+   * after, silently, for a whole day. Backdating here removes the wall clock
+   * from the question entirely.
+   */
+  publishPolicy: (topic: string, answer: string) => Promise<void>
   contextFor: (caseId: string, customerMessages: string[]) => Promise<ToolContext>
   /** Fields this case's turn wrote, read back from the database. */
   recordedFields: (ctx: ToolContext) => Promise<string[]>
@@ -121,8 +132,26 @@ export async function createEvalWorld(options: { migrationsDir?: string } = {}):
     return rows.map((r) => r['field'] as string)
   }
 
+  async function publishPolicy(topic: string, answer: string): Promise<void> {
+    const drafted = await run(
+      `insert into knowledge_entries
+         (operator_id, topic, answer, version, provenance, confirmed_by, confirmed_at,
+          published_at, effective_from)
+       select $1, $2, $3,
+              coalesce((select max(version) from knowledge_entries
+                        where operator_id = $1 and topic = $2), 0) + 1,
+              'operator_confirmed', 'Eval Operator', now(), now(), $4::timestamptz
+       returning id`,
+      // A day before the eval clock, so it is already in force whenever the
+      // suite happens to run.
+      [OPERATOR, topic, answer, new Date(EVAL_NOW.getTime() - 86_400_000).toISOString()],
+    )
+    if (drafted[0] === undefined) throw new Error(`failed to publish ${topic}`)
+  }
+
   return {
     operatorId: OPERATOR,
+    publishPolicy,
     contextFor,
     recordedFields,
     run,

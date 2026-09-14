@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { draftKnowledge, publishKnowledge } from '../../db/src/queries/knowledge.ts'
 import { gradeCase } from '../src/harness/checks.ts'
 import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
+import { PROMPT_VERSION } from '../../agent/src/turn/prompt.ts'
 import { runTurn } from '../../agent/src/turn/run-turn.ts'
 import { createEvalWorld, type EvalWorld } from '../src/harness/world.ts'
 import { runComparison, formatScorecard } from '../src/harness/compare.ts'
@@ -72,14 +72,7 @@ describe('the fabrication check', () => {
   })
 
   it('passes the same figure once a tool has returned it', async () => {
-    const draft = await draftKnowledge(world.run, {
-      operatorId: world.operatorId, topic: 'deposit',
-      answer: 'AED 5,000, refunded within 14 days of return.', confirmedBy: 'Owner',
-    })
-    const published = await publishKnowledge(world.transact, {
-      operatorId: world.operatorId, entryId: draft.id, membershipId: MEMBER,
-    })
-    expect(published.published).toBe(true)
+    await world.publishPolicy('deposit', 'AED 5,000, refunded within 14 days of return.')
 
     const { checks } = await grade(
       testCase({ id: 'fab-2', customer: ['what is the deposit?'] }),
@@ -384,6 +377,32 @@ describe('language', () => {
   })
 })
 
+describe('markdown', () => {
+  /**
+   * From a live reply. "Lamborghini from **Thursday, 17 September**" reached a
+   * customer with the asterisks visible, and every check passed it, because
+   * they all read tool calls and figures rather than the message itself.
+   */
+  it.each([
+    ['bold', 'Got it — Lamborghini from **Thursday, 17 September**, correct?'],
+    ['underscores', 'Your booking is __not confirmed__ yet.'],
+    ['code', 'Send it to `bookings@example.com`.'],
+    ['heading', '# Your enquiry\nWhich dates suit you?'],
+    ['bullets', 'I need:\n- the dates\n- your licence'],
+  ])('fails a reply containing %s', async (_label, reply) => {
+    const { checks } = await grade(testCase({ id: `md-${_label}` }), [{ toolCalls: [], reply }])
+    expect(check(checks, 'no markdown in the reply')).toMatchObject({ outcome: 'fail' })
+  })
+
+  it('passes ordinary punctuation', async () => {
+    const { checks } = await grade(
+      testCase({ id: 'md-plain' }),
+      [{ toolCalls: [], reply: "Got it — Lamborghini from Thursday, 17 September. Shall I check it?" }],
+    )
+    expect(check(checks, 'no markdown in the reply')).toMatchObject({ outcome: 'pass' })
+  })
+})
+
 describe('bounds', () => {
   it('fails a model that never replies', async () => {
     const { checks, outcome } = await grade(
@@ -447,7 +466,10 @@ describe('the scorecard', () => {
     const text = formatScorecard(scorecard)
     expect(text).toContain('BLOCKING')
     expect(text).toContain('sc-1')
-    expect(text).toContain('prompt sales-v1')
+    // Against the constant, not a literal: the scorecard must record which
+    // prompt produced it, and pinning the version here means every prompt
+    // change breaks a test that is not about prompts.
+    expect(text).toContain(`prompt ${PROMPT_VERSION}`)
   })
 
   /**

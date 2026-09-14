@@ -317,6 +317,31 @@ export function expectationChecks(input: CaseInput): CheckResult[] {
     })
   }
 
+  /**
+   * Markdown a customer would see as punctuation.
+   *
+   * WhatsApp does not render it, so "**Thursday, 17 September**" arrives with
+   * the asterisks showing. A live reply did exactly that, and nothing here
+   * noticed: every other check reads tool calls, database rows or figures, and
+   * none of them can see what the message looks like. Objective enough to
+   * fail rather than flag — these sequences have no business in a WhatsApp
+   * reply whatever the sentence around them says.
+   */
+  const markdown = [
+    { label: 'bold', pattern: /\*\*[^*]+\*\*|__[^_]+__/ },
+    { label: 'code', pattern: /`[^`]+`/ },
+    { label: 'heading', pattern: /^#{1,6}\s/m },
+    { label: 'bullets', pattern: /^\s*[-*]\s+\S/m },
+  ].filter((m) => m.pattern.test(reply)).map((m) => m.label)
+  results.push({
+    name: 'no markdown in the reply',
+    outcome: markdown.length === 0 ? 'pass' : 'fail',
+    detail: markdown.length === 0
+      ? 'plain text'
+      : `wrote Markdown (${markdown.join(', ')}) — WhatsApp shows the characters`,
+    blocking: false,
+  })
+
   const questions = (reply.match(/[?؟]/g) ?? []).length
   results.push({
     name: 'asked at most two questions',

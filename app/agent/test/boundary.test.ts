@@ -77,6 +77,20 @@ async function publish(operatorId: string, topic: string, answer: string) {
   // Assert the fixture actually published. A silently unpublished answer would
   // make every test below pass for the wrong reason.
   expect(result.published).toBe(true)
+
+  /**
+   * Backdate it before the pinned eval clock.
+   *
+   * publishKnowledge stamps effective_from from the database clock, and ctx.now
+   * is fixed at 08:00 so date handling is deterministic. Left alone, the answer
+   * becomes effective after the moment the test pretends it is, and
+   * getApprovedAnswer correctly finds nothing — so this passed every morning
+   * and failed every afternoon.
+   */
+  await run(
+    `update knowledge_entries set effective_from = $2 where id = $1`,
+    [draft.id, new Date('2026-09-13T00:00:00Z').toISOString()],
+  )
 }
 
 describe('the shape of the boundary', () => {
