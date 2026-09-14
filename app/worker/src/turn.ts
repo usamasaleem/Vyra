@@ -1,5 +1,6 @@
 import {
   classifyTurnEnd,
+  promiseMadeIn,
   PROMPT_VERSION,
   runTurn,
   type ModelAdapter,
@@ -350,6 +351,46 @@ export async function runConversationTurn(
     const items = end.toolCalls
       .map((call) => call.needsAPerson)
       .filter((item): item is string => item !== null)
+
+    /**
+     * A promise the turn made and did not keep.
+     *
+     * The reply told the customer something would happen. If no tool started
+     * it, nothing will — that is exactly what went out live: "I'll get a
+     * salesperson to confirm the highest-priced car", no request_handoff, no
+     * task, nobody told. The customer waits on a sentence.
+     *
+     * Read from the reply rather than the tools on purpose. Every other signal
+     * here describes what the system did; this one is the only thing that
+     * describes what the customer was told, and the gap between the two is the
+     * bug. A promise of a person becomes a handoff with a clock on it; a
+     * promise to go and check becomes visible work. Both are things a person
+     * can dismiss in a second if the heuristic was wrong.
+     *
+     * Ownership deliberately does not change. The handoff puts a person in the
+     * queue; it does not stop the agent replying, because a false positive that
+     * silences a working conversation reproduces the failure this is meant to
+     * fix. A salesperson who picks it up takes over explicitly, as they would
+     * with any other handoff.
+     */
+    const promised = items.length === 0 ? promiseMadeIn(end.reply) : null
+
+    if (promised === 'person') {
+      await raiseHandoff(deps.run, {
+        operatorId: context.operator.id,
+        conversationId: context.conversation.id,
+        reason: 'customer_asked',
+        summary:
+          'The agent told this customer a person would come back to them, and did not hand the '
+          + `conversation over. Its exact words: "${(end.reply ?? '').slice(0, 300)}"`,
+        triggerMessageId: context.message.id,
+      })
+    } else if (promised === 'check') {
+      items.push(
+        'The agent promised to check something and no tool recorded it. Its exact words: '
+        + `"${(end.reply ?? '').slice(0, 300)}"`,
+      )
+    }
 
     if (items.length > 0) {
       await recordOutstandingWork(deps.run, {

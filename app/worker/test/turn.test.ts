@@ -155,6 +155,77 @@ describe('a turn overtaken while it was thinking', () => {
   })
 })
 
+/**
+ * A reply that commits the operator to something the turn did not start.
+ *
+ * Taken from live traffic: the agent said "I'll get a salesperson to confirm
+ * the highest-priced car and its exact rate for you", called no tool, and left
+ * nothing behind. The customer waited on a sentence nobody had been told about.
+ */
+describe('a promise the turn did not keep', () => {
+  const promiseWithoutAction = (reply: string): ModelResponse[] => [{ toolCalls: [], reply }]
+
+  it('raises a handoff when the reply promised a person and no tool did', async () => {
+    const result = await turn(promiseWithoutAction(
+      'I’ll get a salesperson to confirm the highest-priced car and its exact rate for you.',
+    ))
+    expect(result).toMatchObject({ outcome: 'queued' })
+
+    const [handoff] = await run(
+      `select state::text as state, summary from handoffs where conversation_id = $1`, [CONV],
+    )
+    expect(handoff).toBeDefined()
+    // The agent's own words, so whoever picks it up sees what was promised
+    // rather than a generic task.
+    expect(handoff!['summary']).toContain('salesperson to confirm the highest-priced car')
+  })
+
+  it('records outstanding work when the reply promised to check something', async () => {
+    const result = await turn(promiseWithoutAction('I’ll check the deposit and come straight back.'))
+    expect(result).toMatchObject({ outcome: 'queued' })
+
+    const [conversation] = await run(
+      `select next_action from conversations where id = $1`, [CONV],
+    )
+    expect(conversation!['next_action']).toContain('promised to check')
+
+    // A promise to go and look is not a handoff. The conversation is still the
+    // agent's; somebody just has to look something up.
+    const handoffs = await run(`select id from handoffs where conversation_id = $1`, [CONV])
+    expect(handoffs).toHaveLength(0)
+  })
+
+  it('leaves an ordinary reply alone', async () => {
+    await turn(promiseWithoutAction('The Rolls-Royce Cullinan is AED 8,000 per day.'))
+
+    const handoffs = await run(`select id from handoffs where conversation_id = $1`, [CONV])
+    expect(handoffs).toHaveLength(0)
+    const [conversation] = await run(`select next_action from conversations where id = $1`, [CONV])
+    expect(conversation!['next_action']).toBeNull()
+  })
+
+  /**
+   * A tool that already left work behind is the promise being kept. Adding a
+   * second task for the same sentence is how a queue stops being read.
+   */
+  it('does not double up when a tool already recorded the work', async () => {
+    const withTool: ModelResponse[] = [
+      {
+        toolCalls: [{
+          id: 't1', name: 'search_vehicles',
+          arguments: { vehicle: 'Ferrari', startDate: '2026-10-01', endDate: '2026-10-03' },
+        }],
+        reply: null,
+      },
+      { toolCalls: [], reply: 'I’ll check with the team and come straight back.' },
+    ]
+    await turn(withTool)
+
+    const [conversation] = await run(`select next_action from conversations where id = $1`, [CONV])
+    expect(conversation!['next_action']).not.toContain('promised to check')
+  })
+})
+
 describe('handing over to a person', () => {
   const HANDOFF = [
     {
