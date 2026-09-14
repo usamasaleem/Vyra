@@ -107,7 +107,7 @@ const runner: Runner = await runWorker({
   // Per-conversation ordering comes from the queue name on each job, not from
   // this number. Section 18.10 is explicit that a global concurrency setting
   // does not serialise a conversation.
-  concurrency: 5,
+  concurrency: 3,
   noHandleSignals: true,
 
   /**
@@ -128,11 +128,26 @@ const runner: Runner = await runWorker({
   maxResetLockedInterval: 60_000,
 
   /**
-   * Keep the worker's own pool small. It runs beside the postgres.js pool this
-   * process already opens, and both hold real backend connections on the
-   * session pooler.
+   * Bigger than `concurrency`, and that ordering is the point.
+   *
+   * These were 5 and 4, which graphile-worker warns about on every boot:
+   * "having maxPoolSize (4) smaller than concurrency (5) may lead to
+   * non-optimal performance." The warning undersells it. Maintenance queries
+   * draw from this same pool, so with every connection held by a running job
+   * there is none left for reset-locked — the routine that recovers jobs from
+   * a worker that died. On Render it failed repeatedly with backoff:
+   * "Failed to reset locked; we'll try again in 39508ms".
+   *
+   * The failure is quiet in the worst way: jobs keep being processed, so the
+   * worker looks healthy, while the mechanism that rescues stuck ones is the
+   * part that cannot get a connection.
+   *
+   * Two spare connections above concurrency: one for maintenance, one for the
+   * next thing that needs the pool. It still runs beside the postgres.js pool
+   * this process opens, and both hold real backends on the session pooler, so
+   * neither number should grow without checking Supabase's connection limit.
    */
-  maxPoolSize: 4,
+  maxPoolSize: 5,
   taskList: {
     dispatch_outbound: async (payload, helpers) => {
       const messageId = (payload as { message_id?: unknown } | null)?.message_id
