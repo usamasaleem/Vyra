@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { draftKnowledge, publishKnowledge } from '../../db/src/queries/knowledge.ts'
 import { gradeCase } from '../src/harness/checks.ts'
-import { scriptedModel, type ModelResponse } from '../src/harness/model.ts'
-import { runTurn } from '../src/harness/run-turn.ts'
+import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
+import { runTurn } from '../../agent/src/turn/run-turn.ts'
 import { createEvalWorld, type EvalWorld } from '../src/harness/world.ts'
 import { runComparison, formatScorecard } from '../src/harness/compare.ts'
-import { anthropicModel } from '../src/harness/adapters/anthropic.ts'
-import { openaiModel } from '../src/harness/adapters/openai.ts'
+import { anthropicModel } from '../../agent/src/turn/adapters/anthropic.ts'
+import { openaiModel } from '../../agent/src/turn/adapters/openai.ts'
 import type { EvalCase } from '../src/types.ts'
 
 /**

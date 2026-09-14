@@ -1,8 +1,8 @@
 import type { EvalCase, EvalSuite } from '../types.js'
 import { gradeCase, type CheckResult } from './checks.js'
-import type { ModelAdapter } from './model.js'
-import { PROMPT_VERSION } from './prompt.js'
-import { runTurn, type RunTurnOptions } from './run-turn.js'
+import type { ModelAdapter } from '@vyra/agent'
+import { PROMPT_VERSION } from '@vyra/agent'
+import { runTurn, type RunTurnOptions } from '@vyra/agent'
 import { createEvalWorld, type EvalWorld } from './world.js'
 
 /**

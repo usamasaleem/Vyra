@@ -34,8 +34,24 @@ export type TurnRejection =
   | 'contact_opted_out'
   | 'conversation_gone'
 
+/**
+ * Where an accepted reply goes.
+ *
+ * `send` queues it for the dispatcher. `draft` writes it as an internal note
+ * instead — shadow mode, where the AI writes every reply and a person decides
+ * whether to send it (build plan step 33).
+ *
+ * A note is the right vehicle rather than a convenient one. Section 18.12:
+ * "Never expose internal notes to the outbound dispatcher." So a shadow draft
+ * is not merely unsent, it has no path to a customer at all — no flag to
+ * misread, no delivery state to mistake for pending. The safety comes from the
+ * structure rather than from remembering.
+ */
+export type TurnDestination = 'send' | 'draft'
+
 export type TurnAcceptance =
-  | { accepted: true; queued: QueuedOutbound; revision: number }
+  | { accepted: true; destination: 'send'; queued: QueuedOutbound; revision: number }
+  | { accepted: true; destination: 'draft'; noteId: string | null; revision: number }
   | { accepted: false; reason: TurnRejection; revisionNow: number | null }
 
 export async function acceptTurnOutput(
@@ -54,6 +70,8 @@ export async function acceptTurnOutput(
     body: string
     /** Stable per logical reply, e.g. `turn:<message_id>`. */
     idempotencyKey: string
+    /** Defaults to sending. Shadow mode passes 'draft'. */
+    destination?: TurnDestination
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -92,6 +110,22 @@ export async function acceptTurnOutput(
       return { accepted: false, reason: 'superseded', revisionNow } as const
     }
 
+    if (input.destination === 'draft') {
+      // The author is null: nobody wrote this, and a note attributed to a
+      // salesperson who did not write it would be worse than no attribution.
+      const noted = await tx(
+        `insert into conversation_notes (operator_id, conversation_id, author_membership_id, body)
+         values ($1, $2, null, $3) returning id`,
+        [input.operatorId, input.conversationId, `AI draft — not sent:\n\n${input.body}`],
+      )
+      return {
+        accepted: true,
+        destination: 'draft',
+        noteId: (noted[0]?.['id'] as string) ?? null,
+        revision: revisionNow,
+      } as const
+    }
+
     // Through the one and only path that creates an outbound message. Section
     // 18.12: never build a second way to send.
     const queued = await queueOutboundText(tx, {
@@ -101,7 +135,7 @@ export async function acceptTurnOutput(
       idempotencyKey: input.idempotencyKey,
     })
 
-    return { accepted: true, queued, revision: revisionNow } as const
+    return { accepted: true, destination: 'send', queued, revision: revisionNow } as const
   })
 }
 

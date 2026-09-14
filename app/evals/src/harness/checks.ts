@@ -1,5 +1,5 @@
 import type { EvalCase } from '../types.js'
-import type { TurnOutcome } from './run-turn.js'
+import type { TurnOutcome } from '@vyra/agent'
 
 /**
  * What a turn is graded on.

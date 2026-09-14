@@ -13,6 +13,7 @@
   "dependencies": {
     "graphile-worker": "^0.18.0",
     "@vyra/contracts": "*",
-    "@vyra/db": "*"
+    "@vyra/db": "*",
+    "@vyra/agent": "*"
   }
 }

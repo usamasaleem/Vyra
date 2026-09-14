@@ -40,6 +40,41 @@ export const serverEnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+
+  /**
+   * Model credentials. Optional: without a key the worker boots, ingests and
+   * serves staff normally, and simply runs no AI turn. A worker that refused
+   * to start for the lack of a model would take the inbox down with it.
+   */
+  OPENAI_API_KEY: z.string().min(1).optional(),
+
+  /**
+   * Chosen by the eval sweep on 14 September 2026, not by reputation.
+   *
+   * gpt-5.6-luna scored identically at low, medium and high effort across all
+   * 28 cases — zero blocking failures, 55/55 expectations — and the cheapest of
+   * those is the one to pay for. At `none` it stayed safe but grew sloppy,
+   * missing 8 expectations, so `low` is the floor rather than the default.
+   * Re-run `npm run evals:compare` before changing either.
+   */
+  AI_MODEL: z.string().default('gpt-5.6-luna'),
+  AI_REASONING_EFFORT: z
+    .enum(['none', 'low', 'medium', 'high', 'xhigh', 'max'])
+    .default('low'),
+
+  /**
+   * Whether an accepted reply is sent, or written as an internal note for a
+   * person to read and send themselves.
+   *
+   * Separate from AI_SENDING_ENABLED, which decides whether a turn runs at all.
+   * Two switches because "stop everything" and "let me see what it would have
+   * said" are different questions, and shadow mode (step 33) is the second one.
+   * Both default to off: reaching a customer should take a deliberate act.
+   */
+  AI_AUTOSEND_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 })
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>

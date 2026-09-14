@@ -1,4 +1,5 @@
-import type { ToolDefinition, ToolResult } from '@vyra/agent'
+import type { ToolDefinition } from '../tools/schemas.js'
+import type { ToolResult } from '../tools/result.js'
 
 /**
  * Provider-neutral model interface, so the comparison can be the thing that

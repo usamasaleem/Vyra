@@ -7,6 +7,8 @@ import { reapStaleDispatching } from './failures.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient } from './whatsapp/client.js'
+import { openaiModel, type ModelAdapter } from '@vyra/agent'
+import { runConversationTurn } from './turn.js'
 
 const env = parseServerEnv()
 const { sql } = createClient(env.DATABASE_URL, { max: 4 })
@@ -26,6 +28,21 @@ const transact: Transactor = (fn) =>
  * The one client that talks to Meta. Section 18.3: the dispatcher is the only
  * component that sends, including for messages a salesperson typed by hand.
  */
+/**
+ * Null when no key is configured, and that is a supported state rather than a
+ * degraded one. The worker still ingests, dispatches staff replies and honours
+ * opt-outs; it simply produces no AI turn. Refusing to boot without a model
+ * would take the whole inbox down for a missing API key.
+ */
+const model: ModelAdapter | null =
+  env.OPENAI_API_KEY === undefined
+    ? null
+    : openaiModel({
+        apiKey: env.OPENAI_API_KEY,
+        model: env.AI_MODEL,
+        effort: env.AI_REASONING_EFFORT,
+      })
+
 const whatsapp = createWhatsAppClient({
   apiVersion: env.WHATSAPP_API_VERSION,
   phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
@@ -167,6 +184,35 @@ const runner: Runner = await runWorker({
         action: handling.action,
         reason: handling.reason,
       })
+
+      if (handling.action !== 'draft') return
+
+      /**
+       * The AI turn. Everything above decided whether it should happen; this is
+       * the first line in the system that actually asks a model anything.
+       *
+       * `destination` is the second switch, separate from the kill switch that
+       * gated the decision above: in shadow mode the reply becomes an internal
+       * note for a salesperson to read, and notes have no path to the
+       * dispatcher at all.
+       */
+      const turn = await runConversationTurn(
+        {
+          run: query,
+          transact,
+          model,
+          destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft',
+        },
+        context,
+      )
+      log({
+        event: 'turn.completed',
+        jobId: helpers.job.id,
+        conversation: context.conversation.id,
+        model: model?.modelId ?? null,
+        autosend: env.AI_AUTOSEND_ENABLED,
+        ...turn,
+      })
     },
   },
 })
@@ -229,6 +275,8 @@ log({
   node: process.version,
   nodeEnv: env.NODE_ENV,
   aiSendingEnabled: env.AI_SENDING_ENABLED,
+  aiModel: model?.modelId ?? 'none configured',
+  aiAutosend: env.AI_AUTOSEND_ENABLED,
   dispatcherAvailable: DISPATCHER_AVAILABLE,
   tasks: ['process_inbound_message', 'dispatch_outbound'],
 })

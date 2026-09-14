@@ -1,9 +1,6 @@
-import {
-  createToolBoundary,
-  type ToolCallRecord,
-  type ToolContext,
-  type ToolResult,
-} from '@vyra/agent'
+import { createToolBoundary, type ToolCallRecord } from '../tools/boundary.js'
+import type { ToolContext } from '../tools/context.js'
+import type { ToolResult } from '../tools/result.js'
 import type { ModelAdapter, ModelResponse, TranscriptEntry } from './model.js'
 import { SYSTEM_PROMPT } from './prompt.js'
 

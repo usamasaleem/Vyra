@@ -1,10 +1,10 @@
 import { writeFileSync } from 'node:fs'
 import { qualification } from '../qualification.js'
 import { language } from '../language.js'
-import { anthropicModel } from '../harness/adapters/anthropic.js'
-import { openaiModel, type ReasoningEffort } from '../harness/adapters/openai.js'
+import { anthropicModel } from '@vyra/agent'
+import { openaiModel, type ReasoningEffort } from '@vyra/agent'
 import { formatScorecard, runComparison } from '../harness/compare.js'
-import type { ModelAdapter } from '../harness/model.js'
+import type { ModelAdapter } from '@vyra/agent'
 
 /**
  * Run the acceptance set across whichever models have a key configured.
