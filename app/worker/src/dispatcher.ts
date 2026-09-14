@@ -24,6 +24,8 @@ export type SendIntent = {
   revisionAtSend: number | null
   conversationRevision: number
   handlerMode: 'ai' | 'human'
+  /** Null when no person has accepted the conversation. */
+  ownerMembershipId: string | null
   lastCustomerMessageAt: Date | null
   recipient: string
   optedOutAt: Date | null
@@ -63,7 +65,23 @@ export function checkEligibility(intent: SendIntent, now: Date): EligibilityVerd
    * themselves is unaffected: they own the conversation.
    */
   const isAiAuthored = intent.sentByMembershipId === null
-  if (isAiAuthored && intent.handlerMode === 'human') {
+  /**
+   * A conversation can be human-owned for two different reasons, and only one
+   * of them should silence the AI.
+   *
+   * A salesperson pressing Take over sets `owner_membership_id`. The AI calling
+   * request_handoff leaves it null — nobody has accepted yet, it simply stepped
+   * out. Blocking both meant the acknowledgement of a handoff was suppressed by
+   * the handoff itself, and a customer asking for a person got nothing at all.
+   *
+   * Unowned is not a loophole on its own: the revision check immediately below
+   * still applies, and the handoff bumped the revision, so every draft written
+   * before it is stale and stays blocked. What gets through is the one message
+   * queued at the post-handoff revision — the sentence saying a colleague is
+   * coming.
+   */
+  const takenByAPerson = intent.handlerMode === 'human' && intent.ownerMembershipId !== null
+  if (isAiAuthored && takenByAPerson) {
     return { allowed: false, reason: 'conversation_taken_over' }
   }
 
@@ -102,7 +120,7 @@ const LOAD_INTENT_SQL = `
   select
     m.id, m.operator_id, m.conversation_id, m.body, m.kind,
     m.sent_by_membership_id, m.revision_at_send,
-    v.revision, v.handler_mode, v.last_customer_message_at,
+    v.revision, v.handler_mode, v.owner_membership_id, v.last_customer_message_at,
     c.channel_identifier, c.opted_out_at,
     a.phone_number_id
   from messages m
@@ -148,6 +166,7 @@ export async function dispatchMessage(
     revisionAtSend: row['revision_at_send'] === null ? null : Number(row['revision_at_send']),
     conversationRevision: Number(row['revision']),
     handlerMode: row['handler_mode'] as 'ai' | 'human',
+    ownerMembershipId: (row['owner_membership_id'] as string) ?? null,
     lastCustomerMessageAt: toDateOrNull(row['last_customer_message_at']),
     recipient: row['channel_identifier'] as string,
     optedOutAt: toDateOrNull(row['opted_out_at']),

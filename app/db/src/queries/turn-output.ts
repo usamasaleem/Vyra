@@ -72,6 +72,22 @@ export async function acceptTurnOutput(
     idempotencyKey: string
     /** Defaults to sending. Shadow mode passes 'draft'. */
     destination?: TurnDestination
+    /**
+     * Set when this turn called `request_handoff` itself.
+     *
+     * Without it the check rejects the acknowledgement of the handoff that
+     * triggered it: the model hands over, the conversation becomes
+     * human-owned, and the reply explaining that to the customer is discarded
+     * as superseded. Live test, first try — a customer asked to speak to
+     * someone and got silence, which is the one response section 17.6 rules
+     * out.
+     *
+     * The allowance is exactly one revision wide, because the handoff bumps it
+     * by exactly one. If the customer also sent a message in that window the
+     * total is two, and the turn is rejected as it should be: their newer
+     * message is what deserves an answer.
+     */
+    ownHandoff?: boolean
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -100,13 +116,21 @@ export async function acceptTurnOutput(
     // Checked before the revision, because it is the more useful thing to read
     // in an audit trail: "a person took over" explains more than "the number
     // changed", even though the takeover is what changed it.
-    if (row['handler_mode'] === 'human') {
+    //
+    // A turn that handed off itself is the exception: it made this conversation
+    // human-owned a moment ago, and what it wants to send is the sentence
+    // telling the customer so.
+    if (row['handler_mode'] === 'human' && input.ownHandoff !== true) {
       return { accepted: false, reason: 'human_took_over', revisionNow } as const
     }
     if (row['opted_out_at'] !== null) {
       return { accepted: false, reason: 'contact_opted_out', revisionNow } as const
     }
-    if (revisionNow !== input.revisionAtTurnStart) {
+    // One revision of slack for the turn's own handoff, and no more.
+    const expected = input.ownHandoff === true
+      ? [input.revisionAtTurnStart, input.revisionAtTurnStart + 1]
+      : [input.revisionAtTurnStart]
+    if (!expected.includes(revisionNow)) {
       return { accepted: false, reason: 'superseded', revisionNow } as const
     }
 

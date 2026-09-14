@@ -155,6 +155,62 @@ describe('a turn overtaken while it was thinking', () => {
   })
 })
 
+describe('handing over to a person', () => {
+  const HANDOFF = [
+    {
+      toolCalls: [{ id: 't1', name: 'request_handoff', arguments: { reason: 'Customer asked for a person.' } }],
+      reply: null,
+    },
+    { toolCalls: [], reply: "Of course — I'm passing you to a colleague, they'll be with you shortly." },
+  ]
+
+  /**
+   * The bug the first live test found. The model handed over, which made the
+   * conversation human-owned, and the revision check then discarded that same
+   * turn's reply as superseded. A customer asked to speak to someone and got
+   * silence — the one outcome section 17.6 rules out.
+   */
+  it('still sends the acknowledgement of the handoff it just performed', async () => {
+    const result = await turn(HANDOFF)
+    expect(result).toMatchObject({ outcome: 'queued' })
+
+    const [message] = await run(
+      `select body, delivery_state::text as state, revision_at_send from messages
+       where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(message!['body']).toContain('colleague')
+    // Queued at the post-handoff revision, which is what lets the dispatcher
+    // tell it apart from a draft written before the handoff.
+    expect(message).toMatchObject({ state: 'pending', revision_at_send: 1 })
+
+    const [conversation] = await run(
+      `select handler_mode::text as mode, owner_membership_id from conversations where id = $1`, [CONV],
+    )
+    // Human-owned, but owned by nobody yet: the AI stepped out, no salesperson
+    // has stepped in.
+    expect(conversation).toMatchObject({ mode: 'human', owner_membership_id: null })
+  })
+
+  /** The allowance is one revision wide. A customer message on top is not it. */
+  it('is still discarded if the customer also said something meanwhile', async () => {
+    const alsoCorrected = {
+      label: 'raced', modelId: 'raced:1',
+      calls: 0,
+      async complete() {
+        this.calls++
+        if (this.calls === 1) return HANDOFF[0]!
+        // A second revision bump, from something that is not this turn.
+        await db.query(`update conversations set revision = revision + 1 where id = '${CONV}'`)
+        return HANDOFF[1]!
+      },
+    }
+    const result = await runConversationTurn(
+      { run, transact, model: alsoCorrected, destination: 'send' }, context,
+    )
+    expect(result).toMatchObject({ outcome: 'rejected', reason: 'superseded' })
+  })
+})
+
 describe('a turn that fails', () => {
   it('raises a visible task when the provider is down', async () => {
     const broken = { label: 'broken', modelId: 'broken:1', complete: async () => { throw new Error('503 upstream') } }

@@ -145,7 +145,12 @@ export async function runComparison(
         const ctx = await world.contextFor(`${adapter.label}-${evalCase.id}`, evalCase.customer)
 
         try {
-          const outcome = await runTurn(adapter, ctx, evalCase.customer, options)
+          const outcome = await runTurn(
+            adapter,
+            ctx,
+            evalCase.customer.map((text) => ({ from: 'customer' as const, text })),
+            options,
+          )
           const recordedFields = await world.recordedFields(ctx)
           results.push({
             caseId: evalCase.id,

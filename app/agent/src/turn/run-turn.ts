@@ -36,18 +36,31 @@ export type RunTurnOptions = {
   system?: string
 }
 
+/** A prior exchange, oldest first. The last entry is the message being answered. */
+export type TurnMessage = { from: 'customer' | 'agent'; text: string }
+
 export async function runTurn(
   model: ModelAdapter,
   ctx: ToolContext,
-  customerMessages: string[],
+  /**
+   * The conversation so far, not just the latest message.
+   *
+   * Section 18.8 requires recent messages in the model's context, and the first
+   * live test showed exactly why: given only the current message, the agent
+   * confirmed a start date and then asked, one message later, whether the next
+   * date was a start or an end date. It had already been told the car twice and
+   * asked again. Every turn began from nothing.
+   */
+  messages: TurnMessage[],
   options: RunTurnOptions = {},
 ): Promise<TurnOutcome> {
   const maxRounds = options.maxRounds ?? 4
   const boundary = createToolBoundary(ctx, { maxCalls: options.maxToolCalls ?? 8 })
-  const transcript: TranscriptEntry[] = customerMessages.map((text) => ({
-    from: 'customer' as const,
-    text,
-  }))
+  const transcript: TranscriptEntry[] = messages.map((message) =>
+    message.from === 'customer'
+      ? { from: 'customer' as const, text: message.text }
+      : { from: 'agent' as const, text: message.text },
+  )
   const toolResults: Array<{ name: string; result: ToolResult<unknown> }> = []
 
   let rounds = 0

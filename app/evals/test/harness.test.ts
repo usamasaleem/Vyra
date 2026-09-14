@@ -47,7 +47,10 @@ function testCase(overrides: Partial<EvalCase> & { id: string }): EvalCase {
 
 async function grade(evalCase: EvalCase, script: ModelResponse[]) {
   const ctx = await world.contextFor(evalCase.id, evalCase.customer)
-  const outcome = await runTurn(scriptedModel('scripted', script), ctx, evalCase.customer)
+  const outcome = await runTurn(
+    scriptedModel('scripted', script), ctx,
+    evalCase.customer.map((text) => ({ from: 'customer' as const, text })),
+  )
   const recordedFields = await world.recordedFields(ctx)
   return { checks: gradeCase({ evalCase, outcome, recordedFields }), outcome }
 }
@@ -186,7 +189,7 @@ describe('the handoff check', () => {
         { toolCalls: [], reply: "Of course — I'm passing you to a colleague now." },
       ]),
       ctx,
-      evalCase.customer,
+      evalCase.customer.map((text) => ({ from: 'customer' as const, text })),
     )
     const checks = gradeCase({ evalCase, outcome, recordedFields: await world.recordedFields(ctx) })
     expect(check(checks, 'handed over to a person')).toMatchObject({ outcome: 'pass' })
@@ -547,7 +550,7 @@ describe('adapter request shapes', () => {
     await runTurn(
       anthropicModel({ apiKey: 'test-key', model: 'claude-opus-5' }),
       ctx,
-      ['hi'],
+      [{ from: 'customer', text: 'hi' }],
       { maxRounds: 1 },
     )
     expect(captured.url).toBe('https://api.anthropic.com/v1/messages')
@@ -566,7 +569,7 @@ describe('adapter request shapes', () => {
     expect(model.label).toBe('gpt-5.6-luna:high')
 
     const ctx = await world.contextFor('adapter-effort', ['hi'])
-    await runTurn(model, ctx, ['hi'], { maxRounds: 1 })
+    await runTurn(model, ctx, [{ from: 'customer', text: 'hi' }], { maxRounds: 1 })
     expect(captured.body['reasoning']).toEqual({ effort: 'high' })
   })
 
@@ -574,7 +577,7 @@ describe('adapter request shapes', () => {
     const model = openaiModel({ apiKey: 'test-key', model: 'gpt-5.6-luna' })
     expect(model.modelId).toBe('gpt-5.6-luna')
     const ctx = await world.contextFor('adapter-noeffort', ['hi'])
-    await runTurn(model, ctx, ['hi'], { maxRounds: 1 })
+    await runTurn(model, ctx, [{ from: 'customer', text: 'hi' }], { maxRounds: 1 })
     expect(captured.body).not.toHaveProperty('reasoning')
   })
 
@@ -583,7 +586,7 @@ describe('adapter request shapes', () => {
     await runTurn(
       openaiModel({ apiKey: 'test-key', model: 'some-model' }),
       ctx,
-      ['hi'],
+      [{ from: 'customer', text: 'hi' }],
       { maxRounds: 1 },
     )
     expect(captured.url).toBe('https://api.openai.com/v1/responses')

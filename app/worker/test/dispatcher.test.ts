@@ -20,7 +20,7 @@ const baseIntent = (overrides: Partial<SendIntent> = {}): SendIntent => ({
   messageId: 'm1', operatorId: OPERATOR, conversationId: CONVERSATION,
   body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text',
   sentByMembershipId: null, revisionAtSend: 0, conversationRevision: 0,
-  handlerMode: 'ai', lastCustomerMessageAt: new Date(NOW.getTime() - 60_000),
+  handlerMode: 'ai', ownerMembershipId: null, lastCustomerMessageAt: new Date(NOW.getTime() - 60_000),
   recipient: '971500000001', optedOutAt: null, phoneNumberId: '111',
   ...overrides,
 })
@@ -56,8 +56,41 @@ describe('eligibility, checked at the moment of sending', () => {
   })
 
   it('suppresses an AI draft once a salesperson has taken over', () => {
-    expect(checkEligibility(baseIntent({ handlerMode: 'human' }), NOW)).toEqual({
+    // A person taking over assigns themselves as owner. That, not the mode
+    // alone, is what silences the AI.
+    const intent = baseIntent({ handlerMode: 'human', ownerMembershipId: MEMBERSHIP })
+    expect(checkEligibility(intent, NOW)).toEqual({
       allowed: false, reason: 'conversation_taken_over',
+    })
+  })
+
+  /**
+   * The acknowledgement of a handoff the AI performed itself.
+   *
+   * Human-owned, but owned by nobody — the AI stepped out and no salesperson
+   * has accepted yet. Blocking this meant a customer who asked to speak to
+   * someone received nothing at all, which is the one outcome section 17.6
+   * rules out. Seen on the first live test.
+   */
+  it('still sends the handoff acknowledgement the AI wrote as it stepped out', () => {
+    const intent = baseIntent({
+      handlerMode: 'human', ownerMembershipId: null,
+      revisionAtSend: 1, conversationRevision: 1,
+    })
+    expect(checkEligibility(intent, NOW)).toEqual({ allowed: true })
+  })
+
+  /**
+   * ...and the allowance is not a loophole. Anything the AI queued before the
+   * handoff carries the older revision and stays blocked.
+   */
+  it('still suppresses a draft written before that handoff', () => {
+    const intent = baseIntent({
+      handlerMode: 'human', ownerMembershipId: null,
+      revisionAtSend: 0, conversationRevision: 1,
+    })
+    expect(checkEligibility(intent, NOW)).toEqual({
+      allowed: false, reason: 'superseded_by_newer_state',
     })
   })
 
@@ -117,6 +150,8 @@ describe('dispatching against the database', () => {
       insert into operators (id, name) values ('${OPERATOR}', 'Vyra Pilot');
       insert into whatsapp_accounts (id, operator_id, provider_account_id, phone_number_id)
       values ('33333333-3333-3333-3333-333333333333', '${OPERATOR}', 'waba', '100000000000001');
+      insert into memberships (id, operator_id, user_id, role)
+      values ('${MEMBERSHIP}', '${OPERATOR}', '10000000-0000-0000-0000-000000000001', 'salesperson');
       insert into contacts (id, operator_id, channel_identifier)
       values ('55555555-5555-5555-5555-555555555555', '${OPERATOR}', '971500000001');
       insert into conversations (id, operator_id, contact_id, whatsapp_account_id, last_customer_message_at)
@@ -151,7 +186,14 @@ describe('dispatching against the database', () => {
 
   it('cancels rather than sends when a salesperson took over', async () => {
     const id = await queueOutbound()
-    await run(`update conversations set handler_mode = 'human', revision = revision + 1 where id = $1`, [CONVERSATION])
+    // takeOverConversation assigns the owner as well as flipping the mode, and
+    // the owner is what distinguishes a person stepping in from the AI stepping
+    // out. A fixture that sets only the mode tests neither.
+    await run(
+      `update conversations set handler_mode = 'human', owner_membership_id = $2,
+              revision = revision + 1 where id = $1`,
+      [CONVERSATION, MEMBERSHIP],
+    )
     const client = sending()
     const result = await dispatchMessage(run, client, id)
 

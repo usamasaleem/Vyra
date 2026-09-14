@@ -85,7 +85,22 @@ export async function runConversationTurn(
    */
   let end
   try {
-    const outcome = await runTurn(deps.model, toolContext, [context.message.body])
+    /**
+     * The whole recent conversation, oldest first, not just the newest message.
+     *
+     * `loadConversationContext` already ends this list with the message being
+     * answered, so it is not appended again. Outbound messages become 'agent'
+     * turns: a reply the customer has already read is part of what was said,
+     * whether a model or a salesperson wrote it.
+     */
+    const transcript = context.recentMessages
+      .filter((m) => m.body !== null && m.body.trim() !== '')
+      .map((m) => ({
+        from: m.direction === 'inbound' ? ('customer' as const) : ('agent' as const),
+        text: m.body as string,
+      }))
+
+    const outcome = await runTurn(deps.model, toolContext, transcript)
     end = {
       reply: outcome.reply,
       stoppedBecause: outcome.stoppedBecause,
@@ -112,6 +127,17 @@ export async function runConversationTurn(
     return { outcome: 'failed', kind: failure.kind, detail: failure.detail }
   }
 
+  /**
+   * Did this turn hand the conversation over itself?
+   *
+   * If so, the conversation is human-owned *because of* the reply about to be
+   * accepted, and rejecting it as superseded would swallow the one sentence
+   * the customer needs — that a colleague is coming.
+   */
+  const ownHandoff = end.toolCalls.some(
+    (call) => call.requestedName === 'request_handoff' && call.status === 'ok',
+  )
+
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
@@ -121,6 +147,7 @@ export async function runConversationTurn(
     // the same customer message.
     idempotencyKey: `turn:${context.message.id}`,
     destination: deps.destination,
+    ownHandoff,
   })
 
   if (!accepted.accepted) {
