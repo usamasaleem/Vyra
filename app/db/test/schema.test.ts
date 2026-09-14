@@ -70,6 +70,7 @@ describe('schema v1 applies', () => {
       'messages',
       'operators',
       'outbox',
+      'vehicles',
       'whatsapp_accounts',
     ])
   })
