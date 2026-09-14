@@ -252,6 +252,37 @@ describe('search_vehicles with a fleet', () => {
   })
 
   /** The model has no use for an identifier and every opportunity to misuse one. */
+  /**
+   * Regression. The first version matched the query as one substring per
+   * column, so "yellow Ferrari" found nothing — make is 'Ferrari', colour is
+   * 'Giallo Modena (yellow)', and neither holds the phrase. A customer was told
+   * "we don't have a yellow Ferrari" about a car in the fleet: a false
+   * statement produced by a correct tool result.
+   */
+  it.each([
+    'yellow ferrari',
+    'ferrari yellow',
+    'a yellow Ferrari',
+    'Giallo Ferrari',
+    '488',
+    'yellow 488 spider',
+    'exotic',
+  ])('finds the car from "%s"', async (query) => {
+    await addVehicle()
+    const result = await search(query)
+    expect(result).toMatchObject({ status: 'ok' })
+    expect((result as { data: { fleet: unknown[] } }).data.fleet).toHaveLength(1)
+  })
+
+  it.each(['yellow lamborghini', 'red ferrari', 'ferrari convertible saloon'])(
+    'still finds nothing for "%s"',
+    async (query) => {
+      await addVehicle()
+      const result = await search(query)
+      expect(result).toMatchObject({ status: 'ok', data: { fleet: [] } })
+    },
+  )
+
   it('never hands the model a plate or a chassis number', async () => {
     await addVehicle()
     const result = JSON.stringify(await search('ferrari'))

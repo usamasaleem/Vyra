@@ -49,6 +49,21 @@ export type FleetSearch = {
   fleetSize: number
 }
 
+/**
+ * Every word must match somewhere in the car's description, not the whole
+ * phrase in one column.
+ *
+ * The first version matched the query as a single substring against each
+ * column in turn. "yellow Ferrari" then found nothing: `make` is 'Ferrari',
+ * `colour` is 'Giallo Modena (yellow)', and neither contains the phrase. The
+ * agent told a customer "we don't have a yellow Ferrari" about a car sitting in
+ * the fleet — a false statement produced by a true tool result, which is the
+ * worst shape this kind of bug takes.
+ *
+ * Concatenating the searchable fields and requiring every word means "yellow
+ * ferrari", "ferrari yellow" and "yellow 488" all find it, while "yellow
+ * lamborghini" correctly finds nothing.
+ */
 const SEARCH_SQL = `
   select id, make, model, variant, year, colour, category::text as category,
          plate, chassis_number, engine, power_hp, transmission, drivetrain, seats, doors
@@ -56,26 +71,40 @@ const SEARCH_SQL = `
   where operator_id = $1
     and active
     and provenance = 'operator_confirmed'
-    -- A loose match on purpose: customers write "lambo", "the yellow ferrari",
-    -- "range rover". Narrowing this is the model's job through the argument it
-    -- passes, not this query's.
-    and ($2::text is null or (
-      make    ilike '%' || $2 || '%' or
-      model   ilike '%' || $2 || '%' or
-      variant ilike '%' || $2 || '%' or
-      colour  ilike '%' || $2 || '%' or
-      (make || ' ' || model) ilike '%' || $2 || '%'
-    ))
+    and (
+      $2::text[] is null
+      or cardinality($2::text[]) = 0
+      or (
+        make || ' ' || model || ' ' || coalesce(variant, '') || ' ' ||
+        colour || ' ' || category::text || ' ' || year::text
+      ) ilike all ($2::text[])
+    )
   order by make, model
   limit 20
 `
+
+/**
+ * Words worth requiring. Short connectives are dropped because a model may
+ * pass "a yellow Ferrari" or "the Huracan", and requiring "a" or "the" to
+ * appear in a car's description would match nothing.
+ */
+const IGNORED = new Set(['a', 'an', 'the', 'in', 'of', 'for', 'my', 'your', 'any', 'car'])
+
+function searchPatterns(query: string | null): string[] | null {
+  if (query === null) return null
+  const words = query
+    .toLowerCase()
+    .split(/[^\p{Letter}\p{Number}]+/u)
+    .filter((w) => w.length > 0 && !IGNORED.has(w))
+  return words.map((w) => `%${w}%`)
+}
 
 export async function searchFleet(
   run: QueryRunner,
   operatorId: string,
   query: string | null,
 ): Promise<FleetSearch> {
-  const rows = await run(SEARCH_SQL, [operatorId, query])
+  const rows = await run(SEARCH_SQL, [operatorId, searchPatterns(query)])
   const [size] = await run(
     `select count(*)::int as n from vehicles
      where operator_id = $1 and active and provenance = 'operator_confirmed'`,
