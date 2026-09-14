@@ -49,6 +49,49 @@ export function GET(request: Request): Response {
  * harmless. Acknowledging a message we failed to store would lose it for good —
  * Meta does not send it twice on request.
  */
+/**
+ * The pointer to the file, not the file.
+ *
+ * This used to store `{ type: 'audio' }` and nothing else, which named the
+ * problem without keeping the one thing needed to solve it: a customer sent a
+ * voice note, the inbox said "audio message — needs a person", and there was no
+ * way for that person to hear it. The id was in the webhook the whole time.
+ *
+ * Section 18.13 keeps the bytes out of the database — media lives with the
+ * provider and is fetched, with credentials, when someone asks for it. What is
+ * stored is the id, the mime type, and whether it was recorded as a voice note
+ * rather than attached as a file, because a salesperson reads those
+ * differently.
+ *
+ * Meta's `url` is deliberately not stored: it expires within minutes and a
+ * stale link that looks live is worse than no link.
+ */
+function mediaPointer(message: {
+  type: string
+  audio?: { id?: string; mime_type?: string; voice?: boolean }
+  image?: { id?: string; mime_type?: string; caption?: string }
+  video?: { id?: string; mime_type?: string; caption?: string }
+  document?: { id?: string; mime_type?: string; filename?: string }
+  sticker?: { id?: string; mime_type?: string }
+}): Record<string, unknown> | null {
+  if (message.type === 'text') return null
+
+  const part =
+    message.audio ?? message.image ?? message.video ?? message.document ?? message.sticker
+
+  const pointer: Record<string, unknown> = { type: message.type }
+  if (part?.id !== undefined) pointer['mediaId'] = part.id
+  if (part?.mime_type !== undefined) pointer['mimeType'] = part.mime_type
+  // A voice note and an attached audio file read differently to a salesperson.
+  if (message.audio?.voice === true) pointer['voiceNote'] = true
+  if (message.document?.filename !== undefined) pointer['filename'] = message.document.filename
+
+  const caption = message.image?.caption ?? message.video?.caption
+  if (caption !== undefined) pointer['caption'] = caption
+
+  return pointer
+}
+
 export async function POST(request: Request): Promise<Response> {
   const rawBody = Buffer.from(await request.arrayBuffer())
 
@@ -100,7 +143,7 @@ export async function POST(request: Request): Promise<Response> {
             providerMessageId: message.id,
             kind: toMessageKind(message.type),
             body: message.text?.body ?? null,
-            media: message.type === 'text' ? null : { type: message.type },
+            media: mediaPointer(message),
             sentAt: toDate(message.timestamp),
           })
           stored.push({ kind: toMessageKind(message.type), ...outcome })

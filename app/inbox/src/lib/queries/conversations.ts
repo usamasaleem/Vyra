@@ -130,6 +130,15 @@ export type ThreadMessage = {
   id: string
   direction: 'inbound' | 'outbound'
   kind: string
+  /**
+   * True when the file can still be fetched from the provider.
+   *
+   * False for messages received before the media pointer was stored — the
+   * webhook kept only the type, so there is nothing to fetch. Distinguished
+   * rather than hidden, so a salesperson sees "needs a person" without a dead
+   * player beside it.
+   */
+  playable: boolean
   body: string | null
   deliveryState: string
   errorCode: string | null
@@ -166,7 +175,8 @@ const THREAD_SQL = `
 
 const MESSAGES_SQL = `
   select id, direction, kind, body, delivery_state, error_code,
-         sent_by_membership_id, created_at
+         sent_by_membership_id, created_at,
+         (media ->> 'mediaId') is not null as playable
   from messages
   where conversation_id = $1 and operator_id = $2
   order by created_at
@@ -203,6 +213,7 @@ export async function getConversationThread(
       id: m['id'] as string,
       direction: m['direction'] as 'inbound' | 'outbound',
       kind: m['kind'] as string,
+      playable: m['playable'] === true,
       body: (m['body'] as string) ?? null,
       deliveryState: m['delivery_state'] as string,
       errorCode: (m['error_code'] as string) ?? null,

@@ -195,9 +195,39 @@ export default async function ConversationPage({
                 {outbound && ` · ${STATE_LABEL[m.deliveryState] ?? m.deliveryState}`}
               </div>
               {m.body === null ? (
-                <em className="muted">
-                  {m.kind} message — not readable automatically, needs a person
-                </em>
+                <div>
+                  <em className="muted">
+                    {m.kind} message — not readable automatically, needs a person
+                  </em>
+                  {/*
+                    The agent cannot listen to it. A person can, and until now
+                    had no way to: the inbox named the problem and withheld the
+                    one thing that solves it. Streamed through the server, since
+                    Meta's own link expires in minutes and needs the operator's
+                    token.
+                  */}
+                  {m.playable && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      {m.kind === 'audio' ? (
+                        <audio controls preload="none" style={{ width: '100%', maxWidth: '22rem' }}>
+                          <source src={`/api/media/${m.id}`} />
+                        </audio>
+                      ) : m.kind === 'image' ? (
+                        <a href={`/api/media/${m.id}`} target="_blank" rel="noreferrer">
+                          <img
+                            src={`/api/media/${m.id}`}
+                            alt="Sent by the customer"
+                            style={{ maxWidth: '20rem', borderRadius: 6, display: 'block' }}
+                          />
+                        </a>
+                      ) : (
+                        <a className="button secondary" href={`/api/media/${m.id}`} target="_blank" rel="noreferrer">
+                          Open {m.kind}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
               )}
