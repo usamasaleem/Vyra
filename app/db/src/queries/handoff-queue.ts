@@ -65,8 +65,34 @@ with raised as (
          now() + make_interval(mins => o.handoff_sla_minutes), $6::uuid
   from operators o
   where o.id = $1
-  on conflict do nothing
-  returning id, due_at, priority
+  /**
+   * An open handoff already exists, so a second queue entry is not created —
+   * one conversation is one job. But the new trigger may be more serious than
+   * the one that opened it, and dropping it silently is how a salesperson ends
+   * up reading "customer wants the highest-priced car" while the customer is
+   * actually asking for a discount.
+   *
+   * So the existing entry is upgraded when the incoming reason outranks it, and
+   * the new summary is appended rather than replacing the old one: both things
+   * were asked, and whoever picks this up needs both.
+   */
+  on conflict (conversation_id) where state in ('waiting', 'escalated')
+  do update set
+    reason = case when public.vyra_priority_rank(excluded.priority::text)
+                     < public.vyra_priority_rank(handoffs.priority::text)
+                  then excluded.reason else handoffs.reason end,
+    priority = case when public.vyra_priority_rank(excluded.priority::text)
+                       < public.vyra_priority_rank(handoffs.priority::text)
+                    then excluded.priority else handoffs.priority end,
+    summary = case when handoffs.summary like '%' || excluded.summary || '%'
+                   then handoffs.summary
+                   else handoffs.summary || E'\n\n' || excluded.summary end,
+    updated_at = now()
+  -- xmax is zero on a fresh insert and non-zero when the row came back from a
+  -- conflict, which is how "created" and "updated" stay distinguishable now
+  -- that both return a row. Callers depend on that difference: a second trigger
+  -- on an open conversation must not read as a new task in the queue.
+  returning id, due_at, priority, (xmax = 0) as inserted
 ),
 audited as (
   insert into audit_events (
@@ -78,9 +104,10 @@ audited as (
   returning id
 )
 select
-  (select id from raised)            as handoff_id,
-  (select due_at from raised)        as due_at,
-  (select priority::text from raised) as priority
+  (select id from raised)             as handoff_id,
+  (select due_at from raised)         as due_at,
+  (select priority::text from raised) as priority,
+  (select inserted from raised)       as inserted
 `
 
 export async function raiseHandoff(
@@ -108,7 +135,9 @@ export async function raiseHandoff(
 
   return {
     handoffId,
-    alreadyOpen: handoffId === null,
+    // Open before this call: either nothing came back, or what came back was an
+    // existing entry this trigger updated rather than a new one.
+    alreadyOpen: handoffId === null || row?.['inserted'] === false,
     dueAt: row?.['due_at'] == null ? null : new Date(row['due_at'] as string),
     priority,
   }

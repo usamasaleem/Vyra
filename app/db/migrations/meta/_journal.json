@@ -127,6 +127,13 @@
       "when": 1789412015831,
       "tag": "0017_accent_folding",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789412015832,
+      "tag": "0018_handoff_upgrade",
+      "breakpoints": true
     }
   ]
 }

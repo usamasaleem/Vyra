@@ -83,10 +83,68 @@ describe('raising a handoff', () => {
     const first = await raise()
     const second = await raise('qualified_lead')
 
-    expect(second).toMatchObject({ handoffId: null, alreadyOpen: true })
+    // alreadyOpen says a new task was not created. The id is the entry that
+    // absorbed the trigger, which is more useful to a caller than null: it
+    // names what a person will actually find in the queue.
+    expect(second).toMatchObject({ handoffId: first.handoffId, alreadyOpen: true })
     const rows = await run(`select id from handoffs where conversation_id = $1`, [CONV])
     expect(rows).toHaveLength(1)
     expect(rows[0]!['id']).toBe(first.handoffId)
+  })
+
+  /**
+   * One conversation is one job, but the second trigger is not thrown away.
+   *
+   * Found live. A conversation already had an escalated handoff about the
+   * highest-priced car; the customer then asked for a discount; the insert hit
+   * the conflict and did nothing. Nothing recorded that a discount had been
+   * asked for, and a salesperson opening the queue would have read a summary
+   * about something else entirely.
+   */
+  it('keeps both summaries when a second trigger arrives', async () => {
+    await raise('qualified_lead')
+    await raiseHandoff(run, {
+      operatorId: OP, conversationId: CONV, reason: 'discount_requested',
+      summary: 'The customer asked for a discount — "can you do 3000".',
+    })
+
+    const rows = await run(
+      `select reason::text as reason, priority::text as priority, summary
+       from handoffs where conversation_id = $1`, [CONV],
+    )
+    expect(rows).toHaveLength(1)
+    // qualified_lead is 'normal'; a discount outranks it at 'high'.
+    expect(rows[0]).toMatchObject({ reason: 'discount_requested', priority: 'high' })
+    expect(rows[0]!['summary']).toContain('can you do 3000')
+    expect(rows[0]!['summary']).toContain('Ferrari')
+  })
+
+  it('does not downgrade a more serious handoff already open', async () => {
+    await raiseHandoff(run, {
+      operatorId: OP, conversationId: CONV, reason: 'safety_or_accident',
+      summary: 'The customer reported a crash.',
+    })
+    await raiseHandoff(run, {
+      operatorId: OP, conversationId: CONV, reason: 'qualified_lead',
+      summary: 'Enough detail to quote.',
+    })
+
+    const [row] = await run(
+      `select reason::text as reason, priority::text as priority, summary
+       from handoffs where conversation_id = $1`, [CONV],
+    )
+    expect(row).toMatchObject({ reason: 'safety_or_accident', priority: 'urgent' })
+    // The lesser trigger still leaves its note; only the ranking is unchanged.
+    expect(row!['summary']).toContain('Enough detail to quote')
+  })
+
+  it('does not append the same summary twice', async () => {
+    await raise('qualified_lead')
+    await raise('qualified_lead')
+
+    const [row] = await run(`select summary from handoffs where conversation_id = $1`, [CONV])
+    const summary = row!['summary'] as string
+    expect(summary.indexOf('Ferrari')).toBe(summary.lastIndexOf('Ferrari'))
   })
 
   it('allows a new one once the last was resolved', async () => {
