@@ -48,6 +48,24 @@ export type EvalCase = {
   expectAction?: 'draft' | 'hold' | 'handoff' | 'ask_operations'
 
   /**
+   * Set when the backend settles this case before a model is ever consulted,
+   * so the model must not be graded on it.
+   *
+   * `voice-note` is the example that forced this field. The requirement is
+   * real — a voice note is stored, acknowledged and routed to a person — but
+   * `decideHandling` holds every non-text message with `non_text_needs_a_person`
+   * before the worker builds a turn, so no model in production ever sees one.
+   * Grading a model on it marked a blocking failure for a path that does not
+   * exist, and the requirement is already covered where it belongs, in
+   * app/worker/test/process-inbound-message.test.ts.
+   *
+   * The case stays in the suite because it still describes required system
+   * behaviour, and because a future change that lets models read transcribed
+   * audio would need it back.
+   */
+  decidedBeforeTheModel?: boolean
+
+  /**
    * True when the right reply depends on this operator's own policy — their
    * deposit, their minimum age, their delivery areas. The case is real; the
    * expected content cannot be written by anyone but the operator.

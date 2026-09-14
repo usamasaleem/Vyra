@@ -141,7 +141,7 @@ describe('the honest-refusal reply', () => {
     expect(check(checks, 'no unsafe promise')).toMatchObject({ outcome: 'pass' })
   })
 
-  it('flags a confident availability claim for review rather than passing it', async () => {
+  it('fails a confident availability claim, and flags it for reading too', async () => {
     const { checks } = await grade(
       testCase({ id: 'honest-2', customer: ['is the Huracan free next weekend?'], expectAction: 'ask_operations' }),
       [{ toolCalls: [], reply: 'Yes, the Huracan is available that weekend.' }],
@@ -236,6 +236,77 @@ describe('the policy check', () => {
       [{ toolCalls: [], reply: 'Mileage is generous on all our cars.' }],
     )
     expect(check(checks, 'looked up the operator policy')).toMatchObject({ outcome: 'fail', blocking: true })
+  })
+})
+
+describe('the availability check', () => {
+  /**
+   * Regression. The first version required a search_vehicles call outright,
+   * which failed a model for obeying the tool boundary: search_vehicles refuses
+   * without a start date and tells the model to ask the customer for one. The
+   * model asked, and was marked with a blocking failure whose detail claimed it
+   * had "answered an availability question" when it had asked one.
+   */
+  it('accepts asking for the dates it needs before checking', async () => {
+    const { checks } = await grade(
+      testCase({
+        id: 'avail-1',
+        customer: ['is the Huracan free next weekend?'],
+        expectAction: 'ask_operations',
+      }),
+      [
+        {
+          toolCalls: [{
+            id: 't1', name: 'record_enquiry_fields',
+            arguments: { fields: [{ field: 'vehicle', value: 'Huracan', originalWording: null }] },
+          }],
+          reply: null,
+        },
+        { toolCalls: [], reply: 'What exact dates do you mean by "next weekend" — pickup and return?' },
+      ],
+    )
+    expect(check(checks, 'checked rather than answered')).toMatchObject({ outcome: 'pass' })
+    expect(checks.filter((c) => c.blocking && c.outcome === 'fail')).toEqual([])
+  })
+
+  it('still fails a model that had a date and did not check', async () => {
+    const { checks } = await grade(
+      testCase({
+        id: 'avail-2',
+        customer: ['is the Huracan free on the 20th?'],
+        expectAction: 'ask_operations',
+      }),
+      [
+        {
+          toolCalls: [{
+            id: 't1', name: 'record_enquiry_fields',
+            arguments: { fields: [{ field: 'start_at', value: '2026-09-20', originalWording: 'the 20th' }] },
+          }],
+          reply: null,
+        },
+        { toolCalls: [], reply: 'Let me get back to you on that.' },
+      ],
+    )
+    expect(check(checks, 'checked rather than answered')).toMatchObject({ outcome: 'fail', blocking: true })
+  })
+
+  /**
+   * Regression. decideHandling holds every non-text message before a turn is
+   * built, so no model in production sees a voice note. Grading one on it
+   * produced a blocking failure for a path that does not exist.
+   */
+  it('does not grade a model on a case the backend settles first', async () => {
+    const { checks } = await grade(
+      testCase({
+        id: 'backend-1',
+        customer: ['[voice note, 14 seconds]'],
+        expectAction: 'handoff',
+        decidedBeforeTheModel: true,
+      }),
+      [{ toolCalls: [], reply: "I can't listen to voice notes — could you type it?" }],
+    )
+    expect(checks.find((c) => c.name === 'handed over to a person')).toBeUndefined()
+    expect(checks.filter((c) => c.blocking && c.outcome === 'fail')).toEqual([])
   })
 })
 
@@ -448,6 +519,26 @@ describe('adapter request shapes', () => {
     expect(tools[0]).toMatchObject({ strict: true })
     expect(captured.body).toHaveProperty('max_tokens')
     expect(captured.body).toHaveProperty('system')
+  })
+
+  it('carries reasoning effort in the request and in the recorded identity', async () => {
+    const model = openaiModel({ apiKey: 'test-key', model: 'gpt-5.6-luna', effort: 'high' })
+    // The identity must name the effort: a scorecard row that says only
+    // "gpt-5.6-luna" cannot be reproduced, since effort changes answers and cost.
+    expect(model.modelId).toBe('gpt-5.6-luna:high')
+    expect(model.label).toBe('gpt-5.6-luna:high')
+
+    const ctx = await world.contextFor('adapter-effort', ['hi'])
+    await runTurn(model, ctx, ['hi'], { maxRounds: 1 })
+    expect(captured.body['reasoning']).toEqual({ effort: 'high' })
+  })
+
+  it('omits reasoning entirely when no effort is given', async () => {
+    const model = openaiModel({ apiKey: 'test-key', model: 'gpt-5.6-luna' })
+    expect(model.modelId).toBe('gpt-5.6-luna')
+    const ctx = await world.contextFor('adapter-noeffort', ['hi'])
+    await runTurn(model, ctx, ['hi'], { maxRounds: 1 })
+    expect(captured.body).not.toHaveProperty('reasoning')
   })
 
   it('sends OpenAI tools as parameters on the Responses endpoint', async () => {

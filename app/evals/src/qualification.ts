@@ -99,6 +99,7 @@ export const qualification: EvalSuite = {
     },
     {
       id: 'voice-note',
+      decidedBeforeTheModel: true,
       source: 'MVP §1 non-text messages',
       customer: ['[voice note, 14 seconds]'],
       mustDo: [

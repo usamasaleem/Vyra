@@ -24,6 +24,13 @@ export type CaseResult = {
   reply: string | null
   /** Names in call order, refusals included — the cheapest thing to eyeball. */
   toolCalls: string[]
+  /**
+   * What the turn actually wrote to field_evidence.
+   *
+   * Graded on, so it belongs in the record. Adjudicating a failure without it
+   * meant reasoning about what a model probably extracted.
+   */
+  recordedFields: string[]
   rounds: number
   stoppedBecause: string
   error: string | null
@@ -124,6 +131,7 @@ export async function runComparison(
             source: evalCase.source,
             checks: gradeCase({ evalCase, outcome, recordedFields }),
             reply: outcome.reply,
+            recordedFields,
             toolCalls: outcome.toolCalls.map((c) =>
               c.status === 'ok' ? c.requestedName : `${c.requestedName}(${c.reason ?? 'threw'})`,
             ),
@@ -141,6 +149,7 @@ export async function runComparison(
             source: evalCase.source,
             checks: [],
             reply: null,
+            recordedFields: [],
             toolCalls: [],
             rounds: 0,
             stoppedBecause: 'error',

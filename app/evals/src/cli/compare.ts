@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs'
 import { qualification } from '../qualification.js'
 import { language } from '../language.js'
 import { anthropicModel } from '../harness/adapters/anthropic.js'
-import { openaiModel } from '../harness/adapters/openai.js'
+import { openaiModel, type ReasoningEffort } from '../harness/adapters/openai.js'
 import { formatScorecard, runComparison } from '../harness/compare.js'
 import type { ModelAdapter } from '../harness/model.js'
 
@@ -39,7 +39,18 @@ function buildAdapters(): ModelAdapter[] {
   if (openaiKey !== undefined && openaiKey !== '') {
     const models = (process.env['EVAL_OPENAI_MODELS'] ?? OPENAI_DEFAULTS.join(','))
       .split(',').map((m) => m.trim()).filter(Boolean)
-    for (const model of models) adapters.push(openaiModel({ apiKey: openaiKey, model }))
+
+    // Every model is run at every effort named, because "which model" is the
+    // wrong axis on its own: a cheap model thinking hard and an expensive one
+    // thinking little compete for the same budget, and only one of them is
+    // worth paying for.
+    const efforts = (process.env['EVAL_EFFORTS'] ?? '')
+      .split(',').map((e) => e.trim()).filter(Boolean) as ReasoningEffort[]
+
+    for (const model of models) {
+      if (efforts.length === 0) adapters.push(openaiModel({ apiKey: openaiKey, model }))
+      else for (const effort of efforts) adapters.push(openaiModel({ apiKey: openaiKey, model, effort }))
+    }
   }
 
   return adapters
@@ -52,6 +63,7 @@ if (adapters.length === 0) {
 Set one of these and run again:
   ANTHROPIC_API_KEY=...   optionally EVAL_ANTHROPIC_MODELS=${ANTHROPIC_DEFAULTS.join(',')}
   OPENAI_API_KEY=...      optionally EVAL_OPENAI_MODELS=${OPENAI_DEFAULTS.join(',')}
+                          and EVAL_EFFORTS=minimal,medium,high to sweep reasoning effort
 
 The harness itself is tested without a key: npx vitest run app/evals`)
   process.exit(1)

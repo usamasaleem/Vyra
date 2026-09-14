@@ -13,17 +13,32 @@ import type { ModelAdapter, ModelRequest, ModelResponse, ModelToolCall } from '.
  * in circulation, and writing this from memory would have produced the wrong
  * one.
  */
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
 export function openaiModel(options: {
   apiKey: string
   model: string
+  /**
+   * How hard the model thinks. Omitted means the provider's default, which for
+   * the gpt-5.6 family is `medium`.
+   *
+   * This belongs in the identity, not just the request. The first comparison
+   * run recorded `gpt-5.6-luna` and nothing else, which named a fraction of
+   * what actually ran: effort changes both the answers and the bill, since
+   * reasoning tokens are charged. A scorecard that cannot be reproduced from
+   * what it recorded is the exact failure the modelId comment warns about, one
+   * level further down.
+   */
+  effort?: ReasoningEffort
   label?: string
   baseUrl?: string
 }): ModelAdapter {
   const baseUrl = options.baseUrl ?? 'https://api.openai.com'
+  const identity = options.effort === undefined ? options.model : `${options.model}:${options.effort}`
 
   return {
-    label: options.label ?? options.model,
-    modelId: options.model,
+    label: options.label ?? identity,
+    modelId: identity,
     complete: async (request: ModelRequest): Promise<ModelResponse> => {
       const response = await fetch(`${baseUrl}/v1/responses`, {
         method: 'POST',
@@ -34,6 +49,7 @@ export function openaiModel(options: {
         body: JSON.stringify({
           model: options.model,
           instructions: request.system,
+          ...(options.effort === undefined ? {} : { reasoning: { effort: options.effort } }),
           tools: request.tools.map((tool) => ({
             type: 'function',
             name: tool.name,
