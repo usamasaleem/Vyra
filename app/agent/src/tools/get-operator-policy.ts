@@ -40,6 +40,7 @@ export async function getOperatorPolicy(
     return refuse(
       'no_approved_answer',
       `This operator has not published an approved answer for "${args.topic}". Tell the customer you will confirm it, and do not estimate.`,
+      `publish an approved answer for "${args.topic}"`,
     )
   }
   return ok({

@@ -42,6 +42,14 @@ export type ToolCallRecord = {
   status: 'ok' | 'refused'
   reason: RefusalReason | null
   durationMs: number
+  /**
+   * Work this call left for a person, if any.
+   *
+   * Recorded here rather than read out of the reply, so it survives whatever
+   * the model chooses to say. A turn that promises the customer a callback and
+   * a turn that forgets to mention it leave the same row behind.
+   */
+  needsAPerson: string | null
 }
 
 export type BoundaryOptions = {
@@ -82,6 +90,7 @@ export function createToolBoundary(ctx: ToolContext, options: BoundaryOptions = 
         status: result.status,
         reason: result.status === 'refused' ? result.reason : null,
         durationMs: clock() - started,
+        needsAPerson: result.needsAPerson ?? null,
       })
       return result
     }
@@ -120,6 +129,7 @@ export function createToolBoundary(ctx: ToolContext, options: BoundaryOptions = 
         status: 'refused',
         reason: null,
         durationMs: clock() - started,
+        needsAPerson: null,
       })
       throw error
     }

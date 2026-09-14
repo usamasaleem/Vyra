@@ -38,5 +38,6 @@ export async function requestBookingReview(
   return refuse(
     'not_available_yet',
     'Booking review is not connected yet. Request a handoff so a person can take the booking, and do not tell the customer anything is confirmed.',
+    'take this booking — booking review is not connected',
   )
 }

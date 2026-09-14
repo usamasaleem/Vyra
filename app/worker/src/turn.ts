@@ -7,6 +7,7 @@ import {
 import {
   acceptTurnOutput,
   ensureEnquiry,
+  recordOutstandingWork,
   recordRejectedTurn,
   recordTurnFailure,
   type TurnDestination,
@@ -159,6 +160,29 @@ export async function runConversationTurn(
       revisionNow: accepted.revisionNow,
     })
     return { outcome: 'rejected', reason: accepted.reason }
+  }
+
+  /**
+   * Anything the tools could not finish becomes visible work.
+   *
+   * After acceptance, not before: a turn that was superseded should not leave a
+   * task behind for a conversation that has moved on. Skipped when the model
+   * handed off, because a handoff already puts the whole conversation in front
+   * of a person and two competing next actions help nobody.
+   */
+  if (!ownHandoff) {
+    const items = end.toolCalls
+      .map((call) => call.needsAPerson)
+      .filter((item): item is string => item !== null)
+
+    if (items.length > 0) {
+      await recordOutstandingWork(deps.run, {
+        conversationId: context.conversation.id,
+        operatorId: context.operator.id,
+        items,
+        messageId: context.message.id,
+      })
+    }
   }
 
   return accepted.destination === 'draft'

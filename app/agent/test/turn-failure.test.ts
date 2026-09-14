@@ -7,6 +7,7 @@ const call = (name: string, reason: ToolCallRecord['reason'] = null): ToolCallRe
   status: reason === null ? 'ok' : 'refused',
   reason,
   durationMs: 5,
+  needsAPerson: null,
 })
 
 const end = (overrides: Partial<TurnEnd>): TurnEnd => ({

@@ -54,5 +54,6 @@ export async function prepareQuote(
   return refuse(
     'not_available_yet',
     'Quote calculation is not connected yet — approved rates come from Operations. Ask for a handoff so a person can price this, and do not state any figure.',
+    'price this enquiry — quote calculation is not connected',
   )
 }

@@ -211,6 +211,97 @@ describe('handing over to a person', () => {
   })
 })
 
+/**
+ * The gap this closes: the agent told a customer "I'm confirming whether it's
+ * available, and I'll also confirm the deposit", and nothing existed anywhere
+ * to confirm either. next_action was null, no handoff, no audit event — a
+ * salesperson saw an ordinary conversation with nothing marked as needing them.
+ */
+describe('work the agent promised a person would do', () => {
+  const ASKS_POLICY = [
+    { toolCalls: [{ id: 't1', name: 'get_operator_policy', arguments: { topic: 'deposit' } }], reply: null },
+    { toolCalls: [], reply: "I'll confirm the deposit and come straight back to you." },
+  ]
+
+  it('records it where a salesperson will see it', async () => {
+    const result = await turn(ASKS_POLICY)
+    expect(result).toMatchObject({ outcome: 'queued' })
+
+    const [conversation] = await run(
+      `select handler_mode::text as mode, next_action from conversations where id = $1`, [CONV],
+    )
+    // Still the AI's conversation — it can carry on qualifying.
+    expect(conversation).toMatchObject({ mode: 'ai' })
+    expect(conversation!['next_action']).toContain('deposit')
+
+    const [audit] = await run(
+      `select action, data from audit_events where subject_id = $1
+       and action = 'conversation.needs_operator_input'`, [CONV],
+    )
+    expect((audit!['data'] as Record<string, unknown>)['items']).toEqual([
+      'publish an approved answer for "deposit"',
+    ])
+  })
+
+  /** The point of this design: an unanswered question must not stop the agent. */
+  it('does not take the conversation away from the AI', async () => {
+    await turn(ASKS_POLICY)
+    const [conversation] = await run(
+      `select handler_mode::text as mode, owner_membership_id from conversations where id = $1`, [CONV],
+    )
+    expect(conversation).toMatchObject({ mode: 'ai', owner_membership_id: null })
+  })
+
+  it('is idempotent — a retried job leaves one audit event', async () => {
+    await turn(ASKS_POLICY)
+    await turn(ASKS_POLICY)
+    const audits = await run(
+      `select id from audit_events where subject_id = $1
+       and action = 'conversation.needs_operator_input'`, [CONV],
+    )
+    expect(audits).toHaveLength(1)
+  })
+
+  /**
+   * Read from the tool result, not the reply. A turn that forgets to mention
+   * the callback leaves the same row behind as one that promises it.
+   */
+  it('records it even when the reply never mentions it', async () => {
+    await turn([
+      { toolCalls: [{ id: 't1', name: 'get_operator_policy', arguments: { topic: 'deposit' } }], reply: null },
+      { toolCalls: [], reply: 'What dates were you thinking?' },
+    ])
+    const [conversation] = await run(`select next_action from conversations where id = $1`, [CONV])
+    expect(conversation!['next_action']).toContain('deposit')
+  })
+
+  it('records nothing when every tool answered', async () => {
+    await turn([
+      {
+        toolCalls: [{
+          id: 't1', name: 'record_enquiry_fields',
+          arguments: { fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
+        }],
+        reply: null,
+      },
+      { toolCalls: [], reply: 'Lovely — what dates?' },
+    ])
+    const [conversation] = await run(`select next_action from conversations where id = $1`, [CONV])
+    expect(conversation!['next_action']).toBeNull()
+  })
+
+  /** A handoff already puts the whole conversation in front of a person. */
+  it('leaves the handoff note alone when the turn handed over', async () => {
+    await turn([
+      { toolCalls: [{ id: 't1', name: 'get_operator_policy', arguments: { topic: 'deposit' } }], reply: null },
+      { toolCalls: [{ id: 't2', name: 'request_handoff', arguments: { reason: 'Customer asked for a person.' } }], reply: null },
+      { toolCalls: [], reply: "I'm passing you to a colleague." },
+    ])
+    const [conversation] = await run(`select next_action from conversations where id = $1`, [CONV])
+    expect(conversation!['next_action']).toBe('Customer asked for a person.')
+  })
+})
+
 describe('a turn that fails', () => {
   it('raises a visible task when the provider is down', async () => {
     const broken = { label: 'broken', modelId: 'broken:1', complete: async () => { throw new Error('503 upstream') } }

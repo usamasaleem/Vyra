@@ -37,19 +37,43 @@ export const REFUSAL_REASONS = [
 
 export type RefusalReason = (typeof REFUSAL_REASONS)[number]
 
+/**
+ * Work this call leaves for a person, in a few words.
+ *
+ * Set by any tool that could not finish because a human has to do something:
+ * confirm availability, publish an approved answer, price a quote. The turn
+ * collects these and records them on the conversation, so the promise the
+ * agent makes to the customer — "I'll confirm that" — corresponds to something
+ * a salesperson can actually see.
+ *
+ * It exists because guidance text was not enough. The tools told the model
+ * what to say and it said it; nothing told anyone to act, and a customer was
+ * promised a callback that no part of the system knew about. Read from the
+ * tool result rather than from the reply, so it holds whatever the model
+ * writes or forgets to write.
+ */
+export type OutstandingWork = string
+
 export type ToolResult<T> =
-  | { status: 'ok'; data: T }
+  | { status: 'ok'; data: T; needsAPerson?: OutstandingWork }
   | {
       status: 'refused'
       reason: RefusalReason
       /** Plain sentence the model can reason about. Never shown to a customer verbatim. */
       detail: string
+      needsAPerson?: OutstandingWork
     }
 
-export function ok<T>(data: T): ToolResult<T> {
-  return { status: 'ok', data }
+export function ok<T>(data: T, needsAPerson?: OutstandingWork): ToolResult<T> {
+  return needsAPerson === undefined ? { status: 'ok', data } : { status: 'ok', data, needsAPerson }
 }
 
-export function refuse<T>(reason: RefusalReason, detail: string): ToolResult<T> {
-  return { status: 'refused', reason, detail }
+export function refuse<T>(
+  reason: RefusalReason,
+  detail: string,
+  needsAPerson?: OutstandingWork,
+): ToolResult<T> {
+  return needsAPerson === undefined
+    ? { status: 'refused', reason, detail }
+    : { status: 'refused', reason, detail, needsAPerson }
 }

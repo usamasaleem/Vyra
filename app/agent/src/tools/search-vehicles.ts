@@ -107,6 +107,7 @@ export async function searchVehicles(
     return refuse(
       'no_trusted_source',
       'This operator has not confirmed any vehicles yet, so nothing can be said about the fleet. Tell the customer you are checking with the team.',
+      'confirm the fleet — no vehicles are recorded',
     )
   }
 
@@ -126,5 +127,10 @@ export async function searchVehicles(
     guidance: found.matches.length === 0
       ? 'No car in the fleet matches that description. Say so plainly and offer to check what else might suit — do not invent a car.'
       : 'These cars are in the fleet. You may describe them. You may NOT say any of them is available, free, or bookable on these dates: nobody has checked. Tell the customer you are confirming availability with the team.',
-  })
+  },
+  // Only when a car was actually matched: asking whether they stock Bugattis
+  // leaves nobody anything to check.
+  found.matches.length === 0
+    ? undefined
+    : `check availability of ${found.matches.map((v) => `${v.make} ${v.model}`).join(', ')} for ${args.startDate}${args.endDate === null ? '' : ` to ${args.endDate}`}`)
 }
