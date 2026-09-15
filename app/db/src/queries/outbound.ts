@@ -32,8 +32,17 @@ intent as (
 job as (
   insert into outbox (operator_id, event_type, aggregate_id, payload)
   select i.operator_id, 'dispatch_outbound', i.id,
-         jsonb_build_object('message_id', i.id, 'conversation_id', i.conversation_id)
+         jsonb_build_object(
+           'message_id', i.id,
+           'conversation_id', i.conversation_id,
+           -- Further messages to send in the same job, in this order, rather
+           -- than one queue hop each. See the alsoSend option.
+           'also_message_ids', coalesce($10::jsonb, '[]'::jsonb)
+         )
   from intent i
+  -- Skipped when this message is itself a follow-up: it is dispatched by the
+  -- job belonging to the message it follows.
+  where $9::boolean is not true
   returning id
 )
 select (select id from intent) as message_id, (select id from job) as outbox_id
@@ -62,6 +71,22 @@ export async function queueOutboundText(
     replyList?: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
     /** A photograph to send with this reply, as a public HTTPS link. */
     replyImageUrl?: string | null
+    /**
+     * Queue the message without a dispatch job of its own.
+     *
+     * For a follow-up that another message's job will send. Only ever set
+     * alongside an `alsoSend` naming it, or the message is queued and never
+     * sent — so the two are always written together, in one transaction.
+     */
+    withoutOwnJob?: boolean
+    /**
+     * Messages this job should send after this one, in this order.
+     *
+     * Several photographs arriving over five seconds feel slower than the same
+     * photographs arriving over five hundred milliseconds, and the gap is queue
+     * latency rather than anything Meta does. One job sends them back to back.
+     */
+    alsoSend?: string[]
   },
 ): Promise<QueuedOutbound> {
   const rows = await run(QUEUE_OUTBOUND_SQL, [
@@ -77,6 +102,10 @@ export async function queueOutboundText(
       ? null
       : JSON.stringify(input.replyList),
     input.replyImageUrl ?? null,
+    input.withoutOwnJob ?? false,
+    input.alsoSend === undefined || input.alsoSend.length === 0
+      ? null
+      : JSON.stringify(input.alsoSend),
   ])
   const row = rows[0]
   const messageId = (row?.['message_id'] as string) ?? null

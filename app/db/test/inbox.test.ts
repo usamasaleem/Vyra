@@ -155,3 +155,58 @@ describe('the AI kill switch', () => {
     expect(result.messageId).toBeTruthy()
   })
 })
+
+
+/**
+ * Several photographs arriving over five seconds feel slower than the same
+ * photographs over half of one, and the gap was queue latency rather than
+ * anything Meta does. One job sends them back to back.
+ */
+describe('sending several messages from one job', () => {
+  it('gives a follow-up no job of its own', async () => {
+    const extra = await queueOutboundText(run, {
+      conversationId: CONVERSATION, operatorId: OPERATOR,
+      body: ' ', replyImageUrl: 'https://example.com/side.jpg',
+      idempotencyKey: 'turn-x:photo:1', withoutOwnJob: true,
+    })
+
+    expect(extra.messageId).not.toBeNull()
+    // The message exists; nothing is scheduled to send it on its own.
+    expect(extra.outboxId).toBeNull()
+  })
+
+  it('names the follow-ups on the job that will send them', async () => {
+    const extra = await queueOutboundText(run, {
+      conversationId: CONVERSATION, operatorId: OPERATOR,
+      body: ' ', replyImageUrl: 'https://example.com/side.jpg',
+      idempotencyKey: 'turn-y:photo:1', withoutOwnJob: true,
+    })
+    const reply = await queueOutboundText(run, {
+      conversationId: CONVERSATION, operatorId: OPERATOR,
+      body: 'Here she is.', idempotencyKey: 'turn-y',
+      replyImageUrl: 'https://example.com/front.jpg',
+      alsoSend: [extra.messageId!],
+    })
+
+    const [job] = await run(
+      `select payload from outbox where aggregate_id = $1`, [reply.messageId],
+    )
+    const payload = job!['payload'] as { message_id: string; also_message_ids: string[] }
+    expect(payload.message_id).toBe(reply.messageId)
+    // Order is the payload's, not the queue's: the reply carries the caption
+    // and must arrive first.
+    expect(payload.also_message_ids).toEqual([extra.messageId])
+  })
+
+  it('carries an empty list when a reply travels alone', async () => {
+    const reply = await queueOutboundText(run, {
+      conversationId: CONVERSATION, operatorId: OPERATOR,
+      body: 'Just words.', idempotencyKey: 'turn-z',
+    })
+
+    const [job] = await run(
+      `select payload from outbox where aggregate_id = $1`, [reply.messageId],
+    )
+    expect((job!['payload'] as { also_message_ids: string[] }).also_message_ids).toEqual([])
+  })
+})

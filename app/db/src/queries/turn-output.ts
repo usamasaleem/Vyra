@@ -162,9 +162,33 @@ export async function acceptTurnOutput(
       } as const
     }
 
+    /**
+     * The follow-up photographs are queued first, without jobs of their own,
+     * so the reply's job can name them and send everything back to back.
+     *
+     * Ordering is the payload's, not the queue's: the reply goes first because
+     * it carries the caption. Written in one transaction with the reply, so a
+     * message queued without a job can never be left with nothing to send it.
+     */
+    const followUps: string[] = []
+    for (const [index, url] of (input.extraImageUrls ?? []).entries()) {
+      const extra = await queueOutboundText(tx, {
+        conversationId: input.conversationId,
+        operatorId: input.operatorId,
+        // A single space: an image message's caption is optional, but the
+        // column is what we store and the client omits a blank one.
+        body: ' ',
+        replyImageUrl: url,
+        idempotencyKey: `${input.idempotencyKey}:photo:${index + 1}`,
+        withoutOwnJob: true,
+      })
+      if (extra.messageId !== null) followUps.push(extra.messageId)
+    }
+
     // Through the one and only path that creates an outbound message. Section
     // 18.12: never build a second way to send.
     const queued = await queueOutboundText(tx, {
+      alsoSend: followUps,
       replyButtons: input.replyButtons ?? null,
       replyList: input.replyList ?? null,
       replyImageUrl: input.replyImageUrl ?? null,
@@ -173,32 +197,6 @@ export async function acceptTurnOutput(
       body: input.body,
       idempotencyKey: input.idempotencyKey,
     })
-
-    /**
-     * Further photographs, as their own messages.
-     *
-     * WhatsApp has no album for an ordinary message: several pictures are
-     * several messages, which the client then stacks into one. They arrive in
-     * order because jobs for a conversation are serialised on its queue.
-     *
-     * Only the first carries the caption. A paragraph repeated under every
-     * photograph is how a showroom turns into a spammer, and a salesperson
-     * sending three pictures says something once and then sends two more.
-     *
-     * The same idempotency rule as the reply, suffixed per photograph, so a
-     * retried job cannot produce a second album.
-     */
-    for (const [index, url] of (input.extraImageUrls ?? []).entries()) {
-      await queueOutboundText(tx, {
-        conversationId: input.conversationId,
-        operatorId: input.operatorId,
-        // A single space: the column is not null, and an image message's
-        // caption is optional but its body is what we store.
-        body: ' ',
-        replyImageUrl: url,
-        idempotencyKey: `${input.idempotencyKey}:photo:${index + 1}`,
-      })
-    }
 
     return { accepted: true, destination: 'send', queued, revision: revisionNow } as const
   })

@@ -237,6 +237,37 @@ const runner: Runner = await runWorker({
       const result = await dispatchMessage(query, whatsapp, messageId)
       log({ event: 'dispatch.result', jobId: helpers.job.id, messageId, ...result })
 
+      /**
+       * Anything queued to ride along with this message, in order.
+       *
+       * Photographs after a reply. One job rather than one each, because the
+       * gap between them was queue latency rather than anything Meta does, and
+       * four images arriving over five seconds feel slower than the same four
+       * over half of one.
+       *
+       * Sent after the first succeeds, and sequentially: an album whose second
+       * picture arrives before its first is worse than a slow album. A failure
+       * here is logged and does not fail the job — the reply has already gone,
+       * and retrying the job would try to send it twice.
+       */
+      const alongside = (payload as { also_message_ids?: unknown } | null)?.also_message_ids
+      if (result.outcome === 'sent' && Array.isArray(alongside)) {
+        for (const id of alongside) {
+          if (typeof id !== 'string') continue
+          try {
+            const extra = await dispatchMessage(query, whatsapp, id)
+            log({ event: 'dispatch.result', jobId: helpers.job.id, messageId: id, ...extra })
+          } catch (error) {
+            log({
+              event: 'dispatch.alongside_failed',
+              jobId: helpers.job.id,
+              messageId: id,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+      }
+
       // Only a retryable failure should make graphile-worker try again. An
       // unknown outcome must not be retried at all: Meta may have delivered it.
       if (result.outcome === 'failed' && result.retryable) {
