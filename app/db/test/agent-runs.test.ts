@@ -60,6 +60,25 @@ describe('recordAgentRun', () => {
   })
 
   /**
+   * Two different numbers, and conflating them is how a ninety-six second wait
+   * went unnoticed: the turn took four seconds and said so, while the wait
+   * before it started was recorded nowhere at all.
+   */
+  it('records the wait before the turn separately from the turn itself', async () => {
+    await recordAgentRun(run, { ...base, resultState: 'queued', durationMs: 4000, queueWaitMs: 96_000 })
+
+    const [row] = await run(`select duration_ms, queue_wait_ms from agent_runs`, [])
+    expect(row).toMatchObject({ duration_ms: 4000, queue_wait_ms: 96_000 })
+  })
+
+  it('leaves the wait null when the caller cannot say, rather than claiming none', async () => {
+    await recordAgentRun(run, { ...base, resultState: 'queued', durationMs: 4000 })
+
+    const [row] = await run(`select queue_wait_ms from agent_runs`, [])
+    expect(row!['queue_wait_ms']).toBeNull()
+  })
+
+  /**
    * The distinction the whole table depends on. A provider that reported
    * nothing leaves NULL, because a zero here would be read as a free turn and
    * would silently drag a cost report down.

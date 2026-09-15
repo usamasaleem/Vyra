@@ -162,6 +162,13 @@ export type TurnDependencies = {
   model: ModelAdapter | null
   destination: TurnDestination
   now?: () => Date
+  /**
+   * How long the job that triggered this turn waited after becoming due.
+   *
+   * Passed in rather than measured here because only the caller holds the job,
+   * and the wait is over by the time this function is entered.
+   */
+  queueWaitMs?: number | null
 }
 
 export async function runConversationTurn(
@@ -235,6 +242,7 @@ export async function runConversationTurn(
       rounds: end?.rounds ?? 0,
       toolNames: (end?.toolCalls ?? []).map((c) => `${c.requestedName}:${c.status}`),
       durationMs: Date.now() - startedAt,
+      queueWaitMs: deps.queueWaitMs ?? null,
       usage: end?.usage,
     })
     if (!outcome.recorded) {

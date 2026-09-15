@@ -53,6 +53,36 @@ const whatsapp = createWhatsAppClient({
 
 const DISPATCHER_AVAILABLE = true
 
+/**
+ * How long a job waited after it became due to run.
+ *
+ * `run_at` is when graphile-worker was allowed to start it, which for an
+ * inbound turn is already two seconds after the message arrived — the
+ * collection window. So this measures queue delay only, and a healthy number
+ * here is a few hundred milliseconds.
+ *
+ * It exists because a customer's wait was being measured in two halves with a
+ * hole between them. The outbox records publishing (sub-second), agent_runs
+ * records the turn (a few seconds), and on 15 September a message sat between
+ * the two for ninety-six seconds with nothing recording it. The only evidence
+ * was the customer sending the message again.
+ *
+ * Clamped at zero: a job started slightly before its due time by clock skew
+ * between the worker and the database has not waited a negative amount.
+ */
+function waitedMs(job: { run_at: Date }): number {
+  return Math.max(0, Date.now() - job.run_at.getTime())
+}
+
+/**
+ * A wait past this is worth seeing on its own, without anyone going looking.
+ *
+ * Not an error and not retried — the work did happen. It is logged loudly
+ * because the alternative is what happened before: a delay nobody could see
+ * afterwards, because completed jobs are deleted and leave no trace.
+ */
+const SLOW_QUEUE_MS = 15_000
+
 const IDLE_INTERVAL_MS = 250
 
 /**
@@ -234,8 +264,13 @@ const runner: Runner = await runWorker({
         return
       }
 
+      const waited = waitedMs(helpers.job)
+      if (waited > SLOW_QUEUE_MS) {
+        log({ event: 'queue.slow', task: 'dispatch_outbound', jobId: helpers.job.id, waitedMs: waited })
+      }
+
       const result = await dispatchMessage(query, whatsapp, messageId)
-      log({ event: 'dispatch.result', jobId: helpers.job.id, messageId, ...result })
+      log({ event: 'dispatch.result', jobId: helpers.job.id, messageId, queueWaitMs: waited, ...result })
 
       /**
        * Anything queued to ride along with this message, in order.
@@ -276,6 +311,16 @@ const runner: Runner = await runWorker({
     },
 
     process_inbound_message: async (payload, helpers) => {
+      const queueWaitMs = waitedMs(helpers.job)
+      if (queueWaitMs > SLOW_QUEUE_MS) {
+        log({
+          event: 'queue.slow',
+          task: 'process_inbound_message',
+          jobId: helpers.job.id,
+          waitedMs: queueWaitMs,
+        })
+      }
+
       const result = await processInboundMessage(
         query,
         (payload ?? {}) as Record<string, unknown>,
@@ -296,6 +341,7 @@ const runner: Runner = await runWorker({
       log({
         event: 'task.processed',
         jobId: helpers.job.id,
+        queueWaitMs,
         operator: context.operator.name,
         conversation: context.conversation.id,
         revision: context.conversation.revision,
@@ -365,6 +411,7 @@ const runner: Runner = await runWorker({
           transact,
           model,
           destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft',
+          queueWaitMs,
         },
         context,
       )

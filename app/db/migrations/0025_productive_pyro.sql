@@ -1,0 +1,1 @@
+ALTER TABLE "agent_runs" ADD COLUMN "queue_wait_ms" integer;

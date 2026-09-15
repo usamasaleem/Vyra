@@ -1,6 +1,12 @@
 import Link from 'next/link'
 import { SiteNav } from '../site-nav'
-import { formatDuration, getAgentCosts, getMetrics } from '@vyra/db'
+import {
+  findQueueBacklog,
+  formatDuration,
+  getAgentCosts,
+  getMetrics,
+  getQueueWaits,
+} from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { queryRunner } from '@/lib/db'
 
@@ -51,9 +57,11 @@ export default async function ReportsPage({
   const days = RANGES[range ?? 'week'] ?? 7
   const since = new Date(Date.now() - days * 86_400_000)
   const run = queryRunner()
-  const [m, ai] = await Promise.all([
+  const [m, ai, waits, backlog] = await Promise.all([
     getMetrics(run, actor.operatorId, since),
     getAgentCosts(run, actor.operatorId, since),
+    getQueueWaits(run, actor.operatorId, since),
+    findQueueBacklog(run),
   ])
 
   // Thousands separators, and an em dash when nobody reported a number. "0"
@@ -179,6 +187,75 @@ export default async function ReportsPage({
           Tokens, not money. Converting them needs the rates you actually pay, which nothing here
           should invent.
         </p>
+      </section>
+
+      {/*
+        The wait before anything starts, which is not the same as how long a
+        reply takes and until now was not recorded anywhere. A median of a few
+        hundred milliseconds beside a maximum of a minute and a half is the
+        shape worth catching: it is one customer, not a slow system, and an
+        average would bury it.
+      */}
+      <section>
+        <h2 style={{ fontSize: '1.05rem' }}>Before the reply started</h2>
+
+        {backlog.length > 0 && (
+          <div className="card" style={{ borderColor: '#b45309', marginBottom: '0.8rem' }}>
+            <strong>{backlog.length} job{backlog.length === 1 ? ' is' : 's are'} late right now.</strong>
+            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem' }}>
+              {backlog.map((j) => (
+                <li key={j.jobId} className="muted" style={{ fontSize: '0.85rem' }}>
+                  {j.task} · {j.state === 'locked' ? 'held by a worker' : 'waiting for a worker'} for{' '}
+                  {formatDuration(j.lateSeconds)}
+                  {j.attempts > 0 && ` · ${j.attempts} attempt${j.attempts === 1 ? '' : 's'}`}
+                  {j.lastError !== null && ` · ${j.lastError.slice(0, 120)}`}
+                </li>
+              ))}
+            </ul>
+            <p className="muted" style={{ fontSize: '0.8rem', margin: '0.6rem 0 0' }}>
+              Jobs are serialised per conversation, so one held job is one customer hearing nothing.
+              A lock older than ten minutes is released automatically; anything younger is either
+              genuinely running or a worker that has just died.
+            </p>
+          </div>
+        )}
+
+        {waits.measured === 0 ? (
+          <p className="card muted">
+            No turn in this window recorded a wait. Runs from before this was measured have none,
+            which is not the same as having waited nothing.
+          </p>
+        ) : (
+          <>
+            <div className="measures">
+              <Measure
+                label="TYPICAL WAIT"
+                value={formatDuration(waits.medianMs === null ? null : waits.medianMs / 1000)}
+                note={`median of ${waits.measured} turn${waits.measured === 1 ? '' : 's'}`}
+              />
+              <Measure
+                label="SLOWEST 1 IN 20"
+                value={formatDuration(waits.p95Ms === null ? null : waits.p95Ms / 1000)}
+                note="95th percentile"
+              />
+              <Measure
+                label="LONGEST"
+                value={formatDuration(waits.maxMs === null ? null : waits.maxMs / 1000)}
+                note="one customer waited this long"
+              />
+              <Measure
+                label="OVER 15 SECONDS"
+                value={String(waits.slow)}
+                note={waits.slow === 0 ? 'none' : 'each one is a person waiting'}
+              />
+            </div>
+            <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.8rem' }}>
+              Measured from when the job became due, which is already two seconds after the message
+              arrived — that pause is deliberate, so several messages typed in a row are answered
+              once rather than three times. Anything much past it is queue delay.
+            </p>
+          </>
+        )}
       </section>
 
       <section>

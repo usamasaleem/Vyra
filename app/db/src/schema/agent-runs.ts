@@ -85,6 +85,23 @@ export const agentRuns = pgTable(
     /** Wall clock for the whole turn, including tools and the network. */
     durationMs: integer(),
 
+    /**
+     * How long the job sat in the queue before this turn began: the gap between
+     * when it became due to run and when it actually did.
+     *
+     * durationMs measures our work. This measures the customer's wait before
+     * any of it started, and until now that half was unrecorded. A message on
+     * 15 September waited ninety-six seconds between being published to the
+     * queue and being answered; the outbox showed a 0.8s publish, the agent run
+     * showed a 4s turn, and the ninety-six seconds in between existed nowhere.
+     * The customer sent the message again, which is the only reason anyone
+     * knows it happened.
+     *
+     * Nullable: a turn not triggered by a job cannot name a wait, and zero
+     * would read as an instant start.
+     */
+    queueWaitMs: integer(),
+
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

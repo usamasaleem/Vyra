@@ -21,6 +21,11 @@ export type AgentRunInput = {
   rounds?: number
   toolNames?: string[]
   durationMs?: number | null
+  /**
+   * The wait before the turn started: job due time to job start. Undefined when
+   * the caller cannot say, which is not the same as no wait.
+   */
+  queueWaitMs?: number | null
   usage?: {
     inputTokens?: number
     outputTokens?: number
@@ -58,8 +63,8 @@ export async function recordAgentRun(
                                prompt_version, model_id, result_state, detail, rounds,
                                tool_call_count, tool_names, input_tokens, output_tokens,
                                reasoning_tokens, cached_input_tokens, model_calls,
-                               reported_calls, duration_ms)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+                               reported_calls, duration_ms, queue_wait_ms)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
       [
         input.operatorId, input.conversationId, input.messageId, input.inputRevision,
         input.promptVersion, input.modelId, input.resultState, input.detail ?? null,
@@ -71,6 +76,7 @@ export async function recordAgentRun(
         tokens[0], tokens[1], tokens[2], tokens[3],
         u.modelCalls ?? 0, reported,
         input.durationMs ?? null,
+        input.queueWaitMs ?? null,
       ],
     )
     return { recorded: true }
