@@ -121,6 +121,29 @@ describe('eligibility, checked at the moment of sending', () => {
   })
 })
 
+describe('what may be sent at all', () => {
+  /**
+   * The bug this caused. A customer asked to see the car, three messages were
+   * queued, and two were cancelled as empty — the second and third photographs
+   * carry no caption on purpose, so the picture is the entire content. One
+   * image arrived and nothing said why.
+   */
+  it('sends a photograph that carries no caption', () => {
+    const verdict = checkEligibility(
+      baseIntent({ body: ' ', replyImageUrl: 'https://example.com/side.jpg' }),
+      NOW,
+    )
+    expect(verdict).toMatchObject({ allowed: true })
+  })
+
+  it('still refuses a message with nothing in it at all', () => {
+    expect(checkEligibility(baseIntent({ body: '  ' }), NOW))
+      .toMatchObject({ allowed: false, reason: 'no_body' })
+    expect(checkEligibility(baseIntent({ body: null }), NOW))
+      .toMatchObject({ allowed: false, reason: 'no_body' })
+  })
+})
+
 describe('dispatching against the database', () => {
   const sending = (id = 'wamid.SENT'): WhatsAppClient => ({
     sendText: vi.fn(async () => ({ providerMessageId: id })),

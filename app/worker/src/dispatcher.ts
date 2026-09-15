@@ -57,7 +57,20 @@ export type EligibilityVerdict =
  * human takeover changes who replies, not what the channel permits.
  */
 export function checkEligibility(intent: SendIntent, now: Date): EligibilityVerdict {
-  if (intent.body === null || intent.body.trim() === '') {
+  /**
+   * Empty is only empty when there is nothing else to send.
+   *
+   * This guard was written when a message was text and nothing else, and it
+   * silently cancelled every follow-up photograph: the second and third
+   * pictures of a car carry no caption on purpose, so their body is blank and
+   * the image is the entire content. The customer asked to see the car, three
+   * messages were queued, two were cancelled as empty, and one picture arrived.
+   *
+   * Nothing said so. The cancellation was recorded on the row and nowhere a
+   * person looks.
+   */
+  const carriesSomething = intent.replyImageUrl !== null
+  if (!carriesSomething && (intent.body === null || intent.body.trim() === '')) {
     return { allowed: false, reason: 'no_body' }
   }
   if (intent.optedOutAt !== null) {
