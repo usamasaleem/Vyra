@@ -446,10 +446,17 @@ const PHOTOS_PER_CAR = 6
    *
    * Above the threshold the individual pictures win outright: WhatsApp groups
    * them itself and each stays full size and tappable. Below it they arrive as
-   * separate bubbles, and two or three loose images look less considered than
+   * separate bubbles, and a handful of loose images looks less considered than
    * one composed picture — which is what the collage is for.
+   *
+   * Five, measured rather than reasoned. Two images did not group. Three did
+   * not. Seven did. Count is the mechanism and not timing: the two were sent
+   * back to back and would have grouped if arrival spacing were what mattered.
+   *
+   * The picker grouping two photographs is a different code path — it marks
+   * them as one send, which the API gives no way to do.
    */
-  const ALBUM_FORMS_AT = 4
+  const ALBUM_FORMS_AT = 5
   const candidates = images.photos.length >= ALBUM_FORMS_AT || images.collage === null
     ? images.photos
     : [images.collage]
