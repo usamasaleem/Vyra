@@ -75,20 +75,22 @@ export async function findVehiclePhotos(
 }
 
 /**
- * True when this conversation has already been sent this photograph.
+ * Every photograph this conversation has already been sent.
  *
- * A customer who asks three questions about the same car should see it once.
- * Repeating the picture on every reply is what a bot does.
+ * A customer who asks three questions about the same car should see it once,
+ * and repeating a picture on every reply is what a bot does. But when they ask
+ * to see more, the interesting question is not "have we sent any" — it is
+ * which ones they have not seen yet, so a second request shows something new
+ * rather than the same shot again.
  */
-export async function photoAlreadySent(
+export async function photosSentIn(
   run: QueryRunner,
-  input: { conversationId: string; operatorId: string; url: string },
-): Promise<boolean> {
+  input: { conversationId: string; operatorId: string },
+): Promise<Set<string>> {
   const rows = await run(
-    `select 1 from messages
-     where conversation_id = $1 and operator_id = $2 and reply_image_url = $3
-     limit 1`,
-    [input.conversationId, input.operatorId, input.url],
+    `select distinct reply_image_url from messages
+     where conversation_id = $1 and operator_id = $2 and reply_image_url is not null`,
+    [input.conversationId, input.operatorId],
   )
-  return rows.length > 0
+  return new Set(rows.map((r) => r['reply_image_url'] as string))
 }

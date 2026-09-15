@@ -1,5 +1,5 @@
 import {
-  buttonsFor, detectDiscountRequest, invitesACarChoice, vehicleList,
+  asksToSeePhotos, buttonsFor, detectDiscountRequest, invitesACarChoice, vehicleList,
 } from '@vyra/contracts'
 
 /** The shape search_vehicles returns, as much of it as a list row needs. */
@@ -28,7 +28,7 @@ import {
   recordAgentRun,
   findVehiclePhotos,
   loadMessagesBeforeWindow,
-  photoAlreadySent,
+  photosSentIn,
   saveConversationSummary,
   requestHandoff,
   recordOutstandingWork,
@@ -410,13 +410,32 @@ export async function runConversationTurn(
    */
   const PHOTOS_PER_CAR = 3
 
-  // A customer who asks three questions about the same car should see it once.
-  const alreadySeen = photos.length === 0 || await photoAlreadySent(deps.run, {
-    conversationId: context.conversation.id,
-    operatorId: context.operator.id,
-    url: photos[0]!,
-  })
-  const showing = alreadySeen ? [] : photos.slice(0, PHOTOS_PER_CAR)
+  const seen = photos.length === 0
+    ? new Set<string>()
+    : await photosSentIn(deps.run, {
+        conversationId: context.conversation.id,
+        operatorId: context.operator.id,
+      })
+
+  /**
+   * Once by default, and again the moment they ask.
+   *
+   * Live, a customer said "Can you send me more images related to this car" and
+   * then "show me side profile", and got prose both times: the pictures had
+   * been sent once already and the rule suppressed them. A rule meant to stop
+   * repetition was refusing a direct request.
+   *
+   * Asked, they get what they have not seen — so a second request shows
+   * something new rather than the same shot. When they have seen everything,
+   * they get it again, because they asked and having nothing new is not a
+   * reason to answer a question about pictures with a paragraph.
+   */
+  const asked = asksToSeePhotos(context.message.body)
+  const unseen = photos.filter((url) => !seen.has(url))
+
+  const showing = asked
+    ? (unseen.length > 0 ? unseen : photos).slice(0, PHOTOS_PER_CAR)
+    : (seen.size === 0 ? photos.slice(0, PHOTOS_PER_CAR) : [])
 
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,

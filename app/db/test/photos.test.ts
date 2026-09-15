@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { findVehiclePhoto, findVehiclePhotos, photoAlreadySent } from '../src/queries/photos.ts'
+import { findVehiclePhoto, findVehiclePhotos, photosSentIn } from '../src/queries/photos.ts'
 import type { QueryRunner } from '../src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
@@ -117,7 +117,7 @@ describe('findVehiclePhoto', () => {
   })
 })
 
-describe('photoAlreadySent', () => {
+describe('photosSentIn', () => {
   const sendWithPhoto = (url: string) =>
     run(
       `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id, reply_image_url)
@@ -125,17 +125,21 @@ describe('photoAlreadySent', () => {
       [OP, CONV, `wamid.${Math.random()}`, url],
     )
 
-  /** A customer asking three questions about one car should see it once. */
-  it('knows when this conversation has already seen the picture', async () => {
-    await sendWithPhoto(PHOTO)
-    expect(await photoAlreadySent(run, { conversationId: CONV, operatorId: OP, url: PHOTO }))
-      .toBe(true)
+  it('is empty before anything has been sent', async () => {
+    expect(await photosSentIn(run, { conversationId: CONV, operatorId: OP })).toEqual(new Set())
   })
 
-  it('does not confuse it with a different car', async () => {
-    await sendWithPhoto('https://example.com/cullinan-1.jpg')
-    expect(await photoAlreadySent(run, { conversationId: CONV, operatorId: OP, url: PHOTO }))
-      .toBe(false)
+  /**
+   * Which ones, not whether any. A customer asking to see more should get
+   * something new rather than the same shot again.
+   */
+  it('names exactly what this conversation has seen', async () => {
+    await sendWithPhoto(PHOTO)
+    await sendWithPhoto('https://example.com/side.jpg')
+    await sendWithPhoto(PHOTO)
+
+    expect(await photosSentIn(run, { conversationId: CONV, operatorId: OP }))
+      .toEqual(new Set([PHOTO, 'https://example.com/side.jpg']))
   })
 })
 
