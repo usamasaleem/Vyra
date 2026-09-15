@@ -400,15 +400,23 @@ export async function runConversationTurn(
       })
     : { photos: [], collage: null }
 
-  /**
-   * How many pictures a salesperson sends when they introduce a car.
-   *
-   * Three. Enough to show the outside and the cabin, few enough that a phone
-   * is not filled with one car. WhatsApp has no album, so each is its own
-   * message and the client stacks them — which also means a fourth is a fourth
-   * notification.
-   */
-  const PHOTOS_PER_CAR = 3
+/**
+ * How many photographs go out at once.
+ *
+ * Tested on a real phone rather than reasoned from the documentation, which
+ * says only what the API sends and nothing about what the client draws. Three
+ * images arrived as three separate bubbles. Seven were collapsed into a single
+ * album — the grid WhatsApp shows when a person multi-selects.
+ *
+ * So there is a threshold, somewhere between four and seven, and beyond it the
+ * client does the grouping itself. That is better than any composite we could
+ * make: every photograph stays full size, tappable and swipeable, which a
+ * flattened grid cannot be.
+ *
+ * Six, when a car has that many. Enough to cross the threshold, few enough that
+ * one car does not fill a phone.
+ */
+const PHOTOS_PER_CAR = 6
 
   const seen = images.photos.length === 0
     ? new Set<string>()
@@ -433,17 +441,18 @@ export async function runConversationTurn(
   const asked = asksToSeePhotos(context.message.body)
 
   /**
-   * One image rather than three messages, whenever there is one.
+   * Enough photographs for the client to make an album, or one image holding
+   * them when there are not.
    *
-   * WhatsApp has no album for an API message, so three photographs are three
-   * notifications and a customer sees them stack. The collage is the same
-   * pictures in one block: one message, one notification, and it renders
-   * identically on every client.
-   *
-   * The individual photographs stay the fallback, for a car with only one and
-   * for anything published before the collage existed.
+   * Above the threshold the individual pictures win outright: WhatsApp groups
+   * them itself and each stays full size and tappable. Below it they arrive as
+   * separate bubbles, and two or three loose images look less considered than
+   * one composed picture — which is what the collage is for.
    */
-  const candidates = images.collage === null ? images.photos : [images.collage]
+  const ALBUM_FORMS_AT = 4
+  const candidates = images.photos.length >= ALBUM_FORMS_AT || images.collage === null
+    ? images.photos
+    : [images.collage]
   const unseen = candidates.filter((url) => !seen.has(url))
 
   const showing = asked
