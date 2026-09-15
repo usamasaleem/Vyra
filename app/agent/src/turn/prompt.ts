@@ -79,6 +79,17 @@ import { renderExamples } from './examples.js'
  * days cost could not be told, because the agent did not know when the three
  * days were.
  *
+ * Tried and removed: an instruction to batch tool calls into one step, on the
+ * theory that a three-round turn could be two and each round costs about three
+ * seconds. Measured against the live model on the same fleet, with and without
+ * the line: six rounds either way, and the version without it marginally
+ * faster. The rounds are not habit, they are dependency — prepare_quote needs
+ * what search_vehicles returned, and no instruction collapses that.
+ *
+ * It is recorded here rather than left in, because a prompt full of
+ * instructions that change nothing is how you stop being able to tell which
+ * one the model actually followed.
+ *
  * Every rule below is from the specification. None were invented for this file.
  */
 export const PROMPT_VERSION = 'sales-v9'

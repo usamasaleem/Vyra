@@ -147,6 +147,7 @@ describe('what may be sent at all', () => {
 describe('dispatching against the database', () => {
   const sending = (id = 'wamid.SENT'): WhatsAppClient => ({
     sendText: vi.fn(async () => ({ providerMessageId: id })),
+    showTyping: vi.fn(async () => {}),
   })
 
   const queueOutbound = async (fields: Record<string, unknown> = {}) => {
@@ -264,6 +265,7 @@ describe('dispatching against the database', () => {
   it('records an ambiguous send as unknown', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
+      showTyping: vi.fn(async () => {}),
       sendText: vi.fn(async () => { throw new MetaUnknownOutcomeError('socket hang up') }),
     }
     const result = await dispatchMessage(run, client, id)
@@ -277,6 +279,7 @@ describe('dispatching against the database', () => {
   it('does not re-send a message whose outcome is unknown', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
+      showTyping: vi.fn(async () => {}),
       sendText: vi.fn(async () => { throw new MetaUnknownOutcomeError('timeout') }),
     }
     await dispatchMessage(run, client, id)
@@ -287,6 +290,7 @@ describe('dispatching against the database', () => {
   it('returns a retryable failure to pending', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
+      showTyping: vi.fn(async () => {}),
       sendText: vi.fn(async () => { throw new MetaApiError('upstream', 503, null, true) }),
     }
     const result = await dispatchMessage(run, client, id)
@@ -300,6 +304,7 @@ describe('dispatching against the database', () => {
   it('marks a permanent rejection failed and leaves it alone', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
+      showTyping: vi.fn(async () => {}),
       sendText: vi.fn(async () => { throw new MetaApiError('Invalid parameter', 400, 100, false) }),
     }
     const result = await dispatchMessage(run, client, id)

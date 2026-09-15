@@ -333,6 +333,24 @@ const runner: Runner = await runWorker({
       if (handling.action !== 'draft') return
 
       /**
+       * Two blue ticks and a typing indicator, before the model is asked
+       * anything.
+       *
+       * A reply takes about nine seconds, most of it the model thinking. This
+       * makes none of that shorter; it turns nine seconds of silence into nine
+       * seconds of somebody visibly writing, which is most of what a customer
+       * means by fast.
+       *
+       * Here rather than on receipt, because Meta asks that an indicator only
+       * be shown when a reply is actually coming — and this is the line after
+       * which one is. Not awaited for correctness: it is a courtesy, and a
+       * courtesy must not delay the thing it is apologising for.
+       */
+      if (context.message.providerId !== null) {
+        void whatsapp.showTyping({ messageId: context.message.providerId })
+      }
+
+      /**
        * The AI turn. Everything above decided whether it should happen; this is
        * the first line in the system that actually asks a model anything.
        *

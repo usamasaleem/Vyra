@@ -69,6 +69,22 @@ export type SendTextResult = {
 
 export type WhatsAppClient = {
   sendText(input: SendTextInput): Promise<SendTextResult>
+  /**
+   * Mark the customer's message read and show that a reply is being written.
+   *
+   * One call does both, which is how Meta models it — and the pairing is right
+   * anyway: two blue ticks and a typing indicator are the same promise, that
+   * somebody is there and an answer is coming.
+   *
+   * A reply takes about nine seconds, most of it the model. This does not make
+   * it shorter; it makes those nine seconds look like a person typing instead
+   * of silence, which is most of what "fast" means in a chat.
+   *
+   * Meta dismisses the indicator when the reply arrives or after 25 seconds,
+   * and asks that it only be shown when a reply is actually coming. It is sent
+   * here only once the system has decided to answer.
+   */
+  showTyping(input: { messageId: string }): Promise<void>
 }
 
 /** 4xx that will never succeed on retry; anything else is worth retrying. */
@@ -87,6 +103,34 @@ export function createWhatsAppClient(config: {
   const timeoutMs = config.timeoutMs ?? 15_000
 
   return {
+    async showTyping({ messageId }) {
+      const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
+      try {
+        await doFetch(url, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${config.accessToken}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            status: 'read',
+            message_id: messageId,
+            typing_indicator: { type: 'text' },
+          }),
+          signal: AbortSignal.timeout(timeoutMs),
+        })
+      } catch {
+        /**
+         * Swallowed on purpose, and the only place in this client that does.
+         *
+         * A courtesy that fails is a courtesy that fails. Letting it throw
+         * would retry the job and send the customer a second reply, which
+         * trades a missing typing indicator for a duplicate message.
+         */
+      }
+    },
+
     async sendText({ to, body, buttons, list, imageUrl }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
 
