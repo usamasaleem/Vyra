@@ -48,6 +48,33 @@ export async function findVehiclePhoto(
 }
 
 /**
+ * Every photograph of the car, in the order the operator listed them.
+ *
+ * The same lookup as findVehiclePhoto and the same refusals: one car only, https
+ * only, and nothing at all when two cars share a make and model. Capped by the
+ * caller rather than here, because how many pictures is a judgement about
+ * conversation rather than about data.
+ */
+export async function findVehiclePhotos(
+  run: QueryRunner,
+  input: { operatorId: string; make: string; model: string },
+): Promise<string[]> {
+  const rows = await run(
+    `select photo_urls from vehicles
+     where operator_id = $1 and active and provenance = 'operator_confirmed'
+       and make = $2 and model = $3
+       and jsonb_typeof(photo_urls) = 'array'
+     limit 2`,
+    [input.operatorId, input.make, input.model],
+  )
+  if (rows.length !== 1) return []
+
+  const urls = rows[0]!['photo_urls']
+  if (!Array.isArray(urls)) return []
+  return urls.filter((u): u is string => typeof u === 'string' && u.startsWith('https://'))
+}
+
+/**
  * True when this conversation has already been sent this photograph.
  *
  * A customer who asks three questions about the same car should see it once.

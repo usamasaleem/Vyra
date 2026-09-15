@@ -26,7 +26,7 @@ import {
   acceptTurnOutput,
   ensureEnquiry,
   recordAgentRun,
-  findVehiclePhoto,
+  findVehiclePhotos,
   loadMessagesBeforeWindow,
   photoAlreadySent,
   saveConversationSummary,
@@ -378,8 +378,8 @@ export async function runConversationTurn(
    * Looked up from the database rather than taken from the tool result, so a
    * URL is never in front of the model and can never be pasted into a reply.
    */
-  const photo = fleet.length === 1 && offered.list === null && offered.buttons === null
-    ? await findVehiclePhoto(deps.run, {
+  const photos = fleet.length === 1 && offered.list === null && offered.buttons === null
+    ? await findVehiclePhotos(deps.run, {
         operatorId: context.operator.id,
         make: fleet[0]!.make,
         model: fleet[0]!.model,
@@ -396,18 +396,27 @@ export async function runConversationTurn(
           conversationId: context.conversation.id,
           error: error instanceof Error ? error.message : String(error),
         }))
-        return null
+        return []
       })
-    : null
+    : []
+
+  /**
+   * How many pictures a salesperson sends when they introduce a car.
+   *
+   * Three. Enough to show the outside and the cabin, few enough that a phone
+   * is not filled with one car. WhatsApp has no album, so each is its own
+   * message and the client stacks them — which also means a fourth is a fourth
+   * notification.
+   */
+  const PHOTOS_PER_CAR = 3
 
   // A customer who asks three questions about the same car should see it once.
-  const showPhoto = photo === null || await photoAlreadySent(deps.run, {
+  const alreadySeen = photos.length === 0 || await photoAlreadySent(deps.run, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
-    url: photo,
+    url: photos[0]!,
   })
-    ? null
-    : photo
+  const showing = alreadySeen ? [] : photos.slice(0, PHOTOS_PER_CAR)
 
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
@@ -421,7 +430,9 @@ export async function runConversationTurn(
      */
     replyButtons: offered.list === null ? offered.buttons : null,
     replyList: offered.list,
-    replyImageUrl: showPhoto,
+    replyImageUrl: showing[0] ?? null,
+    // The rest follow as their own messages, with no caption.
+    extraImageUrls: showing.slice(1),
     // Per inbound message, so a retried job cannot produce a second reply to
     // the same customer message.
     idempotencyKey: `turn:${context.message.id}`,

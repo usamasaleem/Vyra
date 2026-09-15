@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { findVehiclePhoto, photoAlreadySent } from '../src/queries/photos.ts'
+import { findVehiclePhoto, findVehiclePhotos, photoAlreadySent } from '../src/queries/photos.ts'
 import type { QueryRunner } from '../src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
@@ -136,5 +136,46 @@ describe('photoAlreadySent', () => {
     await sendWithPhoto('https://example.com/cullinan-1.jpg')
     expect(await photoAlreadySent(run, { conversationId: CONV, operatorId: OP, url: PHOTO }))
       .toBe(false)
+  })
+})
+
+describe('findVehiclePhotos', () => {
+  it('returns them in the order the operator listed them', async () => {
+    await addCar({ photos: [
+      'https://example.com/front.jpg',
+      'https://example.com/side.jpg',
+      'https://example.com/interior.jpg',
+    ] })
+
+    expect(await findVehiclePhotos(run, { operatorId: OP, make: 'Lamborghini', model: 'Huracán' }))
+      .toEqual([
+        'https://example.com/front.jpg',
+        'https://example.com/side.jpg',
+        'https://example.com/interior.jpg',
+      ])
+  })
+
+  it('drops anything WhatsApp could not fetch', async () => {
+    await addCar({ photos: ['https://example.com/ok.jpg', 'http://example.com/no.jpg', 42] })
+    expect(await findVehiclePhotos(run, { operatorId: OP, make: 'Lamborghini', model: 'Huracán' }))
+      .toEqual(['https://example.com/ok.jpg'])
+  })
+
+  /** The same refusals as the single lookup: the wrong car is worse than none. */
+  it('refuses when two cars share a make and model', async () => {
+    await addCar()
+    await addCar({ photos: ['https://example.com/other.jpg'] })
+    expect(await findVehiclePhotos(run, { operatorId: OP, make: 'Lamborghini', model: 'Huracán' }))
+      .toEqual([])
+  })
+
+  it('survives a photo field that is not an array', async () => {
+    await addCar({ photos: null })
+    await run(`update vehicles set photo_urls = to_jsonb($1::text) where operator_id = $2`,
+      ['["https://example.com/a.jpg"]', OP])
+
+    await expect(
+      findVehiclePhotos(run, { operatorId: OP, make: 'Lamborghini', model: 'Huracán' }),
+    ).resolves.toEqual([])
   })
 })

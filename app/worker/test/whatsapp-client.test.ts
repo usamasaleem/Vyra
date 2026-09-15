@@ -173,6 +173,19 @@ describe('sending a photograph', () => {
     expect(calls[0]).toMatchObject({ type: 'interactive', interactive: { type: 'button' } })
   })
 
+  /**
+   * The second and third photographs of a car say nothing, and " " under a
+   * picture is a visible artefact of how the message was stored.
+   */
+  it('omits a blank caption rather than sending one', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: ' ', imageUrl: IMAGE })
+
+    const sent = calls[0] as { image: Record<string, unknown> }
+    expect(sent.image).toMatchObject({ link: IMAGE })
+    expect(sent.image).not.toHaveProperty('caption')
+  })
+
   it('falls back to text when the caption is too long', async () => {
     const { client, calls } = clientCapturing()
     await client.sendText({ to: '971500000001', body: 'x'.repeat(1100), imageUrl: IMAGE })

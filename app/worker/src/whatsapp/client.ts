@@ -123,7 +123,13 @@ export function createWhatsAppClient(config: {
             recipient_type: 'individual',
             to,
             type: 'image',
-            image: { link: imageUrl, caption: body },
+            image: {
+              link: imageUrl,
+              // A blank caption is omitted rather than sent: the second and
+              // third photographs of a car say nothing, and " " under a picture
+              // is a visible artefact of how it was stored.
+              ...(body.trim() === '' ? {} : { caption: body }),
+            },
           }
         : useList
         ? {

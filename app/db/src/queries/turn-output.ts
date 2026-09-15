@@ -94,6 +94,12 @@ export async function acceptTurnOutput(
     replyList?: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
     /** A photograph to send with this reply, as a public HTTPS link. */
     replyImageUrl?: string | null
+    /**
+     * More photographs of the same car, each sent as its own message after the
+     * reply. WhatsApp has no album; the client makes one from messages that
+     * arrive together.
+     */
+    extraImageUrls?: string[]
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -167,6 +173,32 @@ export async function acceptTurnOutput(
       body: input.body,
       idempotencyKey: input.idempotencyKey,
     })
+
+    /**
+     * Further photographs, as their own messages.
+     *
+     * WhatsApp has no album for an ordinary message: several pictures are
+     * several messages, which the client then stacks into one. They arrive in
+     * order because jobs for a conversation are serialised on its queue.
+     *
+     * Only the first carries the caption. A paragraph repeated under every
+     * photograph is how a showroom turns into a spammer, and a salesperson
+     * sending three pictures says something once and then sends two more.
+     *
+     * The same idempotency rule as the reply, suffixed per photograph, so a
+     * retried job cannot produce a second album.
+     */
+    for (const [index, url] of (input.extraImageUrls ?? []).entries()) {
+      await queueOutboundText(tx, {
+        conversationId: input.conversationId,
+        operatorId: input.operatorId,
+        // A single space: the column is not null, and an image message's
+        // caption is optional but its body is what we store.
+        body: ' ',
+        replyImageUrl: url,
+        idempotencyKey: `${input.idempotencyKey}:photo:${index + 1}`,
+      })
+    }
 
     return { accepted: true, destination: 'send', queued, revision: revisionNow } as const
   })
