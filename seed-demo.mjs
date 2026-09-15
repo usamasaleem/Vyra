@@ -32,11 +32,35 @@ const sql = postgres(env.DATABASE_URL, { prepare: false })
 const [operator] = await sql`select id, name from operators order by created_at limit 1`
 if (operator === undefined) { console.error('No operator.'); process.exit(1) }
 
+/**
+ * Photographs, for testing the image path end to end.
+ *
+ * Only the Huracán. The repository's other car image is an SF90, which is not
+ * the 488 Spider in this fleet, and a photograph of a different model is the
+ * same class of untruth as an invented price — the exact thing findVehiclePhoto
+ * refuses to do when it cannot tell two cars apart. Leaving the other two
+ * without a picture also proves the fallback: a car with no photograph still
+ * answers, in words.
+ *
+ * Served from the operator's own dashboard site, which is where real photos
+ * come from in production too: the operator's website, not a store we build.
+ */
+const PHOTOS = {
+  'Huracán': ['https://veyraagent.netlify.app/assets/lamborghini-huracan.png'],
+}
+
 if (process.argv.includes('--clear')) {
   // Only ever the demo rows. A real answer confirmed by a person is untouched.
   const gone = await sql`delete from knowledge_entries
     where operator_id = ${operator.id} and confirmed_by = ${CONFIRMER} returning topic`
   console.log(`Removed ${gone.length} demo answer(s).`)
+
+  for (const url of Object.values(PHOTOS).flat()) {
+    const cleared = await sql`update vehicles set photo_urls = null
+      where operator_id = ${operator.id} and photo_urls::text like ${'%' + url + '%'}
+      returning model`
+    if (cleared.length > 0) console.log(`Removed demo photo from ${cleared.length} vehicle(s).`)
+  }
   await sql.end()
   process.exit(0)
 }
@@ -64,6 +88,23 @@ for (const [topic, answer] of Object.entries(ANSWERS)) {
     values (${operator.id}, ${topic}, ${'Demo content for demonstration only'}, ${answer},
             ${next}, 'operator_confirmed', ${CONFIRMER}, now(), now(), now())`
   console.log(`published ${topic} (v${next})`)
+}
+
+for (const [model, urls] of Object.entries(PHOTOS)) {
+  const [existing] = await sql`select photo_urls from vehicles
+    where operator_id = ${operator.id} and model = ${model} and active limit 1`
+  if (existing === undefined) { console.log(`SKIP photo for ${model} — no such car`); continue }
+  if (existing.photo_urls !== null && !JSON.stringify(existing.photo_urls).includes('veyraagent')) {
+    console.log(`SKIP photo for ${model} — already has real photographs`)
+    continue
+  }
+  // sql.json, not JSON.stringify: postgres.js encodes a JS value for a jsonb
+  // column itself, so handing it an already-stringified array stores a jsonb
+  // *string* containing JSON rather than a jsonb array. That is what broke
+  // production — jsonb_array_length raised on it and every turn died.
+  const done = await sql`update vehicles set photo_urls = ${sql.json(urls)}, updated_at = now()
+    where operator_id = ${operator.id} and model = ${model} and active returning model`
+  console.log(`photo set on ${done.length} × ${model}`)
 }
 
 console.log(`\nOperator: ${operator.name}`)

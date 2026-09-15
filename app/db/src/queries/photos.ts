@@ -20,7 +20,16 @@ export async function findVehiclePhoto(
     `select photo_urls from vehicles
      where operator_id = $1 and active and provenance = 'operator_confirmed'
        and make = $2 and model = $3
-       and photo_urls is not null and jsonb_array_length(photo_urls) > 0
+       -- Type only. jsonb_array_length raises on anything that is not an
+       -- array, and writing the type check beside it in an AND does not save
+       -- you: SQL does not promise to evaluate conditions in the order they
+       -- are written, and the planner is free to measure before it checks.
+       -- The first version of this guard was exactly that, and the test that
+       -- reproduced the production failure went on failing.
+       --
+       -- So the shape is filtered here and the contents are judged in
+       -- JavaScript, where the order is mine.
+       and jsonb_typeof(photo_urls) = 'array'
      limit 2`,
     [input.operatorId, input.make, input.model],
   )
@@ -30,8 +39,11 @@ export async function findVehiclePhoto(
   // photograph is worse than showing none.
   if (rows.length !== 1) return null
 
-  const urls = rows[0]!['photo_urls'] as string[] | null
-  const first = urls?.[0]
+  // Defensive on the way out too. Whatever is in the column, the only thing
+  // that leaves this function is an https URL or nothing.
+  const urls = rows[0]!['photo_urls']
+  if (!Array.isArray(urls) || urls.length === 0) return null
+  const first = urls[0]
   return typeof first === 'string' && first.startsWith('https://') ? first : null
 }
 

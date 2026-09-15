@@ -82,6 +82,33 @@ describe('findVehiclePhoto', () => {
       .toBeNull()
   })
 
+  /**
+   * The bug this caused in production. A seeding script stored the array as a
+   * jsonb *string* containing JSON; jsonb_array_length raised on it; the raise
+   * happened inside the turn; the job retried and raised again. A customer got
+   * no reply at all because a decoration could not be looked up.
+   */
+  it('survives a photo field that is not an array', async () => {
+    await addCar({ photos: null })
+    await run(
+      `update vehicles set photo_urls = to_jsonb($1::text) where operator_id = $2`,
+      ['["https://example.com/a.jpg"]', OP],
+    )
+
+    await expect(
+      findVehiclePhoto(run, { operatorId: OP, make: 'Lamborghini', model: 'Huracán' }),
+    ).resolves.toBeNull()
+  })
+
+  it('survives an array holding something that is not a link', async () => {
+    await addCar({ photos: null })
+    await run(`update vehicles set photo_urls = '[123]'::jsonb where operator_id = $1`, [OP])
+
+    await expect(
+      findVehiclePhoto(run, { operatorId: OP, make: 'Lamborghini', model: 'Huracán' }),
+    ).resolves.toBeNull()
+  })
+
   it('belongs to one operator', async () => {
     await addCar()
     expect(await findVehiclePhoto(run, {

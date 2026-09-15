@@ -383,6 +383,20 @@ export async function runConversationTurn(
         operatorId: context.operator.id,
         make: fleet[0]!.make,
         model: fleet[0]!.model,
+      }).catch((error: unknown) => {
+        /**
+         * A picture is a nicety; the reply is the product.
+         *
+         * Malformed data in this column stopped a customer being answered at
+         * all — the turn threw, the job retried, and the retry threw again.
+         * Nothing about decorating a message should be able to do that.
+         */
+        console.error(JSON.stringify({
+          event: 'photo.lookup_failed',
+          conversationId: context.conversation.id,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+        return null
       })
     : null
 
