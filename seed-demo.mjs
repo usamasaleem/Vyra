@@ -56,7 +56,7 @@ if (process.argv.includes('--clear')) {
   console.log(`Removed ${gone.length} demo answer(s).`)
 
   for (const url of Object.values(PHOTOS).flat()) {
-    const cleared = await sql`update vehicles set photo_urls = null
+    const cleared = await sql`update vehicles set photo_urls = null, collage_url = null
       where operator_id = ${operator.id} and photo_urls::text like ${'%' + url + '%'}
       returning model`
     if (cleared.length > 0) console.log(`Removed demo photo from ${cleared.length} vehicle(s).`)
@@ -102,9 +102,19 @@ for (const [model, urls] of Object.entries(PHOTOS)) {
   // column itself, so handing it an already-stringified array stores a jsonb
   // *string* containing JSON rather than a jsonb array. That is what broke
   // production — jsonb_array_length raised on it and every turn died.
-  const done = await sql`update vehicles set photo_urls = ${sql.json(urls)}, updated_at = now()
+  // The collage URL is normally written by the inbox, which knows its own host.
+  // Seeding bypasses that, so it is named here — two photographs or more,
+  // because a collage of one is a photograph.
+  const [row] = await sql`select id from vehicles
+    where operator_id = ${operator.id} and model = ${model} and active limit 1`
+  const collage = urls.length >= 2
+    ? `https://vyra-inbox.netlify.app/api/fleet-photo/${row.id}`
+    : null
+
+  const done = await sql`update vehicles
+    set photo_urls = ${sql.json(urls)}, collage_url = ${collage}, updated_at = now()
     where operator_id = ${operator.id} and model = ${model} and active returning model`
-  console.log(`photo set on ${done.length} × ${model}`)
+  console.log(`photo set on ${done.length} × ${model}${collage === null ? '' : ' (with collage)'}`)
 }
 
 console.log(`\nOperator: ${operator.name}`)

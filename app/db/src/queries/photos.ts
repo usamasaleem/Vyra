@@ -55,6 +55,47 @@ export async function findVehiclePhoto(
  * caller rather than here, because how many pictures is a judgement about
  * conversation rather than about data.
  */
+export type VehicleImages = {
+  /** Every photograph, in the order the operator listed them. */
+  photos: string[]
+  /**
+   * One image holding several of them, when there are several.
+   *
+   * Preferred over sending them one after another: WhatsApp has no album for an
+   * API message, so three photographs are three notifications, and a customer
+   * who asked to see a car gets a single block instead.
+   */
+  collage: string | null
+}
+
+export async function findVehicleImages(
+  run: QueryRunner,
+  input: { operatorId: string; make: string; model: string },
+): Promise<VehicleImages> {
+  const rows = await run(
+    `select photo_urls, collage_url from vehicles
+     where operator_id = $1 and active and provenance = 'operator_confirmed'
+       and make = $2 and model = $3
+       and jsonb_typeof(photo_urls) = 'array'
+     limit 2`,
+    [input.operatorId, input.make, input.model],
+  )
+  if (rows.length !== 1) return { photos: [], collage: null }
+
+  const stored = rows[0]!['photo_urls']
+  const photos = Array.isArray(stored)
+    ? stored.filter((u): u is string => typeof u === 'string' && u.startsWith('https://'))
+    : []
+
+  const collage = rows[0]!['collage_url']
+  return {
+    photos,
+    collage: typeof collage === 'string' && collage.startsWith('https://') && photos.length >= 2
+      ? collage
+      : null,
+  }
+}
+
 export async function findVehiclePhotos(
   run: QueryRunner,
   input: { operatorId: string; make: string; model: string },

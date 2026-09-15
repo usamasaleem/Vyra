@@ -26,7 +26,7 @@ import {
   acceptTurnOutput,
   ensureEnquiry,
   recordAgentRun,
-  findVehiclePhotos,
+  findVehicleImages,
   loadMessagesBeforeWindow,
   photosSentIn,
   saveConversationSummary,
@@ -378,8 +378,8 @@ export async function runConversationTurn(
    * Looked up from the database rather than taken from the tool result, so a
    * URL is never in front of the model and can never be pasted into a reply.
    */
-  const photos = fleet.length === 1 && offered.list === null && offered.buttons === null
-    ? await findVehiclePhotos(deps.run, {
+  const images = fleet.length === 1 && offered.list === null && offered.buttons === null
+    ? await findVehicleImages(deps.run, {
         operatorId: context.operator.id,
         make: fleet[0]!.make,
         model: fleet[0]!.model,
@@ -396,9 +396,9 @@ export async function runConversationTurn(
           conversationId: context.conversation.id,
           error: error instanceof Error ? error.message : String(error),
         }))
-        return []
+        return { photos: [], collage: null }
       })
-    : []
+    : { photos: [], collage: null }
 
   /**
    * How many pictures a salesperson sends when they introduce a car.
@@ -410,7 +410,7 @@ export async function runConversationTurn(
    */
   const PHOTOS_PER_CAR = 3
 
-  const seen = photos.length === 0
+  const seen = images.photos.length === 0
     ? new Set<string>()
     : await photosSentIn(deps.run, {
         conversationId: context.conversation.id,
@@ -431,11 +431,24 @@ export async function runConversationTurn(
    * reason to answer a question about pictures with a paragraph.
    */
   const asked = asksToSeePhotos(context.message.body)
-  const unseen = photos.filter((url) => !seen.has(url))
+
+  /**
+   * One image rather than three messages, whenever there is one.
+   *
+   * WhatsApp has no album for an API message, so three photographs are three
+   * notifications and a customer sees them stack. The collage is the same
+   * pictures in one block: one message, one notification, and it renders
+   * identically on every client.
+   *
+   * The individual photographs stay the fallback, for a car with only one and
+   * for anything published before the collage existed.
+   */
+  const candidates = images.collage === null ? images.photos : [images.collage]
+  const unseen = candidates.filter((url) => !seen.has(url))
 
   const showing = asked
-    ? (unseen.length > 0 ? unseen : photos).slice(0, PHOTOS_PER_CAR)
-    : (seen.size === 0 ? photos.slice(0, PHOTOS_PER_CAR) : [])
+    ? (unseen.length > 0 ? unseen : candidates).slice(0, PHOTOS_PER_CAR)
+    : (seen.size === 0 ? candidates.slice(0, PHOTOS_PER_CAR) : [])
 
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,

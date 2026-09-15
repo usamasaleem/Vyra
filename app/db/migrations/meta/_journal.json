@@ -162,6 +162,13 @@
       "when": 1789427961136,
       "tag": "0022_vengeful_iron_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789433534089,
+      "tag": "0023_far_princess_powerful",
+      "breakpoints": true
     }
   ]
 }

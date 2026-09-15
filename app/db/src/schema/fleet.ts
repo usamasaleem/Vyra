@@ -71,6 +71,22 @@ export const vehicles = pgTable(
    */
   photoUrls: jsonb().$type<string[] | null>(),
 
+  /**
+   * One image containing several of the photographs, laid out in a grid.
+   *
+   * WhatsApp has no album for an API message — the grid a customer sees when a
+   * person sends four pictures from the picker is the client grouping them, and
+   * no integration can produce it. A composite is the honest way to get one
+   * block: it is a single message, it renders identically everywhere, and it is
+   * what most dealers send anyway.
+   *
+   * Stored rather than derived so the worker needs no knowledge of where the
+   * inbox is published. The trade is that it goes stale if the domain changes,
+   * which is a rename away from being fixed and a configuration step away from
+   * being a permanent tax.
+   */
+  collageUrl: text(),
+
     odometerKm: integer(),
 
     /**

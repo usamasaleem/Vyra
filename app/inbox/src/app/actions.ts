@@ -1,5 +1,6 @@
 'use server'
 
+import { headers } from 'next/headers'
 import {
   acceptHandoff,
   addNote,
@@ -412,10 +413,28 @@ export async function savePhotos(_previous: PhotoState, formData: FormData): Pro
     }
   }
 
+  /**
+   * The collage URL is written here rather than worked out at send time, so
+   * the worker needs no idea where the inbox is published. Built from the host
+   * serving this request, which is the only place that knows it without
+   * configuration.
+   *
+   * Two photographs or more, because a collage of one is a photograph.
+   */
+  const host = (await headers()).get('host')
+  const collageUrl = urls.length >= 2 && host !== null
+    ? `https://${host}/api/fleet-photo/${vehicleId}`
+    : null
+
   await queryRunner()(
-    `update vehicles set photo_urls = $3::jsonb, updated_at = now()
+    `update vehicles set photo_urls = $3::jsonb, collage_url = $4, updated_at = now()
      where id = $1 and operator_id = $2`,
-    [vehicleId, actor.operatorId, urls.length === 0 ? null : JSON.stringify(urls)],
+    [
+      vehicleId,
+      actor.operatorId,
+      urls.length === 0 ? null : JSON.stringify(urls),
+      collageUrl,
+    ],
   )
 
   revalidatePath('/rates')

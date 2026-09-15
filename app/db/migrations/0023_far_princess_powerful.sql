@@ -1,0 +1,1 @@
+ALTER TABLE "vehicles" ADD COLUMN "collage_url" text;
