@@ -65,6 +65,20 @@ export const operators = pgTable('operators', {
    */
   answerValidMinutes: integer().notNull().default(240),
 
+    /**
+     * Whether an empty calendar means the car is free.
+     *
+     * False by default, and that default is the point. A calendar with no block
+     * against a car says nobody recorded a booking — which is a statement about
+     * the calendar, not about the car. Treating it as "available" is how an
+     * agent promises a vehicle that is already out.
+     *
+     * An operator turns this on when they actually keep the calendar current,
+     * and it is their claim rather than our inference. Until then a block still
+     * answers "no" with authority, and everything else still goes to a person.
+     */
+    availabilityCalendarComplete: boolean().notNull().default(false),
+
   /**
    * How long to wait before chasing a customer who has gone quiet.
    *

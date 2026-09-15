@@ -1,5 +1,7 @@
 import { civilDateIn, formatCivil } from '@vyra/contracts'
-import { findCurrentAnswer, formatMoneyMinor, raiseOperationsRequest, searchFleet } from '@vyra/db'
+import {
+  checkCalendar, findCurrentAnswer, formatMoneyMinor, raiseOperationsRequest, searchFleet,
+} from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { searchVehiclesSchema } from './schemas.js'
@@ -221,6 +223,51 @@ export async function searchVehicles(
    * what a salesperson would do rather than reading out three calendars.
    */
   const only = found.matches.length === 1 ? found.matches[0]! : null
+
+  /**
+   * The calendar first, because it is the operator's own record rather than a
+   * question somebody answered once and which has since expired.
+   *
+   * A block is a no, with authority and with no expiry. Silence is only a yes
+   * for an operator who has said they keep the calendar current; for everyone
+   * else it stays unknown and the question still goes to a person.
+   */
+  const calendar = only === null
+    ? null
+    : await checkCalendar(ctx.run, {
+        operatorId: ctx.operatorId,
+        vehicleId: only.id,
+        startDate: args.startDate,
+        endDate: args.endDate,
+      })
+
+  if (calendar?.state === 'booked') {
+    return ok({
+      fleet,
+      availability: {
+        status: 'unavailable',
+        note: `Booked until ${calendar.until}.`,
+        source: 'the operator\'s own calendar',
+        checkedMinutesAgo: 0,
+      },
+      guidance:
+        'This car is recorded as taken for those dates in the operator\'s own calendar. Say so plainly, say when it frees up if that helps, and offer alternatives or other dates. Do not describe it as possibly available or suggest checking again — this is the operator\'s record, not a guess.',
+    })
+  }
+
+  if (calendar?.state === 'free') {
+    return ok({
+      fleet,
+      availability: {
+        status: 'available',
+        note: null,
+        source: 'the operator\'s own calendar',
+        checkedMinutesAgo: 0,
+      },
+      guidance:
+        'Nothing is booked against this car for those dates and this operator keeps their calendar current, so you may say it is free. Do not say it is held or reserved for them — that is a separate step a person takes.',
+    })
+  }
 
   const current = only === null
     ? null

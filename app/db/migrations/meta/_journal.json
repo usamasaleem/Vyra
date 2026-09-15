@@ -169,6 +169,13 @@
       "when": 1789433534089,
       "tag": "0023_far_princess_powerful",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789436721929,
+      "tag": "0024_petite_starfox",
+      "breakpoints": true
     }
   ]
 }

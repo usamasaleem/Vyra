@@ -125,3 +125,62 @@ export const vehicles = pgTable(
     index('vehicles_operator_make_model_idx').on(table.operatorId, table.make, table.model),
   ],
 )
+
+
+/**
+ * When a car is not available, and why.
+ *
+ * The reactive half of availability already existed: the agent raises a
+ * question, a person answers it, and the answer is good for a window. That
+ * works and it costs a person every time.
+ *
+ * This is the other half. A salesperson records a booking once and every
+ * enquiry touching those dates is answered without anyone being asked again.
+ *
+ * Blocks rather than a free/busy calendar, because what an operator actually
+ * knows is when a car is taken. Absence of a block is absence of information,
+ * not a statement that the car is free — see availabilityCalendarComplete on
+ * the operator, which is where that claim is made deliberately by a person
+ * rather than inferred from an empty table.
+ */
+export const vehicleAvailability = pgTable(
+  'vehicle_availability',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    vehicleId: uuid().notNull(),
+
+    /** Inclusive. A car booked the 20th to the 23rd is out on both. */
+    startDate: text().notNull(),
+    endDate: text().notNull(),
+
+    /** 'booked', 'maintenance', 'held', 'other'. */
+    reason: text().notNull().default('booked'),
+    note: text(),
+
+    /** Who recorded it. A block that stops a sale needs a name against it. */
+    recordedBy: text().notNull(),
+    recordedByMembershipId: uuid(),
+
+    /**
+     * Cleared rather than deleted, so a cancelled booking that cost an enquiry
+     * can still be explained afterwards.
+     */
+    releasedAt: timestamp({ withTimezone: true }),
+    releasedBy: text(),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.vehicleId, table.operatorId],
+      foreignColumns: [vehicles.id, vehicles.operatorId],
+      name: 'vehicle_availability_vehicle_operator_fkey',
+    }),
+    index('vehicle_availability_lookup_idx')
+      .on(table.operatorId, table.vehicleId, table.startDate, table.endDate),
+  ],
+)

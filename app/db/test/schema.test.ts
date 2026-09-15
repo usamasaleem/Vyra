@@ -77,6 +77,8 @@ describe('schema v1 applies', () => {
       'operators',
       'outbox',
       'quotes',
+      // When each car is taken, recorded once rather than asked every time.
+      'vehicle_availability',
       'vehicle_rates',
       'vehicles',
       'whatsapp_accounts',
