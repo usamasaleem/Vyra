@@ -21,6 +21,10 @@ with taken as (
   set handler_mode = 'human',
       owner_membership_id = $3,
       revision = revision + 1,
+      -- Cleared, because the next silence is a new one. Without this a
+      -- conversation the agent once took back could never take itself back
+      -- again, however long the next person left the customer waiting.
+      ai_resumed_at = null,
       updated_at = now()
   where id = $1 and operator_id = $2
   returning id, operator_id, revision
@@ -89,7 +93,14 @@ export async function takeOverConversation(
 }
 
 /**
- * Returning control to the AI is an explicit staff action, never automatic.
+ * A salesperson handing the conversation back deliberately.
+ *
+ * No longer the only way it happens: `resumeAbandonedConversations` does it on
+ * a timer when a customer has been left waiting, which the pilot forced —
+ * thirty-five hours of silence after a handoff nobody accepted. The two are
+ * kept apart on purpose. This one is somebody's decision and clears the owner,
+ * because they have finished with it. That one is the absence of a decision
+ * and keeps the owner, because they have not.
  *
  * The revision increments here too: work drafted against the human-owned state
  * should not be accepted after control changes hands back.

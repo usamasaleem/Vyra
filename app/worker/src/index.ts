@@ -4,7 +4,9 @@ import { run as runWorker, type Runner } from 'graphile-worker'
 import { dispatchMessage } from './dispatcher.js'
 import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
-import { escalateAbandonedConversations, escalateOverdueHandoffs } from '@vyra/db'
+import {
+  escalateAbandonedConversations, escalateOverdueHandoffs, resumeAbandonedConversations,
+} from '@vyra/db'
 import { sendDueFollowUps } from './follow-ups.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
@@ -163,10 +165,33 @@ async function relayLoop(): Promise<void> {
           })
         }
 
+        /**
+         * Conversations a person took and then left.
+         *
+         * The escalation above tells somebody. This answers the customer,
+         * which is the part that was missing: a conversation in human hands
+         * schedules no follow-up, so until now nothing in this system was ever
+         * going to speak to them again. Thirty-five hours was the worst
+         * observed, and it ended because the operator noticed, not because
+         * anything here did.
+         *
+         * Logged loudly. The agent replying where a person was expected to is
+         * a fact the operator should be able to find without looking for it.
+         */
+        for (const back of await resumeAbandonedConversations(query)) {
+          log({
+            event: 'conversation.resumed_after_silence',
+            conversation: back.conversationId,
+            waitingMinutes: back.waitingMinutes,
+            ownerMembershipId: back.ownerMembershipId,
+            answering: back.waitingMessageId,
+          })
+        }
+
         // Chases that have come due. On the same sweep as the escalation check
         // because both are the system keeping a promise on a timer.
         const chased = await sendDueFollowUps(query, log)
-        if (chased.sent > 0 || chased.raisedForAPerson > 0) {
+        if (chased.sent > 0 || chased.raisedForAPerson > 0 || chased.rescheduled > 0) {
           log({ event: 'followups.swept', ...chased })
         }
 

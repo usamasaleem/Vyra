@@ -78,6 +78,18 @@ export const conversations = pgTable(
     // --- the four independent state fields ---
     salesStage: salesStage().notNull().default('new'),
     handlerMode: handlerMode().notNull().default('ai'),
+
+    /**
+     * When the agent last took a conversation back from a silent salesperson.
+     *
+     * The loop guard, and the whole reason handing back is safe. A handback is
+     * only allowed for a customer message newer than this, so an agent that
+     * replies and hands straight back to a person cannot take it again and
+     * again over the same unanswered question.
+     *
+     * Cleared when a person takes over, because the next silence is a new one.
+     */
+    aiResumedAt: timestamp({ withTimezone: true }),
     waitingReason: waitingReason().notNull().default('none'),
     bookingStatus: bookingStatus().notNull().default('none'),
 

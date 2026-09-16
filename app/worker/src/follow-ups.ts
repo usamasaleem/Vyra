@@ -1,6 +1,6 @@
 import {
   findDueFollowUps, markFollowUpNeedsAPerson, markFollowUpSent, queueOutboundText,
-  raiseHandoff, type QueryRunner,
+  raiseHandoff, scheduleFollowUp, type QueryRunner,
 } from '@vyra/db'
 
 /**
@@ -23,9 +23,36 @@ import {
  * lead somebody should still call.
  */
 
+/**
+ * How long to wait before the next chase, in minutes, indexed by the attempt
+ * just sent.
+ *
+ * Shaped entirely by the 24-hour window. A free-form WhatsApp message is only
+ * permitted within a day of the customer's last one, and this pilot has no
+ * approved templates, so every chase has to fit inside that day or it is not a
+ * chase at all — it is a task for a person.
+ *
+ * The first goes out four hours after the agent's reply. Six hours later, then
+ * ten: twenty hours after the customer last wrote, with the window closing at
+ * twenty-four. Three attempts is where it stops, because a fourth inside the
+ * window would have to be so close to the third that it reads as pestering,
+ * and outside it is not available at any spacing.
+ *
+ * Before this there was exactly one. Nothing incremented `attempt`, so a
+ * customer who went quiet was chased once and then never contacted again by
+ * anything — which, with follow-ups the only automatic outbound message in the
+ * system, meant the lead simply stopped existing.
+ */
+const NEXT_CHASE_AFTER_MINUTES: Record<number, number> = {
+  1: 6 * 60,
+  2: 10 * 60,
+}
+
 export type FollowUpSweep = {
   sent: number
   raisedForAPerson: number
+  /** Chases queued for later, because one sent is not the end of it. */
+  rescheduled: number
 }
 
 export async function sendDueFollowUps(
@@ -35,6 +62,7 @@ export async function sendDueFollowUps(
   const due = await findDueFollowUps(run)
   let sent = 0
   let raisedForAPerson = 0
+  let rescheduled = 0
 
   for (const item of due) {
     const blocked =
@@ -81,7 +109,50 @@ export async function sendDueFollowUps(
     })
     sent++
     log({ event: 'followup.sent', followUp: item.id, conversation: item.conversationId })
+
+    /**
+     * The next one, or a person.
+     *
+     * Scheduled rather than sent: the customer may well answer this chase, and
+     * `cancelFollowUps` on their reply is what stops the next. The eligibility
+     * conditions live inside scheduleFollowUp's own predicate, so a takeover,
+     * an opt-out or a closed lead between now and then all stop it there.
+     */
+    const gap = NEXT_CHASE_AFTER_MINUTES[item.attempt]
+    if (gap !== undefined) {
+      const next = await scheduleFollowUp(run, {
+        operatorId: item.operatorId,
+        conversationId: item.conversationId,
+        reason: item.reason,
+        afterMinutes: gap,
+        attempt: item.attempt + 1,
+      })
+      if (next.scheduled) {
+        rescheduled++
+        log({ event: 'followup.rescheduled', conversation: item.conversationId, attempt: item.attempt + 1 })
+      }
+      continue
+    }
+
+    /**
+     * Chased as many times as is decent and still nothing.
+     *
+     * A lead that stopped replying is not a lead that went away, and the last
+     * automatic message is the point where it should become somebody's to
+     * call. Silence after the final chase is how a lead disappears without
+     * anybody deciding to let it.
+     */
+    await raiseHandoff(run, {
+      operatorId: item.operatorId,
+      conversationId: item.conversationId,
+      reason: 'cannot_verify',
+      summary:
+        `Chased ${item.attempt} times with no reply, and the 24-hour window is closing. ` +
+        `Worth a call if this lead is worth keeping.`,
+    })
+    raisedForAPerson++
+    log({ event: 'followup.exhausted', conversation: item.conversationId, attempts: item.attempt })
   }
 
-  return { sent, raisedForAPerson }
+  return { sent, raisedForAPerson, rescheduled }
 }

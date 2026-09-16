@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  escalateAbandonedConversations, listCustomersWaitingOnAPerson,
+  escalateAbandonedConversations, listCustomersWaitingOnAPerson, resumeAbandonedConversations,
 } from '../src/queries/waiting.ts'
 import { acceptHandoff, raiseHandoff } from '../src/queries/handoff-queue.ts'
 import type { QueryRunner } from '../src/runner.ts'
@@ -139,5 +139,153 @@ describe('escalateAbandonedConversations', () => {
     await say('inbound', 'any update?', 45)
 
     expect(await escalateAbandonedConversations(run)).toHaveLength(0)
+  })
+})
+
+/**
+ * Taking a conversation back from a salesperson who stopped answering.
+ *
+ * From the pilot: a customer asked about a discount, was told a person would
+ * come back, and heard nothing for thirty-five hours. Nothing would ever have
+ * spoken to them again — a conversation in human hands schedules no follow-up,
+ * because follow-ups are scheduled by the turn that does not run.
+ */
+describe('resumeAbandonedConversations', () => {
+  const own = () =>
+    run(`update conversations set owner_membership_id = $1 where id = $2`, [SARA, CONV])
+
+  const modeOf = async () =>
+    (await run(`select handler_mode, owner_membership_id, ai_resumed_at from conversations where id = $1`, [CONV]))[0]!
+
+  it('leaves a conversation somebody is still answering alone', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 200)
+    await say('outbound', 'Let me ask the manager.', 190)
+
+    expect(await resumeAbandonedConversations(run)).toEqual([])
+    expect((await modeOf())['handler_mode']).toBe('human')
+  })
+
+  it('leaves a customer who has only just written alone', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 5)
+
+    expect(await resumeAbandonedConversations(run)).toEqual([])
+  })
+
+  it('takes it back once the customer has waited past the threshold', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 120)
+
+    const [back] = await resumeAbandonedConversations(run)
+    expect(back).toMatchObject({ conversationId: CONV, ownerMembershipId: SARA })
+    expect(back!.waitingMinutes).toBeGreaterThanOrEqual(119)
+    expect((await modeOf())['handler_mode']).toBe('ai')
+  })
+
+  /**
+   * The owner stays. A deliberate handback clears it because that person has
+   * finished; this is the absence of a decision, and the inbox should still
+   * say who the conversation was left with.
+   */
+  it('keeps the owner on the conversation', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 120)
+    await resumeAbandonedConversations(run)
+
+    expect((await modeOf())['owner_membership_id']).toBe(SARA)
+  })
+
+  /** Otherwise the customer is answered by nobody: the handback alone sends nothing. */
+  it('queues the unanswered message so it actually gets a reply', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 120)
+    const [back] = await resumeAbandonedConversations(run)
+
+    const [job] = await run(
+      `select event_type, aggregate_id from outbox where event_type = 'process_inbound_message'`, [],
+    )
+    expect(job!['aggregate_id']).toBe(back!.waitingMessageId)
+  })
+
+  it('leaves a note so the salesperson finds out', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 120)
+    await resumeAbandonedConversations(run)
+
+    const [note] = await run(`select body, author_membership_id from conversation_notes`, [])
+    expect(String(note!['body'])).toContain('taken the conversation back')
+    expect(note!['author_membership_id']).toBeNull()
+  })
+
+  it('records it as something the system did, not a person', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 120)
+    await resumeAbandonedConversations(run)
+
+    const [event] = await run(
+      `select actor_type, action from audit_events where action = 'conversation.resumed_after_silence'`, [],
+    )
+    expect(event!['actor_type']).toBe('system')
+  })
+
+  /**
+   * The loop guard, and the reason this is safe at all. An agent that answers
+   * and hands straight back to a person must not take the same unanswered
+   * question again on the next sweep.
+   */
+  it('does not take the same message back twice', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 120)
+    expect(await resumeAbandonedConversations(run)).toHaveLength(1)
+
+    await run(`update conversations set handler_mode = 'human' where id = $1`, [CONV])
+    expect(await resumeAbandonedConversations(run)).toEqual([])
+  })
+
+  /** A new question after a new takeover is a new silence. */
+  it('takes it back again for a later message', async () => {
+    await own()
+    await say('inbound', 'can you do 3000?', 300)
+    await resumeAbandonedConversations(run)
+
+    // The first handback happened when that message came due, not now — the
+    // guard compares two moments in time and the test has to respect the order
+    // they really occur in.
+    await run(
+      `update conversations set handler_mode = 'human',
+              ai_resumed_at = now() - make_interval(mins => 200) where id = $1`,
+      [CONV],
+    )
+    await say('inbound', 'any news?', 90)
+
+    expect(await resumeAbandonedConversations(run)).toHaveLength(1)
+  })
+
+  it('never speaks to somebody who opted out', async () => {
+    await own()
+    await run(`update contacts set opted_out_at = now() where id = $1`, [CONTACT])
+    await say('inbound', 'stop messaging me', 120)
+
+    expect(await resumeAbandonedConversations(run)).toEqual([])
+  })
+
+  /** An operator who wants a person to handle it however long that takes. */
+  it('does nothing for an operator that switched it off', async () => {
+    await own()
+    await run(`update operators set ai_resumes_after_minutes = null where id = $1`, [OP])
+    await say('inbound', 'can you do 3000?', 300)
+
+    expect(await resumeAbandonedConversations(run)).toEqual([])
+  })
+
+  it('honours the operator own threshold', async () => {
+    await own()
+    await run(`update operators set ai_resumes_after_minutes = 240 where id = $1`, [OP])
+    await say('inbound', 'can you do 3000?', 120)
+    expect(await resumeAbandonedConversations(run)).toEqual([])
+
+    await run(`update operators set ai_resumes_after_minutes = 90 where id = $1`, [OP])
+    expect(await resumeAbandonedConversations(run)).toHaveLength(1)
   })
 })

@@ -47,6 +47,27 @@ export const operators = pgTable('operators', {
   handoffSlaMinutes: integer().notNull().default(30),
 
   /**
+   * How long a customer may wait on a silent salesperson before the agent
+   * answers them again. Null switches it off entirely.
+   *
+   * The pilot found the case this exists for: a customer asked about a
+   * discount, was told a person would come back, and heard nothing for
+   * thirty-five hours. Nothing in the system would ever have spoken to them
+   * again — a conversation in human hands schedules no follow-up, because
+   * follow-ups are scheduled by the turn that never runs.
+   *
+   * It returns the ability to reply, not the authority to decide. The handoff
+   * stays open, the discount still needs a manager, and the agent is held to
+   * the same tool boundary as always. What changes is that the customer stops
+   * being ignored.
+   *
+   * An hour by default. Long enough that a salesperson writing a considered
+   * reply is not interrupted, short enough that nobody sits overnight in
+   * silence.
+   */
+  aiResumesAfterMinutes: integer().default(60),
+
+  /**
    * Who hears about a handoff nobody accepted.
    *
    * Nullable, and the escalation says so rather than failing silently: an

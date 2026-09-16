@@ -130,3 +130,121 @@ export async function escalateAbandonedConversations(
     ownerMembershipId: (r['owner_membership_id'] as string) ?? null,
   }))
 }
+
+/**
+ * Taking a conversation back from a salesperson who stopped answering.
+ *
+ * Until now the only thing that happened to an abandoned conversation was an
+ * escalation: the handoff was marked, a fallback owner was named in a log, and
+ * the customer went on waiting. The pilot showed what that costs. A customer
+ * asked about a discount at 17:35, was told a person would come back, and
+ * thirty-five hours later had heard nothing — and nothing in the system was
+ * ever going to speak to them again, because a conversation in human hands
+ * schedules no follow-up. Follow-ups are scheduled by the turn, and the turn
+ * does not run.
+ *
+ * So the agent takes it back. Deliberately narrow:
+ *
+ *   - Only when the customer is the one waiting. A conversation whose last
+ *     message is the salesperson's is not silence, it is a reply.
+ *   - Only past the operator's own threshold, and only if they set one.
+ *   - Only for a message newer than the last handback, which is what stops an
+ *     agent that replies and hands straight back from doing it in a loop.
+ *   - Never for someone who has opted out.
+ *
+ * What it returns is the ability to reply, not the authority to decide. The
+ * handoff stays open and whatever needed a person still needs one; the agent
+ * is behind the same tool boundary it always was. The owner stays on the
+ * conversation too — they are still who dropped it, and the inbox should say
+ * so.
+ */
+export type ResumedConversation = {
+  conversationId: string
+  operatorId: string
+  /** The unanswered customer message, re-queued so it actually gets a reply. */
+  waitingMessageId: string
+  waitingMinutes: number
+  ownerMembershipId: string | null
+}
+
+const RESUME_ABANDONED_SQL = `
+with waiting as (
+  select v.id as conversation_id, v.operator_id, v.owner_membership_id,
+         last.id as waiting_message_id, last.created_at as waiting_since
+  from conversations v
+  join operators o on o.id = v.operator_id
+  join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
+  join lateral (
+    select id, created_at, direction from messages m
+    where m.conversation_id = v.id and m.operator_id = v.operator_id
+    order by m.created_at desc limit 1
+  ) last on true
+  where v.handler_mode = 'human'
+    and last.direction = 'inbound'
+    and c.opted_out_at is null
+    and o.ai_resumes_after_minutes is not null
+    and last.created_at < now() - make_interval(mins => o.ai_resumes_after_minutes)
+    -- The loop guard. A handback already made for this very message must not
+    -- be made again, however many times the agent hands it back to a person.
+    and (v.ai_resumed_at is null or v.ai_resumed_at < last.created_at)
+),
+resumed as (
+  update conversations v
+  set handler_mode = 'ai', revision = revision + 1, ai_resumed_at = now(), updated_at = now()
+  from waiting w
+  where v.id = w.conversation_id and v.operator_id = w.operator_id
+  returning v.id, v.operator_id, v.revision
+),
+noted as (
+  -- So the salesperson sees what happened rather than discovering it in the
+  -- transcript. Author null: nobody wrote it, and attributing it to the person
+  -- who went quiet would be worse than attributing it to no one.
+  insert into conversation_notes (operator_id, conversation_id, author_membership_id, body)
+  select r.operator_id, r.id, null,
+         'The customer had been waiting ' ||
+         round(extract(epoch from now() - w.waiting_since) / 60)::int ||
+         ' minutes with no reply, so the agent has taken the conversation back. ' ||
+         'Anything that needed a person still does — the handoff is still open.'
+  from resumed r join waiting w on w.conversation_id = r.id
+  returning id
+),
+audited as (
+  insert into audit_events (
+    operator_id, actor_type, actor_id, action, subject_type, subject_id, subject_version, data
+  )
+  select r.operator_id, 'system', null, 'conversation.resumed_after_silence', 'conversation',
+         r.id, r.revision,
+         jsonb_build_object(
+           'waiting_minutes', round(extract(epoch from now() - w.waiting_since) / 60)::int,
+           'owner_membership_id', w.owner_membership_id
+         )
+  from resumed r join waiting w on w.conversation_id = r.id
+  returning id
+),
+job as (
+  -- The unanswered message, put back through the ordinary path. Everything
+  -- that would have happened had a person never taken it now happens: the
+  -- handling decision, the tool boundary, the revision check, the record.
+  insert into outbox (operator_id, event_type, aggregate_id, payload)
+  select r.operator_id, 'process_inbound_message', w.waiting_message_id,
+         jsonb_build_object('message_id', w.waiting_message_id, 'conversation_id', r.id)
+  from resumed r join waiting w on w.conversation_id = r.id
+  returning id
+)
+select w.conversation_id, w.operator_id, w.waiting_message_id, w.owner_membership_id,
+       round(extract(epoch from now() - w.waiting_since) / 60)::int as waiting_minutes
+from waiting w join resumed r on r.id = w.conversation_id
+`
+
+export async function resumeAbandonedConversations(
+  run: QueryRunner,
+): Promise<ResumedConversation[]> {
+  const rows = await run(RESUME_ABANDONED_SQL, [])
+  return rows.map((r) => ({
+    conversationId: r['conversation_id'] as string,
+    operatorId: r['operator_id'] as string,
+    waitingMessageId: r['waiting_message_id'] as string,
+    waitingMinutes: Number(r['waiting_minutes'] ?? 0),
+    ownerMembershipId: (r['owner_membership_id'] as string) ?? null,
+  }))
+}
