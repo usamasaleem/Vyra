@@ -1,0 +1,48 @@
+{
+  "version": "7.1",
+  "screens": [
+    {
+      "id": "CARS",
+      "title": "Our cars",
+      "terminal": true,
+      "data": {
+        "cars": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "main-content": { "type": "object" },
+              "start": { "type": "object" },
+              "on-click-action": { "type": "object" }
+            }
+          },
+          "__example__": [
+            {
+              "id": "vehicle:Lamborghini Huracán Tecnica",
+              "main-content": {
+                "title": "Lamborghini Huracán",
+                "description": "Verde",
+                "metadata": "5.2 L naturally aspirated V10 · AED 5,500/day"
+              },
+              "on-click-action": {
+                "name": "complete",
+                "payload": { "car": "Lamborghini Huracán Tecnica" }
+              }
+            }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "NavigationList",
+            "name": "cars",
+            "list-items": "${data.cars}"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -75,6 +75,23 @@ export type SendTextInput = {
    * its quote is a smaller loss than one that does not arrive.
    */
   quotesProviderId?: string | null
+  /**
+   * A published Flow to open, with the data its first screen needs.
+   *
+   * The only surface Meta offers where a tappable list carries pictures. Wins
+   * over `list` when both are present, because it is the same question asked
+   * better; loses to nothing, because a Flow the customer's client cannot
+   * render is a dead end and the caller decides that, not this.
+   */
+  flow?: {
+    id: string
+    /** The button that opens it. Twenty characters, like every other CTA. */
+    cta: string
+    screen: string
+    data: Record<string, unknown>
+    /** Echoed back with the reply, so a response can be tied to its request. */
+    token: string
+  } | null
 }
 
 export type SendTextResult = {
@@ -145,7 +162,7 @@ export function createWhatsAppClient(config: {
       }
     },
 
-    async sendText({ to, body, buttons, list, imageUrl, quotesProviderId }) {
+    async sendText({ to, body, buttons, list, imageUrl, quotesProviderId, flow }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
 
       /**
@@ -162,8 +179,16 @@ export function createWhatsAppClient(config: {
        * message allows, so no length fallback is needed here. Ten rows is the
        * hard ceiling; anything longer was never built.
        */
+      /**
+       * Ahead of the list and the buttons, and it has to be: a Flow is the
+       * same choice with photographs on it, so offering both would be asking
+       * twice.
+       */
+      const useFlow = flow !== undefined && flow !== null && flow.id !== '' && body.length <= 1024
+
       const useList =
-        list !== undefined && list !== null && list.rows.length > 0 && list.rows.length <= 10
+        !useFlow
+        && list !== undefined && list !== null && list.rows.length > 0 && list.rows.length <= 10
 
       /**
        * An image caption is capped at 1024 characters, and an image cannot
@@ -173,7 +198,7 @@ export function createWhatsAppClient(config: {
        */
       const useImage =
         imageUrl !== undefined && imageUrl !== null && imageUrl.startsWith('https://')
-        && body.length <= 1024 && !useList && !useButtons
+        && body.length <= 1024 && !useList && !useButtons && !useFlow
 
       /**
        * Only a wamid is worth sending. Meta's ids are prefixed, and a value
@@ -185,7 +210,33 @@ export function createWhatsAppClient(config: {
           ? { context: { message_id: quotesProviderId } }
           : {}
 
-      const payload = useImage
+      const payload = useFlow
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            ...quote,
+            type: 'interactive',
+            interactive: {
+              type: 'flow',
+              body: { text: body },
+              action: {
+                name: 'flow',
+                parameters: {
+                  flow_message_version: '3',
+                  flow_id: flow.id,
+                  flow_token: flow.token,
+                  flow_cta: flow.cta.slice(0, 20),
+                  // navigate rather than data_exchange: the screen is handed
+                  // everything it needs here, so there is no endpoint to call
+                  // and no keys to hold.
+                  flow_action: 'navigate',
+                  flow_action_payload: { screen: flow.screen, data: flow.data },
+                },
+              },
+            },
+          }
+        : useImage
         ? {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',

@@ -76,11 +76,42 @@ async function fetchImage(url: string): Promise<Buffer | null> {
   }
 }
 
+/**
+ * A single small photograph, for a Flow's navigation list.
+ *
+ * Flows carry their images as base64 inside the message payload, capped at
+ * 100KB each, so the thumbnail has to be made somewhere and this is where the
+ * image toolchain already lives. The worker fetches this URL and encodes it,
+ * rather than growing a native image dependency of its own.
+ *
+ * 320x214 at quality 72 lands around 15KB for a studio shot — far enough
+ * under the cap that a darker or busier photograph cannot creep over it.
+ */
+const THUMB = { width: 320, height: 214, quality: 72 } as const
+
+async function thumbnail(url: string): Promise<Response> {
+  const source = await fetchImage(url)
+  if (source === null) return new Response('Could not fetch the photograph.', { status: 502 })
+
+  const small = await sharp(source)
+    .resize(THUMB.width, THUMB.height, { fit: 'cover', position: 'centre' })
+    .jpeg({ quality: THUMB.quality })
+    .toBuffer()
+
+  return new Response(new Uint8Array(small), {
+    headers: {
+      'content-type': 'image/jpeg',
+      'cache-control': 'public, max-age=86400, immutable',
+    },
+  })
+}
+
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ vehicleId: string }> },
 ) {
   const { vehicleId } = await params
+  const wantsThumbnail = new URL(request.url).searchParams.get('thumb') === '1'
 
   /**
    * Privileged, because this endpoint is deliberately public: WhatsApp fetches
@@ -97,6 +128,13 @@ export async function GET(
   const urls = (Array.isArray(stored) ? stored : [])
     .filter((u): u is string => typeof u === 'string' && u.startsWith('https://'))
     .slice(0, 4)
+
+  // One photograph is enough for a thumbnail, where a composite needs two.
+  if (wantsThumbnail) {
+    const first = urls[0]
+    if (first === undefined) return new Response('No photographs on file.', { status: 404 })
+    return thumbnail(first)
+  }
 
   if (urls.length < 2) {
     return new Response('Not enough photographs to compose.', { status: 404 })

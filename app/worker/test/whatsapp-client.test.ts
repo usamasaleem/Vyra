@@ -278,3 +278,77 @@ describe('quoting an earlier message', () => {
     expect(calls[0]).not.toHaveProperty('context')
   })
 })
+
+/**
+ * A Flow — the only surface Meta offers where a tappable list carries
+ * photographs. Switched off until a Flow is published, so these tests are what
+ * says the payload is right until a phone can.
+ */
+describe('sending a Flow', () => {
+  const flow = {
+    id: '1234567890',
+    cta: 'See the cars',
+    screen: 'CARS',
+    token: 'conv:abc',
+    data: { cars: [{ id: 'vehicle:Ferrari 488' }] },
+  }
+
+  it('sends the shape Meta expects', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Here is the range.', flow })
+
+    expect(calls[0]).toMatchObject({
+      type: 'interactive',
+      interactive: {
+        type: 'flow',
+        body: { text: 'Here is the range.' },
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_message_version: '3',
+            flow_id: '1234567890',
+            flow_token: 'conv:abc',
+            flow_cta: 'See the cars',
+            flow_action: 'navigate',
+            flow_action_payload: { screen: 'CARS', data: flow.data },
+          },
+        },
+      },
+    })
+  })
+
+  /** Asking the same question twice, once with pictures and once without. */
+  it('wins over a list offering the same choice', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: 'Which one?',
+      list: { button: 'See the cars', rows: [{ id: 'vehicle:Ferrari 488', title: 'Ferrari 488' }] },
+      flow,
+    })
+
+    expect(calls[0]).toMatchObject({ interactive: { type: 'flow' } })
+  })
+
+  /** Nothing changes until a Flow is published and its id configured. */
+  it('falls back to the list when no flow is configured', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: 'Which one?',
+      list: { button: 'See the cars', rows: [{ id: 'vehicle:Ferrari 488', title: 'Ferrari 488' }] },
+      flow: null,
+    })
+
+    expect(calls[0]).toMatchObject({ interactive: { type: 'list' } })
+  })
+
+  it('quotes an earlier message alongside a Flow', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001', body: 'Here is the range.', flow, quotesProviderId: 'wamid.EARLIER',
+    })
+
+    expect(calls[0]).toMatchObject({ context: { message_id: 'wamid.EARLIER' } })
+  })
+})

@@ -1,4 +1,4 @@
-import { meaningOfButton } from '@vyra/contracts'
+import { carChosenInFlow, meaningOfButton, VEHICLE_ROW } from '@vyra/contracts'
 import { z } from 'zod'
 
 /**
@@ -38,6 +38,16 @@ const messageSchema = z.object({
     type: z.string(),
     button_reply: z.object({ id: z.string(), title: z.string() }).optional(),
     list_reply: z.object({ id: z.string(), title: z.string() }).optional(),
+    /**
+     * A Flow that finished. The answer is a JSON string rather than the
+     * id-and-title pair a tap gives, because a Flow can collect anything —
+     * ours collects which car.
+     */
+    nfm_reply: z.object({
+      response_json: z.string(),
+      body: z.string().optional(),
+      name: z.string().optional(),
+    }).optional(),
   }).optional(),
 })
 
@@ -116,6 +126,18 @@ export function toMessageBody(message: InboundMessage): string | null {
   const tapped = message.interactive?.button_reply ?? message.interactive?.list_reply
   if (tapped !== undefined) return meaningOfButton(tapped.id, tapped.title)
 
+  /**
+   * A car chosen inside a Flow is the same answer as a car chosen from a list,
+   * so it becomes the same sentence. A reply we cannot read returns null and
+   * is held for a person, which is the right outcome: the customer definitely
+   * chose something and guessing which car would be worse than asking.
+   */
+  const flow = message.interactive?.nfm_reply
+  if (flow !== undefined) {
+    const car = carChosenInFlow(flow.response_json)
+    return car === null ? null : meaningOfButton(`${VEHICLE_ROW}${car}`, car)
+  }
+
   return null
 }
 
@@ -127,5 +149,8 @@ export function toMessageBody(message: InboundMessage): string | null {
 export function toInboundKind(message: InboundMessage): string {
   const tapped = message.interactive?.button_reply ?? message.interactive?.list_reply
   if (tapped !== undefined) return 'text'
+  // A finished Flow too, for the same reason: it is an answer to a question
+  // the agent asked, and the non-text path would hold it for a person.
+  if (message.interactive?.nfm_reply !== undefined) return 'text'
   return toMessageKind(message.type)
 }

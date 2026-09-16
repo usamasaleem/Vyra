@@ -46,7 +46,7 @@ export const LIST_LIMITS = {
  * The prefix that marks a row as naming a vehicle, so a tap comes back as a
  * sentence about that car rather than as a bare id.
  */
-const VEHICLE_ROW = 'vehicle:'
+export const VEHICLE_ROW = 'vehicle:'
 
 /**
  * A list of cars to choose from, or null to describe them in prose.
