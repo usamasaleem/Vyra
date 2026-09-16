@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
 import { loadConversationContext, type ConversationContext } from '../src/context.ts'
 import { handleNonTextMessage, runConversationTurn } from '../src/turn.ts'
+import { ensureEnquiry, recordFields } from '../../db/src/queries/enquiry-fields.ts'
 import type { QueryRunner, Transactor } from '../../db/src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'db', 'migrations')
@@ -1295,5 +1296,79 @@ describe('what a turn remembers about the enquiry', () => {
       `select sales_stage::text as stage from conversations where id = $1`, [CONV],
     )
     expect(conversation!['stage']).not.toBe('new')
+  })
+})
+
+/**
+ * Coming back to a question that went unanswered.
+ *
+ * Live, the agent asked "what dates are you considering?", the customer asked
+ * four questions of their own instead, and it answered all four and never came
+ * back. Nine exchanges qualified nothing, because nothing told it there was
+ * anything outstanding.
+ */
+describe('chasing what the enquiry still needs', () => {
+  const systemFor = async () => {
+    let system: string | undefined
+    await runConversationTurn(
+      {
+        run, transact, destination: 'send',
+        model: {
+          modelId: 'test', label: 'test',
+          complete: async (request) => {
+            system = request.system
+            return { toolCalls: [], reply: 'Noted.' }
+          },
+        },
+      },
+      context,
+    )
+    return system ?? ''
+  }
+
+  const askedFor = async () =>
+    (await run(`select asked_for from conversations where id = $1`, [CONV]))[0]!['asked_for'] as
+      Record<string, { times: number }>
+
+  it('tells the model what is still missing', async () => {
+    expect(await systemFor()).toContain('This enquiry still needs')
+  })
+
+  /** One question at the end of a reply, never a list of them. */
+  it('puts only one of them at a time', async () => {
+    const system = await systemFor()
+    expect(system).toContain('never more than one')
+  })
+
+  it('remembers that it asked', async () => {
+    await systemFor()
+    expect(Object.keys(await askedFor())).toHaveLength(1)
+  })
+
+  /** Asking the same thing twice in a row is a form rather than a person. */
+  it('does not put the same question again on the very next turn', async () => {
+    await systemFor()
+    const [field] = Object.keys(await askedFor())
+
+    await systemFor()
+    expect((await askedFor())[field!]!.times).toBe(1)
+  })
+
+  it('says nothing when the enquiry needs nothing', async () => {
+    // The enquiry is created by the turn, so it has to exist before anything
+    // can be recorded against it.
+    const enquiryId = (await ensureEnquiry(run, OP, CONV))!
+
+    await recordFields(transact, {
+      operatorId: OP, enquiryId,
+      observations: [
+        { field: 'vehicle', value: 'Ferrari 488' },
+        { field: 'start_at', value: '2026-09-25' },
+        { field: 'end_at', value: '2026-09-28' },
+        { field: 'delivery_preference', value: 'delivery' },
+      ],
+    })
+
+    expect(await systemFor()).not.toContain('This enquiry still needs')
   })
 })

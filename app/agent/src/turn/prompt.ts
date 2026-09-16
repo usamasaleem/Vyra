@@ -186,9 +186,26 @@ import { renderExamples } from './examples.js'
  * exception, in a conversation where nothing else was that consistent. That
  * regularity is what reads as generated, not any individual word.
  *
+ * v15 makes it a salesperson rather than an answering machine.
+ *
+ * Every reply in the last live conversation was accurate, well formatted and
+ * correctly sourced, and not one of them moved the enquiry forward. It asked
+ * "what dates are you considering?", the customer asked four questions of
+ * their own instead, and it answered all four and never came back. Nine
+ * exchanges qualified nothing.
+ *
+ * It did not know it still needed anything. `missingFields` has existed since
+ * step 21 and was read in one place — the handoff packet, which tells a person
+ * what is missing after the conversation has been given away.
+ *
+ * The instruction is as much about stopping as asking. A salesperson asks
+ * again; a form asks until somebody stops replying, and nothing about the
+ * difference is in the wording — it is in the count, which is why the count is
+ * in the database and not here.
+ *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v14'
+export const PROMPT_VERSION = 'sales-v15'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -288,6 +305,13 @@ export function systemPromptFor(input: {
    */
   fleetOnHand?: string
   /**
+   * What the enquiry still needs, filtered to what may be asked again.
+   *
+   * The filtering happens before this — how often it has been put to them, and
+   * how long ago, are facts about the conversation rather than instructions.
+   */
+  stillNeeded?: ReadonlyArray<{ field: string; timesAsked: number }>
+  /**
    * The enquiry this turn is about.
    *
    * prepare_quote takes it as an argument and refuses anything else, so that a
@@ -336,7 +360,25 @@ export function systemPromptFor(input: {
       + `front of them — say something worth saying about them instead, and ask which one:`
       + `\n${input.fleetOnHand}`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${onHand}
+  const NEEDS: Record<string, string> = {
+    vehicle: 'which car they want',
+    start_at: 'when the rental starts',
+    end_at: 'when it ends, or how many days',
+    delivery_preference: 'whether they want it delivered or will collect it',
+  }
+
+  const needed = (input.stillNeeded ?? [])
+    .map((n) => NEEDS[n.field] ?? n.field)
+
+  const outstanding = needed.length === 0
+    ? ''
+    : `\n\nThis enquiry still needs ${needed.join(', and ')}. Answer what they asked first — `
+      + `always — and then put one of these to them at the end, in a sentence. Not a list of `
+      + `questions, and never more than one. If they pass over it again, let it go: they will `
+      + `say when they are ready, and a question asked a third time is a form rather than a `
+      + `person.`
+
+  return `${SYSTEM_PROMPT}${alreadySeen}${onHand}${outstanding}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

@@ -285,3 +285,93 @@ export async function advanceStage(
   )
   return { moved: rows.length > 0, from: (rows[0]?.['from_stage'] as string) ?? null }
 }
+
+/**
+ * What the agent still needs, and whether it may ask again.
+ *
+ * `missingFields` has existed since step 21 and is read in exactly one place:
+ * the handoff packet, which tells a person what is missing once the
+ * conversation has already been given away. The agent itself was never told.
+ *
+ * It showed. Live, it asked "what dates are you considering?", the customer
+ * asked four questions of their own instead, and the agent answered all four
+ * and never came back. Nine exchanges qualified nothing, and the enquiry kept
+ * dates from five days earlier that were by then certainly wrong.
+ *
+ * The counting is the whole design. A salesperson asks again; a form asks
+ * until somebody stops replying. Twice, spaced, then let it go — and if they
+ * volunteer it later it is recorded like anything else.
+ */
+
+/** Asked at most this many times, ever. */
+export const ASK_AT_MOST = 2
+
+/**
+ * And not in consecutive turns. Three revisions is roughly "answer what they
+ * asked, let them reply, then come back to it" — close enough to how a person
+ * paces it, and far enough from asking twice in a row.
+ */
+export const ASK_EVERY = 3
+
+export type OutstandingQuestion = {
+  field: EnquiryField
+  /** How many times it has already been put to them. */
+  timesAsked: number
+}
+
+export async function outstandingQuestions(
+  run: QueryRunner,
+  input: { operatorId: string; conversationId: string; enquiryId: string },
+): Promise<OutstandingQuestion[]> {
+  const missing = await missingFields(run, input.operatorId, input.enquiryId)
+  if (missing.length === 0) return []
+
+  const [row] = await run(
+    `select revision, asked_for from conversations where id = $1 and operator_id = $2`,
+    [input.conversationId, input.operatorId],
+  )
+  if (row === undefined) return []
+
+  const revision = Number(row['revision'])
+  const asked = (row['asked_for'] ?? {}) as Record<string, { times: number; revision: number }>
+
+  return missing
+    .map((field) => ({ field, record: asked[field] }))
+    .filter(({ record }) => {
+      if (record === undefined) return true
+      if (record.times >= ASK_AT_MOST) return false
+      return revision - record.revision >= ASK_EVERY
+    })
+    .map(({ field, record }) => ({ field, timesAsked: record?.times ?? 0 }))
+}
+
+/**
+ * Counted when the agent is told to ask, not when it is seen asking.
+ *
+ * An over-count by one turn in the cases where it was told and did not,
+ * which errs towards asking less. That is the right direction: the failure
+ * this is guarding against is a customer being asked the same thing until
+ * they stop replying.
+ */
+export async function recordAsked(
+  run: QueryRunner,
+  input: { operatorId: string; conversationId: string; fields: readonly EnquiryField[] },
+): Promise<void> {
+  if (input.fields.length === 0) return
+
+  await run(
+    `update conversations v
+     set asked_for = (
+       select coalesce(v.asked_for, '{}'::jsonb) || jsonb_object_agg(
+         f.field,
+         jsonb_build_object(
+           'times', coalesce((v.asked_for -> f.field ->> 'times')::int, 0) + 1,
+           'revision', v.revision
+         )
+       )
+       from unnest($3::text[]) as f(field)
+     )
+     where v.id = $1 and v.operator_id = $2`,
+    [input.conversationId, input.operatorId, input.fields as string[]],
+  )
+}

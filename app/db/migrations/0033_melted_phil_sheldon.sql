@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "asked_for" jsonb DEFAULT '{}'::jsonb NOT NULL;

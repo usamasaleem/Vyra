@@ -34,6 +34,9 @@ import {
   recordAgentRun,
   recordFields,
   getEnquiryFields,
+  outstandingQuestions,
+  recordAsked,
+  type EnquiryField,
   advanceStage,
   stageFromEvidence,
   findVehicleImages,
@@ -238,6 +241,9 @@ export async function runConversationTurn(
    */
   let prefetchedFleet: VehicleRow[] = []
 
+  /** The qualifying question this turn was told to put, if any. */
+  let askedThisTurn: EnquiryField[] = []
+
   let end: (TurnEnd & {
     rounds: number
     usage?: TurnUsage
@@ -361,12 +367,55 @@ export async function runConversationTurn(
     prefetchedFleet = (prefetched?.fleet ?? []) as VehicleRow[]
     const fleetOnHand = prefetched === undefined ? undefined : JSON.stringify(prefetched)
 
+    /**
+     * What the enquiry still needs, and whether it may be asked about again.
+     *
+     * The agent asked for dates once, the customer asked four questions of
+     * their own, and it answered all four and never came back — because
+     * nothing told it there was anything outstanding. missingFields has
+     * existed since step 21 and was read only by the handoff packet, which
+     * informs a person after the conversation has already been handed over.
+     *
+     * A nicety like the rest of the facts here: a failure costs a question
+     * that does not get asked, never the reply.
+     */
+    const stillNeeded = await outstandingQuestions(deps.run, {
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+      enquiryId,
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'outstanding_questions.failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      return []
+    })
+
+    /**
+     * Counted when it is told to ask, not when it is seen asking.
+     *
+     * One question of the several outstanding, because the instruction asks
+     * for one and counting the rest would silence them before they were ever
+     * put. Recorded before the model runs so a turn that fails partway does
+     * not ask the same thing again on the retry.
+     */
+    askedThisTurn = stillNeeded.slice(0, 1).map((q) => q.field)
+    if (askedThisTurn.length > 0) {
+      await recordAsked(deps.run, {
+        operatorId: context.operator.id,
+        conversationId: context.conversation.id,
+        fields: askedThisTurn,
+      }).catch(() => undefined)
+    }
+
     const outcome = await runTurn(deps.model, toolContext, transcript, {
       // What fell out of the window. Null until a conversation is long enough
       // to have lost anything.
       summary: context.conversation.summary,
       photosShown,
       ...(fleetOnHand === undefined ? {} : { fleetOnHand }),
+      ...(stillNeeded.length === 0 ? {} : { stillNeeded: stillNeeded.slice(0, 1) }),
     })
     end = {
       reply: outcome.reply,

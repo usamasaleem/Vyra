@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   advanceStage, ensureEnquiry, getEnquiryFields, getFieldHistory, missingFields,
-  recordFields, stageFromEvidence,
+  outstandingQuestions, recordAsked, recordFields, stageFromEvidence,
 } from '../src/queries/enquiry-fields.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
@@ -258,5 +258,83 @@ describe('advanceStage', () => {
       operatorId: '99999999-9999-9999-9999-999999999999',
       conversationId: CONV, stage: 'qualified',
     })).toMatchObject({ moved: false })
+  })
+})
+
+/**
+ * What the agent still needs, and when it may ask again.
+ *
+ * missingFields has existed since step 21 and was read in exactly one place:
+ * the handoff packet, which tells a person what is missing after the
+ * conversation has already been given away. The agent itself was never told,
+ * and it showed — it asked for dates once, the customer asked four questions
+ * of their own instead, and it answered all four and never came back.
+ */
+describe('outstandingQuestions', () => {
+  const ask = (fields: readonly string[]) =>
+    recordAsked(run, {
+      operatorId: OP, conversationId: CONV, fields: fields as never,
+    })
+
+  const outstanding = async () =>
+    (await outstandingQuestions(run, { operatorId: OP, conversationId: CONV, enquiryId }))
+      .map((q) => q.field)
+
+  const bumpRevision = (by: number) =>
+    run(`update conversations set revision = revision + $2 where id = $1`, [CONV, by])
+
+  it('names what the enquiry is missing', async () => {
+    expect(await outstanding()).toContain('start_at')
+  })
+
+  it('says nothing once everything required is recorded', async () => {
+    await recordFields(transact, {
+      operatorId: OP, enquiryId,
+      observations: [
+        { field: 'vehicle', value: 'Ferrari 488' },
+        { field: 'start_at', value: '2026-09-25' },
+        { field: 'end_at', value: '2026-09-28' },
+        { field: 'delivery_preference', value: 'delivery' },
+      ],
+    })
+    expect(await outstanding()).toEqual([])
+  })
+
+  /** Asking twice in a row is a form. */
+  it('will not ask the same thing on the next turn', async () => {
+    await ask(['start_at'])
+    expect(await outstanding()).not.toContain('start_at')
+  })
+
+  it('comes back to it a few turns later', async () => {
+    await ask(['start_at'])
+    await bumpRevision(3)
+    expect(await outstanding()).toContain('start_at')
+  })
+
+  /**
+   * The whole design. A salesperson asks again; a form asks until somebody
+   * stops replying, and the difference is entirely this number.
+   */
+  it('lets it go after twice', async () => {
+    await ask(['start_at'])
+    await bumpRevision(3)
+    await ask(['start_at'])
+    await bumpRevision(3)
+
+    expect(await outstanding()).not.toContain('start_at')
+  })
+
+  /** Asking about one thing does not silence the others. */
+  it('still asks about the rest', async () => {
+    await ask(['start_at'])
+    expect(await outstanding()).toContain('delivery_preference')
+  })
+
+  it('leaves another operator conversation alone', async () => {
+    await recordAsked(run, {
+      operatorId: RIVAL, conversationId: CONV, fields: ['start_at'] as never,
+    })
+    expect(await outstanding()).toContain('start_at')
   })
 })

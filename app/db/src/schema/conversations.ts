@@ -138,6 +138,20 @@ export const conversations = pgTable(
 
     nextActionAt: timestamp({ withTimezone: true }),
     nextAction: text(),
+
+    /**
+     * Which qualifying questions the agent has already put, and how often.
+     *
+     * Live, the agent asked "what dates are you considering?", the customer
+     * asked four questions of their own instead, and the agent answered all
+     * four and never came back to it. Nine exchanges qualified nothing.
+     *
+     * Counted so it can stop. A salesperson asks again; a form asks until
+     * somebody stops replying, and the difference between them is entirely
+     * this number.
+     */
+    askedFor: jsonb().$type<Record<string, { times: number; revision: number }>>()
+      .notNull().default({}),
     lostReason: text(),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
