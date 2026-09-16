@@ -55,6 +55,22 @@ export const knowledgeEntries = pgTable(
     provenance: knowledgeProvenance().notNull().default('placeholder'),
     /** The person at the operator who confirmed this wording. */
     confirmedBy: text(),
+    /**
+     * The account that stood behind it, which is not the same as the name.
+     *
+     * `confirmedBy` is free text so an admin can record a colleague who made
+     * the call — "Ahmed, operations" — and that is worth keeping. But free text
+     * is also how nine invented answers came to be published to real customers:
+     * the seed script wrote the sentence "DEMO DATA — not confirmed by an
+     * operator" into this field, satisfied the check constraint below, and the
+     * agent quoted the resulting deposit figure as the operator's policy.
+     *
+     * The constraint was not wrong. It asked for a name and got one. So a
+     * published answer now needs an account as well, for the same reason
+     * `vehicles` has had one since it was written: a foreign key cannot be
+     * talked into existing.
+     */
+    confirmedByMembershipId: uuid(),
     confirmedAt: timestamp({ withTimezone: true }),
 
     /** Null until published. Publishing is an explicit act, never a side effect. */
@@ -72,6 +88,11 @@ export const knowledgeEntries = pgTable(
       columns: [table.publishedByMembershipId, table.operatorId],
       foreignColumns: [memberships.id, memberships.operatorId],
       name: 'knowledge_entries_publisher_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.confirmedByMembershipId, table.operatorId],
+      foreignColumns: [memberships.id, memberships.operatorId],
+      name: 'knowledge_entries_confirmer_operator_fkey',
     }),
 
     uniqueIndex('knowledge_entries_operator_topic_version_key').on(
@@ -103,6 +124,27 @@ export const knowledgeEntries = pgTable(
         and confirmed_by is not null
         and confirmed_at is not null
         and effective_from is not null
+      )`,
+    ),
+
+    /**
+     * The same guard, asking for something that cannot be written.
+     *
+     * The constraint above was satisfied by a seed script for four days while
+     * the agent told customers an invented deposit, kilometre allowance and
+     * licence rule as the operator's confirmed policy. Every field it asked for
+     * was filled in. None of them could be wrong, because a string cannot be
+     * wrong — it can only be untrue.
+     *
+     * Added NOT VALID on purpose. The fabricated rows are retired rather than
+     * rewritten: attributing them to the real admin to satisfy a constraint
+     * would be the same lie again, in the same field, for the same reason.
+     */
+    check(
+      'knowledge_published_requires_a_real_person',
+      sql`published_at is null or (
+        confirmed_by_membership_id is not null
+        and published_by_membership_id is not null
       )`,
     ),
   ],

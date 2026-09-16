@@ -70,10 +70,11 @@ beforeEach(async () => {
 })
 
 async function publish(operatorId: string, topic: string, answer: string) {
-  const draft = await draftKnowledge(run, { operatorId, topic, answer, confirmedBy: 'Owner' })
-  const result = await publishKnowledge(transact, {
-    operatorId, entryId: draft.id, membershipId: operatorId === OP ? MEMBER : RIVAL_MEMBER,
+  const membershipId = operatorId === OP ? MEMBER : RIVAL_MEMBER
+  const draft = await draftKnowledge(run, {
+    operatorId, topic, answer, confirmedBy: 'Owner', confirmedByMembershipId: membershipId,
   })
+  const result = await publishKnowledge(transact, { operatorId, entryId: draft.id, membershipId })
   // Assert the fixture actually published. A silently unpublished answer would
   // make every test below pass for the wrong reason.
   expect(result.published).toBe(true)

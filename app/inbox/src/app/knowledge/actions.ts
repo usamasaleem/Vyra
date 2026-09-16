@@ -47,6 +47,8 @@ export async function saveAnswer(
     topic,
     answer,
     confirmedBy,
+    // The name is who made the call; this is the account that says so.
+    confirmedByMembershipId: actor.membershipId,
   })
 
   const result = await publishKnowledge(actorTransactor(actor), {

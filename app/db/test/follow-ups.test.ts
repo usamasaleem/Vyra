@@ -60,7 +60,8 @@ const makeDue = () =>
 
 async function publishPolicy(answer: string) {
   const draft = await draftKnowledge(run, {
-    operatorId: OP, topic: 'follow-up-message', answer, confirmedBy: 'Owner',
+    operatorId: OP, topic: 'follow-up-message', answer,
+    confirmedBy: 'Owner', confirmedByMembershipId: SARA,
   })
   await publishKnowledge(transact, { operatorId: OP, entryId: draft.id, membershipId: SARA })
   await run(

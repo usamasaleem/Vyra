@@ -37,13 +37,21 @@ beforeEach(async () => {
   `)
 })
 
-const draft = (over: Record<string, unknown> = {}) =>
-  draftKnowledge(run, {
+const draft = (over: Record<string, unknown> = {}) => {
+  const input: Record<string, unknown> = {
     operatorId: OP, topic: 'deposit',
     covers: 'what deposit is required',
     answer: 'AED 5,000, released within 14 working days.',
     ...over,
-  })
+  }
+  return draftKnowledge(run, {
+    // A name is who made the call; the account is what makes it checkable.
+    // Supplied here whenever the test supplies a name, so the tests that are
+    // about something else are not all about this.
+    confirmedByMembershipId: input['confirmedBy'] == null ? null : STAFF,
+    ...input,
+  } as Parameters<typeof draftKnowledge>[1])
+}
 
 describe('drafting', () => {
   it('starts at version 1 and is placeholder until someone confirms it', async () => {
@@ -98,7 +106,70 @@ describe('publishing', () => {
     const d = await draft()
     await expect(
       run(`update knowledge_entries set published_at = now(), effective_from = now() where id = $1`, [d.id]),
-    ).rejects.toThrow(/knowledge_published_requires_operator_confirmation/)
+    ).rejects.toThrow(/knowledge_published_requires/)
+  })
+
+  /**
+   * The seed script, exactly.
+   *
+   * It filled in every field the first constraint asked for — provenance
+   * operator_confirmed, a confirmer, a timestamp, an effective_from — and wrote
+   * the sentence "DEMO DATA — not confirmed by an operator" into the name. Nine
+   * invented answers went live and the agent quoted them to real customers as
+   * the operator's policy for four days.
+   *
+   * The constraint was not wrong. It asked for a name and got one. A string
+   * cannot be false; it can only be untrue.
+   */
+  it('refuses an answer confirmed by a sentence rather than by an account', async () => {
+    await expect(
+      run(
+        `insert into knowledge_entries
+           (operator_id, topic, answer, version, provenance, confirmed_by, confirmed_at,
+            published_at, effective_from)
+         values ($1, 'deposit', 'AED 5,000.', 1, 'operator_confirmed',
+                 'DEMO DATA — not confirmed by an operator', now(), now(), now())`,
+        [OP],
+      ),
+    ).rejects.toThrow(/knowledge_published_requires_a_real_person/)
+  })
+
+  /** Confirmed by somebody, published by nobody, is still published by nobody. */
+  it('refuses an answer nobody pressed publish on', async () => {
+    await expect(
+      run(
+        `insert into knowledge_entries
+           (operator_id, topic, answer, version, provenance, confirmed_by,
+            confirmed_by_membership_id, confirmed_at, published_at, effective_from)
+         values ($1, 'deposit', 'AED 5,000.', 1, 'operator_confirmed', 'Ahmed', $2,
+                 now(), now(), now())`,
+        [OP, STAFF],
+      ),
+    ).rejects.toThrow(/knowledge_published_requires_a_real_person/)
+  })
+
+  it('records the account behind the name when it does publish', async () => {
+    const d = await draft({ confirmedBy: 'Ahmed, operations manager' })
+    await publishKnowledge(transact, { entryId: d.id, operatorId: OP, membershipId: STAFF })
+
+    const [row] = await run(
+      `select confirmed_by, confirmed_by_membership_id, published_by_membership_id
+       from knowledge_entries where id = $1`, [d.id],
+    )
+    expect(row).toMatchObject({
+      // Both, because they answer different questions: who decided, and whose
+      // account says so.
+      confirmed_by: 'Ahmed, operations manager',
+      confirmed_by_membership_id: STAFF,
+      published_by_membership_id: STAFF,
+    })
+  })
+
+  it('refuses to publish a name with no account behind it', async () => {
+    const d = await draft({ confirmedBy: 'Ahmed', confirmedByMembershipId: null })
+    expect(await publishKnowledge(transact, { entryId: d.id, operatorId: OP, membershipId: STAFF }))
+      .toEqual({ published: false, reason: 'not_confirmed' })
+    expect(await getApprovedAnswer(run, OP, 'deposit')).toBeNull()
   })
 
   it('supersedes the previous version rather than overwriting it', async () => {

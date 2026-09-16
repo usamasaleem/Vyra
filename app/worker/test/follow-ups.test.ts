@@ -63,7 +63,7 @@ beforeEach(async () => {
     ['follow-up-message-2', 'The green one is still free that week if it helps.'],
   ] as const) {
     const draft = await draftKnowledge(run, {
-      operatorId: OP, topic, answer, confirmedBy: 'Owner',
+      operatorId: OP, topic, answer, confirmedBy: 'Owner', confirmedByMembershipId: SARA,
     })
     await publishKnowledge(transact, { operatorId: OP, entryId: draft.id, membershipId: SARA })
     await run(

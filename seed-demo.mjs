@@ -1,13 +1,23 @@
 /**
- * Publishes the invented placeholder answers as demo content.
+ * Demo photographs, and suggested wording for the Answers screen.
  *
- * Every figure below is invented — see the banner in
- * app/evals/src/fixtures/placeholder-policy.ts. They are published here so the
- * agent can be demonstrated answering instead of deferring, and they are signed
- * with a confirmer name that makes their status unmistakable on the Answers
- * screen and in any audit of what the business told a customer.
+ * This used to publish the answers below as the operator's confirmed policy.
+ * It could, because the check constraint asked for a confirmer's name and a
+ * string is always a valid name: it wrote "DEMO DATA — not confirmed by an
+ * operator" and the row went live. For four days the agent quoted an invented
+ * deposit, kilometre allowance and licence rule to real customers on WhatsApp
+ * as the operator's confirmed position.
  *
- * `node seed-demo.mjs --clear` removes them again.
+ * The reasoning in this header was that the confirmer name made their status
+ * "unmistakable on the Answers screen". It did. The customer does not read the
+ * Answers screen.
+ *
+ * So the figures are printed, not published. A published answer now needs an
+ * account behind it as well as a name, and the only honest way for one to exist
+ * is for a person to read it and press publish — which takes a minute and makes
+ * the answer true, in that somebody has actually said it.
+ *
+ * `node seed-demo.mjs --clear` still removes the demo photographs.
  */
 import postgres from 'postgres'
 import { readFileSync } from 'node:fs'
@@ -58,9 +68,16 @@ const PHOTOS = {
 
 if (process.argv.includes('--clear')) {
   // Only ever the demo rows. A real answer confirmed by a person is untouched.
-  const gone = await sql`delete from knowledge_entries
-    where operator_id = ${operator.id} and confirmed_by = ${CONFIRMER} returning topic`
-  console.log(`Removed ${gone.length} demo answer(s).`)
+  /**
+   * Retired rather than deleted. What a customer was told is a fact about this
+   * business, and the messages that said it are still in the table — deleting
+   * the policy row would leave those sentences with no explanation for why they
+   * were ever sent.
+   */
+  const gone = await sql`update knowledge_entries set effective_to = now()
+    where operator_id = ${operator.id} and confirmed_by = ${CONFIRMER}
+      and effective_to is null returning topic`
+  console.log(`Retired ${gone.length} demo answer(s). The rows are kept as history.`)
 
   for (const url of Object.values(PHOTOS).flat()) {
     const cleared = await sql`update vehicles set photo_urls = null, collage_url = null
@@ -72,29 +89,23 @@ if (process.argv.includes('--clear')) {
   process.exit(0)
 }
 
+const unanswered = []
 for (const [topic, answer] of Object.entries(ANSWERS)) {
-  // Refuse to overwrite anything a real person confirmed.
   const [real] = await sql`select confirmed_by from knowledge_entries
     where operator_id = ${operator.id} and topic = ${topic}
-      and published_at is not null and effective_to is null
-      and confirmed_by <> ${CONFIRMER} limit 1`
+      and published_at is not null and effective_to is null limit 1`
   if (real !== undefined) {
-    console.log(`SKIP ${topic} — already answered by ${real.confirmed_by}`)
+    console.log(`answered   ${topic} — by ${real.confirmed_by}`)
     continue
   }
+  unanswered.push([topic, answer])
+}
 
-  await sql`update knowledge_entries set effective_to = now()
-    where operator_id = ${operator.id} and topic = ${topic} and effective_to is null`
-
-  const [{ next }] = await sql`select coalesce(max(version), 0) + 1 as next
-    from knowledge_entries where operator_id = ${operator.id} and topic = ${topic}`
-
-  await sql`insert into knowledge_entries
-    (operator_id, topic, covers, answer, version, provenance, confirmed_by, confirmed_at,
-     published_at, effective_from)
-    values (${operator.id}, ${topic}, ${'Demo content for demonstration only'}, ${answer},
-            ${next}, 'operator_confirmed', ${CONFIRMER}, now(), now(), now())`
-  console.log(`published ${topic} (v${next})`)
+if (unanswered.length > 0) {
+  console.log(`\n${unanswered.length} topic(s) unanswered. Suggested wording below — read it,`)
+  console.log('change whatever is wrong, and publish it at /knowledge under your own name.')
+  console.log('Until then the agent tells customers it will confirm, which is true.\n')
+  for (const [topic, answer] of unanswered) console.log(`  ${topic}\n    ${answer}\n`)
 }
 
 for (const [model, urls] of Object.entries(PHOTOS)) {

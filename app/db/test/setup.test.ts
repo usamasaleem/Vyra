@@ -9,6 +9,7 @@ import type { QueryRunner } from '../src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
 const OP = '11111111-1111-1111-1111-111111111111'
+const MEMBER = '88888888-8888-8888-8888-888888888888'
 
 let db: PGlite
 let run: QueryRunner
@@ -19,7 +20,12 @@ beforeEach(async () => {
   for (const f of readdirSync(migrationsDir).filter((n) => n.endsWith('.sql')).sort()) {
     await db.exec(readFileSync(join(migrationsDir, f), 'utf8'))
   }
-  await db.exec(`insert into operators (id, name) values ('${OP}', 'Brand New Rentals');`)
+  await db.exec(`
+    insert into operators (id, name) values ('${OP}', 'Brand New Rentals');
+    -- A published answer needs an account behind it, so the operator needs one.
+    insert into memberships (id, operator_id, user_id, role)
+    values ('${MEMBER}', '${OP}', '99999999-9999-9999-9999-999999999999', 'admin');
+  `)
 })
 
 const step = async (key: string) =>
@@ -37,10 +43,11 @@ const addCar = (photos: string[] | null = null) =>
 const publish = (topic: string, confirmedBy = 'Owner') =>
   run(
     `insert into knowledge_entries (operator_id, topic, covers, answer, version, provenance,
-                                    confirmed_by, confirmed_at, published_at, effective_from)
-     values ($1, $2, 'covers', 'answer', 1, 'operator_confirmed', $3, now(), now(),
+                                    confirmed_by, confirmed_by_membership_id, confirmed_at,
+                                    published_at, published_by_membership_id, effective_from)
+     values ($1, $2, 'covers', 'answer', 1, 'operator_confirmed', $3, $4, now(), now(), $4,
              now() - interval '1 hour')`,
-    [OP, topic, confirmedBy],
+    [OP, topic, confirmedBy, MEMBER],
   )
 
 describe('a brand new operator', () => {

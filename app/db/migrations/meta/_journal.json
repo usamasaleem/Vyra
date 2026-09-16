@@ -246,6 +246,13 @@
       "when": 1789596548029,
       "tag": "0034_past_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789599487677,
+      "tag": "0035_condemned_domino",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,13 @@ export type KnowledgeDraft = {
   answer: string
   /** Who at the operator confirmed this wording, if anyone has yet. */
   confirmedBy?: string | null
+  /**
+   * The account standing behind that name.
+   *
+   * Required to publish. A name on its own is what let a seed script publish
+   * nine invented answers as the operator's confirmed policy.
+   */
+  confirmedByMembershipId?: string | null
 }
 
 /**
@@ -23,11 +30,13 @@ export type KnowledgeDraft = {
  * never touching whatever answer is currently live.
  */
 const DRAFT_SQL = `
-  insert into knowledge_entries (operator_id, topic, covers, answer, version, provenance, confirmed_by, confirmed_at)
+  insert into knowledge_entries (operator_id, topic, covers, answer, version, provenance,
+                                 confirmed_by, confirmed_by_membership_id, confirmed_at)
   select $1, $2, $3, $4,
          coalesce((select max(version) from knowledge_entries where operator_id = $1 and topic = $2), 0) + 1,
          case when $5::text is null then 'placeholder' else 'operator_confirmed' end::knowledge_provenance,
          $5,
+         $6,
          case when $5::text is null then null else now() end
   returning id, version, provenance
 `
@@ -42,6 +51,7 @@ export async function draftKnowledge(
     input.covers ?? null,
     input.answer,
     input.confirmedBy ?? null,
+    input.confirmedByMembershipId ?? null,
   ])
   const row = rows[0]!
   return {
@@ -77,7 +87,8 @@ export async function publishKnowledge(
 ): Promise<PublishResult> {
   return transact(async (tx) => {
     const found = await tx(
-      `select id, topic, version, provenance::text as provenance, confirmed_by, published_at
+      `select id, topic, version, provenance::text as provenance, confirmed_by,
+              confirmed_by_membership_id, published_at
        from knowledge_entries
        where id = $1 and operator_id = $2
        for update`,
@@ -86,7 +97,15 @@ export async function publishKnowledge(
     const target = found[0]
     if (target === undefined) return { published: false, reason: 'not_found' } as const
     if (target['published_at'] != null) return { published: false, reason: 'already_published' } as const
-    if (target['provenance'] !== 'operator_confirmed' || target['confirmed_by'] == null) {
+    /**
+     * An account as well as a name. The constraint would refuse this anyway;
+     * refusing it here is what turns a 500 into a sentence the screen can show.
+     */
+    if (
+      target['provenance'] !== 'operator_confirmed'
+      || target['confirmed_by'] == null
+      || target['confirmed_by_membership_id'] == null
+    ) {
       return { published: false, reason: 'not_confirmed' } as const
     }
 

@@ -51,6 +51,8 @@ export type EvalWorld = {
 
 const OPERATOR = '11111111-1111-1111-1111-111111111111'
 const ACCOUNT = '33333333-3333-3333-3333-333333333333'
+/** A published answer needs an account behind it, so the eval world has one. */
+const MEMBERSHIP = '88888888-8888-8888-8888-888888888888'
 const TIMEZONE = 'Asia/Dubai'
 
 /** Fixed, so "tomorrow" resolves to the same date on every run and every model. */
@@ -79,6 +81,8 @@ export async function createEvalWorld(options: { migrationsDir?: string } = {}):
     insert into operators (id, name, timezone) values ('${OPERATOR}', 'Eval Operator', '${TIMEZONE}');
     insert into whatsapp_accounts (id, operator_id, provider_account_id, phone_number_id)
     values ('${ACCOUNT}', '${OPERATOR}', 'waba-eval', '111');
+    insert into memberships (id, operator_id, user_id, role)
+    values ('${MEMBERSHIP}', '${OPERATOR}', '99999999-9999-9999-9999-999999999999', 'admin');
   `)
 
   let seq = 0
@@ -135,16 +139,17 @@ export async function createEvalWorld(options: { migrationsDir?: string } = {}):
   async function publishPolicy(topic: string, answer: string): Promise<void> {
     const drafted = await run(
       `insert into knowledge_entries
-         (operator_id, topic, answer, version, provenance, confirmed_by, confirmed_at,
-          published_at, effective_from)
+         (operator_id, topic, answer, version, provenance, confirmed_by,
+          confirmed_by_membership_id, confirmed_at,
+          published_at, published_by_membership_id, effective_from)
        select $1, $2, $3,
               coalesce((select max(version) from knowledge_entries
                         where operator_id = $1 and topic = $2), 0) + 1,
-              'operator_confirmed', 'Eval Operator', now(), now(), $4::timestamptz
+              'operator_confirmed', 'Eval Operator', $5, now(), now(), $5, $4::timestamptz
        returning id`,
       // A day before the eval clock, so it is already in force whenever the
       // suite happens to run.
-      [OPERATOR, topic, answer, new Date(EVAL_NOW.getTime() - 86_400_000).toISOString()],
+      [OPERATOR, topic, answer, new Date(EVAL_NOW.getTime() - 86_400_000).toISOString(), MEMBERSHIP],
     )
     if (drafted[0] === undefined) throw new Error(`failed to publish ${topic}`)
   }
