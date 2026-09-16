@@ -69,6 +69,8 @@ export type RunTurnOptions = {
    * is the only thing here that should.
    */
   photosShown?: ReadonlyArray<{ make: string; model: string; sent: number; lastSentAt: Date }>
+  /** The fleet, looked up before the first model call. See systemPromptFor. */
+  fleetOnHand?: string
 }
 
 /** A prior exchange, oldest first. The last entry is the message being answered. */
@@ -115,6 +117,7 @@ export async function runTurn(
           timezone: ctx.timezone,
           enquiryId: ctx.enquiryId,
           ...(options.photosShown === undefined ? {} : { photosShown: options.photosShown }),
+          ...(options.fleetOnHand === undefined ? {} : { fleetOnHand: options.fleetOnHand }),
         }),
       summary: options.summary ?? null,
       transcript: [...transcript],

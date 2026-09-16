@@ -1,6 +1,7 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, claimsPhotosAttached, detectDiscountRequest,
-  FULL_RANGE_LABEL, invitesACarChoice, offersTheFullRange, usableWebsite, vehicleList,
+  FULL_RANGE_LABEL, invitesACarChoice, mightNeedTheFleet, offersTheFullRange, usableWebsite,
+  vehicleList,
 } from '@vyra/contracts'
 
 /** The shape search_vehicles returns, as much of it as a list row needs. */
@@ -23,6 +24,7 @@ import {
   type TurnEnd,
   type TurnUsage,
 } from '@vyra/agent'
+import { searchVehicles } from '@vyra/agent'
 import {
   acceptTurnOutput,
   ensureEnquiry,
@@ -300,11 +302,43 @@ export async function runConversationTurn(
       return []
     })
 
+    /**
+     * The fleet, looked up before the model is asked anything.
+     *
+     * A turn takes 4.5 seconds with no tool call and 7.6 with one, and nearly
+     * every one of those tool calls is search_vehicles with no filters — a
+     * question that could have been answered while the model was still being
+     * asked. On a message plainly about cars it is answered in advance, which
+     * turns the common two-round turn into one.
+     *
+     * Run through the tool, not around it. Same code, same refusals, same
+     * guidance — so this is a timing change and not a new way into the data.
+     *
+     * A failure costs a slower turn and nothing else, which is why it is
+     * caught here rather than allowed to take the reply down with it.
+     */
+    const fleetOnHand = mightNeedTheFleet(context.message.body)
+      ? await searchVehicles(toolContext, {
+          vehicle: null, category: null, maxDayRateMinor: null, minSeats: null,
+          order: null, startDate: null, endDate: null,
+        })
+          .then((result) => result.status === 'ok' ? JSON.stringify(result.data) : undefined)
+          .catch((error: unknown) => {
+            console.error(JSON.stringify({
+              event: 'fleet_prefetch.failed',
+              conversationId: context.conversation.id,
+              error: error instanceof Error ? error.message : String(error),
+            }))
+            return undefined
+          })
+      : undefined
+
     const outcome = await runTurn(deps.model, toolContext, transcript, {
       // What fell out of the window. Null until a conversation is long enough
       // to have lost anything.
       summary: context.conversation.summary,
       photosShown,
+      ...(fleetOnHand === undefined ? {} : { fleetOnHand }),
     })
     end = {
       reply: outcome.reply,

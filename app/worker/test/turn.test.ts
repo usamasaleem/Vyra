@@ -896,3 +896,93 @@ describe('pointing at the whole range', () => {
     expect((await lastSent())['reply_link']).toBeNull()
   })
 })
+
+/**
+ * The fleet, looked up before the model is asked anything.
+ *
+ * Measured: 4.5 seconds with no tool call, 7.6 with one, because a tool call
+ * means a second trip to the model. Nearly every one of those was
+ * search_vehicles with no filters — a question answerable while the model was
+ * still being asked.
+ */
+describe('looking the fleet up in advance', () => {
+  const addHuracan = () =>
+    run(
+      `insert into vehicles (operator_id, make, model, variant, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by)
+       values ($1,'Lamborghini','Huracán','Tecnica',2023,'Verde','exotic','D 1','VIN1',
+               'operator_confirmed','Owner')`,
+      [OP],
+    )
+
+  const asking = async (body: string) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  /**
+   * Captured rather than asserted on the reply, because what matters is what
+   * the model was given before it said anything.
+   */
+  const systemFor = async (body: string) => {
+    let system: string | undefined
+    const ctx = await asking(body)
+    await runConversationTurn(
+      {
+        run,
+        transact,
+        destination: 'send',
+        model: {
+          modelId: 'test',
+          label: 'test',
+          complete: async (request) => {
+            system = request.system
+            return { toolCalls: [], reply: 'Noted.' }
+          },
+        },
+      },
+      ctx,
+    )
+    return system ?? ''
+  }
+
+  /**
+   * Asserted on the marker rather than on a car's name: the few-shot examples
+   * mention a Huracán too, so searching the whole prompt for one proves
+   * nothing. The first version of this test passed for that reason.
+   */
+  const MARKER = 'looked up for you already'
+
+  it('hands the fleet over for a message about cars', async () => {
+    await addHuracan()
+    const system = await systemFor('show me your cars')
+    expect(system).toContain(MARKER)
+    expect(system.slice(system.indexOf(MARKER))).toContain('Huracán')
+  })
+
+  /**
+   * The tool's own output, guidance and all. That guidance is where "you have
+   * NOT checked whether any of them is free" lives, and a fleet handed over
+   * without it is a list of cars with nothing stopping the model calling them
+   * available.
+   */
+  it('carries the guidance with it, not just the cars', async () => {
+    await addHuracan()
+    const system = await systemFor('show me your cars')
+    expect(system).toContain('NOT checked')
+  })
+
+  /** Being wrong the other way costs a database read; being wrong here costs nothing. */
+  it('does not bother for a message about something else', async () => {
+    await addHuracan()
+    expect(await systemFor('what is the deposit?')).not.toContain(MARKER)
+  })
+
+  it('says nothing when the operator has no cars', async () => {
+    expect(await systemFor('show me your cars')).not.toContain(MARKER)
+  })
+})

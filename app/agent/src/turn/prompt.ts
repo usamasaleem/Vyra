@@ -273,6 +273,21 @@ export function systemPromptFor(input: {
    */
   photosShown?: ReadonlyArray<{ make: string; model: string; sent: number; lastSentAt: Date }>
   /**
+   * The fleet, looked up before the model was asked anything.
+   *
+   * A turn takes 4.5 seconds with no tool call and 7.6 with one, because a
+   * tool call means a second trip to the model. Nearly every one of those
+   * second trips was search_vehicles asking a question we could answer in
+   * advance — so on a message that is plainly about cars, it is answered in
+   * advance.
+   *
+   * It is the tool's own output, guidance and all, rather than a summary
+   * assembled here. The guidance is where "you have NOT checked whether any of
+   * them is free" lives, and a fleet handed over without it is a list of cars
+   * with nothing stopping the model calling them available.
+   */
+  fleetOnHand?: string
+  /**
    * The enquiry this turn is about.
    *
    * prepare_quote takes it as an argument and refuses anything else, so that a
@@ -311,7 +326,13 @@ export function systemPromptFor(input: {
       + `Say so the way a person would — "sent you a few this morning" — rather than `
       + `talking as though they have seen nothing. Never a count and never a date.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}
+  const onHand = input.fleetOnHand === undefined
+    ? ''
+    : `\n\nThe operator's cars, looked up for you already — this is the same answer `
+      + `search_vehicles would give with no filters, so there is no need to ask for it `
+      + `again unless you want a narrower set or you need to check dates:\n${input.fleetOnHand}`
+
+  return `${SYSTEM_PROMPT}${alreadySeen}${onHand}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.
