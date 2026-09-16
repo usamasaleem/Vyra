@@ -71,6 +71,32 @@ export const serverEnvSchema = z.object({
    * Re-run `npm run evals:compare` before changing either.
    */
   AI_MODEL: z.string().default('gpt-5.6-luna'),
+  /**
+   * Low, and 'none' was tried and rejected on measurement.
+   *
+   * A model call at 'none' is about three times quicker — 1.6 seconds against
+   * 4.7 on the same prompt — which looked like the last big latency win
+   * available. It is not, because reasoning effort is what buys tool-selection
+   * judgement, and judgement is what buys rounds.
+   *
+   * Across five real messages:
+   *
+   *   "show me your cars"        low answered from the fleet it had been handed
+   *                              in one round. none called search_vehicles for
+   *                              a fleet already in its context, needing two.
+   *   "can you do 3000?"         low recorded the budget. none looked up the
+   *                              follow-up-timing policy, which has nothing to
+   *                              do with a discount.
+   *
+   * Total across the five: 10.3 seconds at none against 15.5 at low — and the
+   * saving disappears once the extra rounds its choices cost are added back.
+   * It does not remove latency, it moves it, and pays for the move in worse
+   * decisions.
+   *
+   * Neither model's choice was a safety failure, and that is the boundary
+   * working rather than a reason for comfort: the discount handoff is raised
+   * by a rule in the worker whatever the model decides.
+   */
   AI_REASONING_EFFORT: z
     .enum(['none', 'low', 'medium', 'high', 'xhigh', 'max'])
     .default('low'),
