@@ -224,6 +224,13 @@ export async function runConversationTurn(
    */
   let photosShown: Awaited<ReturnType<typeof photosShownIn>> = []
 
+  /**
+   * The fleet looked up before the model ran, kept for the reply's surfaces.
+   * A turn that answered from this called no tool, and everything downstream
+   * used to read the tools alone.
+   */
+  let prefetchedFleet: VehicleRow[] = []
+
   let end: (TurnEnd & {
     rounds: number
     usage?: TurnUsage
@@ -317,12 +324,12 @@ export async function runConversationTurn(
      * A failure costs a slower turn and nothing else, which is why it is
      * caught here rather than allowed to take the reply down with it.
      */
-    const fleetOnHand = mightNeedTheFleet(context.message.body)
+    const prefetched = mightNeedTheFleet(context.message.body)
       ? await searchVehicles(toolContext, {
           vehicle: null, category: null, maxDayRateMinor: null, minSeats: null,
           order: null, startDate: null, endDate: null,
         })
-          .then((result) => result.status === 'ok' ? JSON.stringify(result.data) : undefined)
+          .then((result) => result.status === 'ok' ? result.data : undefined)
           .catch((error: unknown) => {
             console.error(JSON.stringify({
               event: 'fleet_prefetch.failed',
@@ -332,6 +339,20 @@ export async function runConversationTurn(
             return undefined
           })
       : undefined
+
+    /**
+     * Kept for the surfaces as well as for the prompt.
+     *
+     * The first version handed the fleet to the model and threw the rows away,
+     * and the cost showed up immediately in a real conversation: answering
+     * from the prefetch means not calling search_vehicles, and the tappable
+     * list was built only from what the tools returned. So a question about
+     * three cars came back as a paragraph naming all three, no list, and one
+     * photograph of the only car that has any — which reads as singling out
+     * the Lamborghini rather than showing a range.
+     */
+    prefetchedFleet = (prefetched?.fleet ?? []) as VehicleRow[]
+    const fleetOnHand = prefetched === undefined ? undefined : JSON.stringify(prefetched)
 
     const outcome = await runTurn(deps.model, toolContext, transcript, {
       // What fell out of the window. Null until a conversation is long enough
@@ -431,8 +452,15 @@ export async function runConversationTurn(
   const searched = end.toolResults
     .filter((r) => r.name === 'search_vehicles' && r.result.status === 'ok')
     .at(-1)
+  /**
+   * What the tools returned this turn, or what was looked up before it.
+   *
+   * The tool result wins: it may be narrower — a category, a budget, a seat
+   * count — and the customer asked for the narrower thing. The prefetch is the
+   * whole fleet and is only right when nothing else was asked.
+   */
   const fleet = searched === undefined
-    ? []
+    ? prefetchedFleet
     : ((searched.result as { data?: { fleet?: VehicleRow[] } }).data?.fleet ?? [])
 
   const offered = {
@@ -671,7 +699,19 @@ const FLEET_CARDS = 6
    * got" — and leaving one car out of the line-up because its picture went out
    * on Tuesday would make the fleet look smaller than it is.
    */
-  const cards = showcase.slice(0, FLEET_CARDS)
+  /**
+   * Two or nothing.
+   *
+   * One photograph under a reply that named three cars is not a line-up, it is
+   * a favourite — and it reads that way, because the car with pictures is the
+   * only one anybody sees. Live, "show me your cars" came back naming all
+   * three and showing the Lamborghini, which is the wrong impression of both
+   * the fleet and the agent.
+   *
+   * So a fleet with one photographed car shows none, and the reply stands on
+   * its own until somebody photographs a second.
+   */
+  const cards = showcase.length >= 2 ? showcase.slice(0, FLEET_CARDS) : []
 
   /**
    * The name under each photograph. Variant where the operator recorded one,

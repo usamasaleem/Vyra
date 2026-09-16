@@ -623,11 +623,19 @@ describe('showing a car the model did not look up', () => {
   })
 
   /**
-   * Two cars shown and "send me another angle" names neither. Guessing the most
-   * recent would be a guess presented as an answer, so nothing is attached and
-   * the reply stands on its own.
+   * Two cars shown and "send me another angle" names neither.
+   *
+   * This used to attach nothing, and the reasoning was that picking the most
+   * recent would be a guess presented as an answer. That is still true of
+   * picking one — but the fleet is known now even when no tool ran, so the
+   * available answer is no longer "one car or none". It is both, which is what
+   * a person does when asked an ambiguous question while holding the
+   * photographs: show them and ask which.
+   *
+   * The reply asks which one either way; the pictures are what make that
+   * question answerable.
    */
-  it('attaches nothing when two cars have been shown', async () => {
+  it('shows both when two cars have been shown and neither was named', async () => {
     await addHuracan()
     await run(
       `insert into vehicles (operator_id, make, model, year, colour, category, plate,
@@ -647,7 +655,14 @@ describe('showing a car the model did not look up', () => {
        where direction = 'outbound' and delivery_state = 'pending'
        order by created_at desc limit 1`, [],
     )
-    expect(sent!['reply_image_url']).toBeNull()
+    const images = await run(
+      `select body from messages
+       where direction = 'outbound' and delivery_state = 'pending' and reply_image_url is not null
+       order by created_at`, [],
+    )
+    // Dearest first, which is the order the search returns and the order the
+    // reply names them in.
+    expect(images.map((m) => m['body'])).toEqual(['Ferrari 488', 'Lamborghini Huracán'])
   })
 
   /**
@@ -984,5 +999,87 @@ describe('looking the fleet up in advance', () => {
 
   it('says nothing when the operator has no cars', async () => {
     expect(await systemFor('show me your cars')).not.toContain(MARKER)
+  })
+})
+
+/**
+ * The shape of a reply about several cars, which a real conversation showed
+ * coming apart.
+ *
+ * "show me your cars" came back as a paragraph naming all three, no tappable
+ * list, and one photograph — of the Lamborghini, because it is the only car
+ * with any. Three separate faults, all downstream of the same thing: the
+ * prefetch means no tool call, and every surface was built from tool results.
+ */
+describe('answering about several cars after a prefetch', () => {
+  const addCars = async (photographed: number) => {
+    const cars = [
+      ['Rolls-Royce', 'Cullinan', 'suv'],
+      ['Lamborghini', 'Huracán', 'exotic'],
+      ['Ferrari', '488', 'exotic'],
+    ] as const
+    for (const [i, [make, model, category]] of cars.entries()) {
+      await run(
+        `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                               chassis_number, provenance, confirmed_by, photo_urls)
+         values ($1,$2,$3,2023,'Black',$4::vehicle_category,'P'||$5,'V'||$5,
+                 'operator_confirmed','Owner',$6::jsonb)`,
+        [OP, make, model, category, i,
+         i < photographed ? JSON.stringify([`https://example.com/${i}.jpg`]) : null],
+      )
+    }
+  }
+
+  const asking = async (body: string) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  /**
+   * The list used to be built only from what the tools returned, so a turn
+   * that answered from the prefetch offered nothing to tap.
+   */
+  it('still offers the tappable list when no tool ran', async () => {
+    await addCars(0)
+    const ctx = await asking('show me your cars')
+
+    await turn([{ toolCalls: [], reply: 'Three of them — which one takes your fancy?' }], 'send', ctx)
+
+    const [reply] = await run(
+      `select reply_list from messages where direction = 'outbound' and reply_list is not null`, [],
+    )
+    expect(reply).toBeDefined()
+  })
+
+  /**
+   * One photograph under a reply that named three cars is not a line-up, it is
+   * a favourite — and the car with pictures is the only one anybody sees.
+   */
+  it('shows no photographs at all when only one car has any', async () => {
+    await addCars(1)
+    const ctx = await asking('show me your cars')
+
+    await turn([{ toolCalls: [], reply: 'Three of them — which one takes your fancy?' }], 'send', ctx)
+
+    const images = await run(
+      `select id from messages where direction = 'outbound' and reply_image_url is not null`, [],
+    )
+    expect(images).toEqual([])
+  })
+
+  it('shows the line-up once a second car has photographs', async () => {
+    await addCars(2)
+    const ctx = await asking('show me your cars')
+
+    await turn([{ toolCalls: [], reply: 'Three of them — which one takes your fancy?' }], 'send', ctx)
+
+    const images = await run(
+      `select id from messages where direction = 'outbound' and reply_image_url is not null`, [],
+    )
+    expect(images).toHaveLength(2)
   })
 })

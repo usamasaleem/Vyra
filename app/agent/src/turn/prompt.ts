@@ -330,7 +330,11 @@ export function systemPromptFor(input: {
     ? ''
     : `\n\nThe operator's cars, looked up for you already — this is the same answer `
       + `search_vehicles would give with no filters, so there is no need to ask for it `
-      + `again unless you want a narrower set or you need to check dates:\n${input.fleetOnHand}`
+      + `again unless you want a narrower set or you need to check dates. The customer is `
+      + `shown these as a tappable list under your reply, with the name, colour, engine and `
+      + `rate of each, so naming them all again in the message repeats what is already in `
+      + `front of them — say something worth saying about them instead, and ask which one:`
+      + `\n${input.fleetOnHand}`
 
   return `${SYSTEM_PROMPT}${alreadySeen}${onHand}
 
