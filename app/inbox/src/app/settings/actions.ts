@@ -1,0 +1,63 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { isOperatorTimezone } from '@vyra/contracts'
+import { checkSettings, updateOperatorSettings, type SettingsProblem } from '@vyra/db'
+import { assertPermitted, permissions, requireActor } from '@/lib/auth'
+import { actorRunner } from '@/lib/db'
+
+export type SettingsState = { problems: SettingsProblem[]; saved: boolean }
+
+/**
+ * A blank field is "switched off" only where off is a real answer.
+ *
+ * Everywhere else a blank is somebody clearing a box to retype it and
+ * submitting by accident, and turning that into zero would chase a customer
+ * in the same second they stopped typing.
+ */
+function minutes(formData: FormData, field: string): number | null {
+  const raw = String(formData.get(field) ?? '').trim()
+  if (raw === '') return null
+  const value = Number(raw)
+  return Number.isFinite(value) ? Math.round(value) : Number.NaN
+}
+
+export async function saveSettings(
+  _previous: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canAdminister(actor), 'change the operator settings')
+
+  const timezone = String(formData.get('timezone') ?? '')
+  if (!isOperatorTimezone(timezone)) {
+    return { problems: [{ field: 'timezone', message: 'Choose a timezone from the list.' }], saved: false }
+  }
+
+  const owner = String(formData.get('fallbackOwnerMembershipId') ?? '').trim()
+
+  const update = {
+    name: String(formData.get('name') ?? ''),
+    timezone,
+    // The one setting where blank means off: an operator can decide a person
+    // handles it however long that takes.
+    aiResumesAfterMinutes: minutes(formData, 'aiResumesAfterMinutes'),
+    followUpAfterMinutes: minutes(formData, 'followUpAfterMinutes') ?? Number.NaN,
+    handoffSlaMinutes: minutes(formData, 'handoffSlaMinutes') ?? Number.NaN,
+    answerValidMinutes: minutes(formData, 'answerValidMinutes') ?? Number.NaN,
+    retentionDays: minutes(formData, 'retentionDays') ?? Number.NaN,
+    fallbackOwnerMembershipId: owner === '' ? null : owner,
+  }
+
+  const problems = checkSettings(update)
+  if (problems.length > 0) return { problems, saved: false }
+
+  await updateOperatorSettings(actorRunner(actor), {
+    ...update,
+    operatorId: actor.operatorId,
+    actorMembershipId: actor.membershipId,
+  })
+
+  revalidatePath('/settings')
+  return { problems: [], saved: true }
+}

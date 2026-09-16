@@ -104,7 +104,7 @@ export const operators = pgTable('operators', {
    * How long to wait before chasing a customer who has gone quiet.
    *
    * Separate from the follow-up *wording*, which comes from the published
-   * `follow-up-timing` policy. Timing is a setting and being slightly off is
+   * `follow-up-message` answer. Timing is a setting and being slightly off is
    * harmless; wording is an unprompted message with the operator's name on it,
    * and being off there is how a number gets reported. Four hours is a
    * placeholder until the operator answers.

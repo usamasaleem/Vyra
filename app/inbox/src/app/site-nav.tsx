@@ -23,6 +23,7 @@ const DESTINATIONS = [
   { key: 'knowledge', href: '/knowledge', label: 'Answers' },
   { key: 'reports', href: '/reports', label: 'Reports' },
   { key: 'team', href: '/team', label: 'Team' },
+  { key: 'settings', href: '/settings', label: 'Settings' },
 ] as const
 
 export type NavKey = (typeof DESTINATIONS)[number]['key']
