@@ -12,7 +12,7 @@ import {
  * The operator has published no follow-up policy. There is then no approved
  * wording, and the agent composing its own would be exactly the unapproved
  * automated follow-up the rule forbids. This is the common case today — the
- * `follow-up-timing` question is one of the six still unanswered.
+ * `follow-up-message` question is one of those still unanswered.
  *
  * The 24-hour window has closed. WhatsApp does not permit a free-form message
  * outside it at all; that needs a Meta-approved template, which this pilot does
@@ -24,28 +24,27 @@ import {
  */
 
 /**
- * How long to wait before the next chase, in minutes, indexed by the attempt
- * just sent.
+ * Each later chase as a multiple of the operator's own first gap.
  *
- * Shaped entirely by the 24-hour window. A free-form WhatsApp message is only
- * permitted within a day of the customer's last one, and this pilot has no
- * approved templates, so every chase has to fit inside that day or it is not a
- * chase at all — it is a task for a person.
+ * Fixed hours were wrong the moment the first gap changed. They were written
+ * around a four-hour opening chase; the pilot set it to ten minutes, because a
+ * customer who asks about a Huracán and goes quiet for ten minutes is still
+ * holding their phone, and six hours later they are not. A ladder in multiples
+ * moves with that instead of contradicting it.
  *
- * The first goes out four hours after the agent's reply. Six hours later, then
- * ten: twenty hours after the customer last wrote, with the window closing at
- * twenty-four. Three attempts is where it stops, because a fourth inside the
- * window would have to be so close to the third that it reads as pestering,
- * and outside it is not available at any spacing.
+ * Nothing caps the total. It does not need one: the 24-hour window is checked
+ * at the moment of sending, and a chase that has fallen outside it becomes a
+ * task for a person rather than a message. That check was already there and is
+ * the only thing that can be right about it, since the window is measured from
+ * the customer's last message and not from anything scheduled here.
  *
- * Before this there was exactly one. Nothing incremented `attempt`, so a
- * customer who went quiet was chased once and then never contacted again by
- * anything — which, with follow-ups the only automatic outbound message in the
- * system, meant the lead simply stopped existing.
+ * Three attempts. Before this there was one — `attempt` existed and nothing
+ * incremented it, so a customer who went quiet was chased once and then never
+ * contacted by anything again.
  */
-const NEXT_CHASE_AFTER_MINUTES: Record<number, number> = {
-  1: 6 * 60,
-  2: 10 * 60,
+const LATER_CHASES_AT: Record<number, number> = {
+  1: 6,
+  2: 12,
 }
 
 export type FollowUpSweep = {
@@ -118,8 +117,12 @@ export async function sendDueFollowUps(
      * conditions live inside scheduleFollowUp's own predicate, so a takeover,
      * an opt-out or a closed lead between now and then all stop it there.
      */
-    const gap = NEXT_CHASE_AFTER_MINUTES[item.attempt]
-    if (gap !== undefined) {
+    const multiple = LATER_CHASES_AT[item.attempt]
+    if (multiple !== undefined) {
+      const [operator] = await run(
+        `select follow_up_after_minutes from operators where id = $1`, [item.operatorId],
+      )
+      const gap = Number(operator?.['follow_up_after_minutes'] ?? 240) * multiple
       const next = await scheduleFollowUp(run, {
         operatorId: item.operatorId,
         conversationId: item.conversationId,

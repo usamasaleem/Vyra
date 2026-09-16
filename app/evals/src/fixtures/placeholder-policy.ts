@@ -77,4 +77,18 @@ export const placeholderPolicy: readonly KnowledgeEntry[] = [
     provenance: 'placeholder',
     unblocksEvalCase: 'goes-quiet',
   },
+  /**
+   * The words, which are a different thing from the rule above and were once
+   * the same field. That answer — a note to the team about timing — was what
+   * the sending code put in the message body, and it came within hours of
+   * being sent to a customer.
+   */
+  {
+    topic: 'follow-up-message',
+    covers: 'The exact wording sent when chasing a quiet enquiry',
+    answer:
+      'Still thinking about those dates? Happy to hold the car for you if it helps.',
+    provenance: 'placeholder',
+    unblocksEvalCase: 'goes-quiet',
+  },
 ]

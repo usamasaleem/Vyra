@@ -47,8 +47,14 @@ const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = 
     placeholder: 'Days and times, and what a customer should expect at 2am.',
   },
   'follow-up-timing': {
-    question: 'When should the agent chase a customer who has gone quiet, and what may it say?',
-    placeholder: 'How long to wait, how many times, and the wording you are happy to send.',
+    question: 'When should the agent chase a customer who has gone quiet?',
+    placeholder: 'How long to wait and how many times. Notes for your team, not a message.',
+  },
+  'follow-up-message': {
+    question: 'What exactly should it say when it chases?',
+    placeholder:
+      'The message itself, word for word. This is sent to the customer as you write it — '
+      + 'nothing rephrases it. "Still thinking about those dates? Happy to hold the car."',
   },
 }
 

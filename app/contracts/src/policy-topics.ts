@@ -19,7 +19,22 @@ export const POLICY_TOPICS = [
   'driver-requirements-visitor',
   'delivery-areas',
   'business-hours',
+  /**
+   * When to chase. A description of the rule, read by people.
+   *
+   * Distinct from `follow-up-message` below, and they were not always. The
+   * sending code took this answer and used it as the body of the message,
+   * which is fine while the operator happens to have written a sentence that
+   * reads as one and a catastrophe otherwise. The pilot's said "Follow up once
+   * after four hours if the customer has not replied, and once more the
+   * following day" — and that was three hours from being sent to a customer on
+   * the operator's own number.
+   *
+   * One field cannot be both the rule and the words. So it is two.
+   */
   'follow-up-timing',
+  /** The words themselves, sent verbatim. Nothing composes this. */
+  'follow-up-message',
 ] as const
 
 export type PolicyTopic = (typeof POLICY_TOPICS)[number]

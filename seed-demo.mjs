@@ -21,7 +21,11 @@ const ANSWERS = {
   'driver-requirements-visitor': 'Visitors need their passport, UAE entry stamp or visa, a licence from their home country together with an International Driving Permit, and a credit card in the driver’s own name. Minimum age is 23 for luxury vehicles and 25 for exotic vehicles.',
   'delivery-areas': 'Delivery and collection anywhere in Dubai is complimentary. Abu Dhabi and Sharjah are AED 300 each way. Other emirates are arranged case by case. Cross-emirate travel during the rental is permitted and must be mentioned when booking.',
   'business-hours': 'The showroom is open 09:00–21:00 Sunday to Thursday and 10:00–22:00 Friday and Saturday, Dubai time. Messages received outside those hours are answered when the team is next in, usually first thing in the morning.',
-  'follow-up-timing': 'Follow up once after four hours if the customer has not replied, and once more the following day. Stop after that unless the customer responds.',
+  'follow-up-timing': 'Follow up once after ten minutes if the customer has not replied, then twice more at widening gaps, all within the day. Stop after that unless the customer responds.',
+  // The message itself, sent word for word. Kept separate from the rule above
+  // because the rule is a note to the team and this is a sentence a customer
+  // reads — and for a while the sending code used the rule as the message.
+  'follow-up-message': 'Still thinking about those dates? Happy to hold the car for you if it helps.',
 }
 
 const env = Object.fromEntries(

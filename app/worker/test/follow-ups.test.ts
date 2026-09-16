@@ -59,7 +59,7 @@ beforeEach(async () => {
   // Without an approved policy there is no wording to send, and every chase
   // becomes a task for a person instead. That path is the operator's to fix.
   const draft = await draftKnowledge(run, {
-    operatorId: OP, topic: 'follow-up-timing',
+    operatorId: OP, topic: 'follow-up-message',
     answer: 'Just checking whether you are still looking at those dates.',
     confirmedBy: 'Owner',
   })
@@ -98,28 +98,45 @@ describe('chasing more than once', () => {
   })
 
   /**
-   * The gaps are shaped by the 24-hour window rather than by taste: four hours
-   * after the reply, then six, then ten is twenty hours after the customer last
-   * wrote, with the window closing at twenty-four.
+   * The later gaps are multiples of the operator's own first one, so an
+   * operator who wants a ten-minute nudge gets an hour and two hours after it
+   * rather than the six and ten that a four-hour opening chase implied.
    */
-  it('leaves six hours before the second and ten before the third', async () => {
+  it('scales the later gaps to the operator own first gap', async () => {
+    await run(`update operators set follow_up_after_minutes = 10 where id = $1`, [OP])
     await scheduleDue(1)
     await sendDueFollowUps(run, silently)
 
     const [second] = await run(
-      `select round(extract(epoch from due_at - now()) / 3600)::int as hours
+      `select round(extract(epoch from due_at - now()) / 60)::int as minutes
        from follow_ups where attempt = 2`, [],
     )
-    expect(second!['hours']).toBe(6)
+    expect(second!['minutes']).toBe(60)
 
     await run(`update follow_ups set due_at = now() - interval '1 minute' where attempt = 2`, [])
     await sendDueFollowUps(run, silently)
 
     const [third] = await run(
-      `select round(extract(epoch from due_at - now()) / 3600)::int as hours
+      `select round(extract(epoch from due_at - now()) / 60)::int as minutes
        from follow_ups where attempt = 3`, [],
     )
-    expect(third!['hours']).toBe(10)
+    expect(third!['minutes']).toBe(120)
+  })
+
+  /**
+   * The wording is a different published answer from the rule about timing,
+   * and they were the same field until a note to the team — "follow up once
+   * after four hours" — came within hours of being sent to a customer.
+   */
+  it('sends nothing at all when only the timing rule is published', async () => {
+    await run(
+      `update knowledge_entries set topic = 'follow-up-timing' where topic = 'follow-up-message'`,
+      [],
+    )
+    await scheduleDue(1)
+
+    const swept = await sendDueFollowUps(run, silently)
+    expect(swept).toMatchObject({ sent: 0, raisedForAPerson: 1 })
   })
 
   /**

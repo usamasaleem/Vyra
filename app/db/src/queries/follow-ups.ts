@@ -120,7 +120,10 @@ export async function findDueFollowUps(
      join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
      left join lateral (
        select answer from knowledge_entries
-       where operator_id = f.operator_id and topic = 'follow-up-timing'
+       -- The wording, not the rule. 'follow-up-timing' describes when to chase
+       -- and was briefly what got sent, which is how a policy note came within
+       -- hours of reaching a customer.
+       where operator_id = f.operator_id and topic = 'follow-up-message'
          and published_at is not null
          and effective_from <= now() and (effective_to is null or effective_to > now())
        order by version desc limit 1

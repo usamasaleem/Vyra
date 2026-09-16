@@ -449,7 +449,12 @@ export async function runConversationTurn(
    */
   const subject = fleet.length === 1
     ? { make: fleet[0]!.make, model: fleet[0]!.model }
-    : asked && photosShown.length === 1
+    // Only when the search found nothing at all. A search that came back with
+    // three cars has told us the turn is not about one of them, and narrowing
+    // to the single car this customer happens to have seen is worse than
+    // having no subject: "show me your cars" answered with the Huracán again,
+    // which is what it did live.
+    : fleet.length === 0 && asked && photosShown.length === 1
     ? { make: photosShown[0]!.make, model: photosShown[0]!.model }
     : null
 
