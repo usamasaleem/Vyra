@@ -60,6 +60,23 @@ export const handoffs = pgTable(
     /** Set once the fallback owner has been told nobody picked it up. */
     escalatedAt: timestamp({ withTimezone: true }),
 
+    /**
+     * Who was told, which is not who owns it.
+     *
+     * `ownerMembershipId` stays null on escalation on purpose — section 18.11
+     * wants the item to stay in everyone's queue, and quietly handing it to one
+     * person takes it out of everyone else's view, which is the same failure as
+     * nobody seeing it with an extra step. But "escalated and unassigned" read
+     * identically to "escalated into thin air", and in the pilot it was the
+     * second one: no fallback owner was ever configured, so the escalation
+     * became a log line and a customer waited forty-five hours.
+     *
+     * So the person alerted is recorded separately. The queue can say who is
+     * expected to act without taking it away from anyone, and an escalation
+     * that named nobody becomes visible as a fact rather than as an absence.
+     */
+    escalatedToMembershipId: uuid(),
+
     resolvedAt: timestamp({ withTimezone: true }),
     /** Why it closed: accepted and handled, or the customer went quiet. */
     resolution: text(),
@@ -80,6 +97,11 @@ export const handoffs = pgTable(
       columns: [table.ownerMembershipId, table.operatorId],
       foreignColumns: [memberships.id, memberships.operatorId],
       name: 'handoffs_owner_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.escalatedToMembershipId, table.operatorId],
+      foreignColumns: [memberships.id, memberships.operatorId],
+      name: 'handoffs_escalated_to_operator_fkey',
     }),
     /**
      * One open handoff per conversation.

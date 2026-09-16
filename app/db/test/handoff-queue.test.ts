@@ -204,7 +204,8 @@ describe('when nobody accepts', () => {
     const escalated = await escalateOverdueHandoffs(run)
     expect(escalated).toHaveLength(1)
     expect(escalated[0]).toMatchObject({
-      fallbackOwnerMembershipId: MANAGER,
+      escalatedToMembershipId: MANAGER,
+      ownerWasImplied: false,
       reason: 'customer_asked',
     })
     expect(escalated[0]!.minutesLate).toBeGreaterThanOrEqual(5)
@@ -243,16 +244,61 @@ describe('when nobody accepts', () => {
   })
 
   /**
-   * An operator who never named a fallback owner should find out from a warning
-   * rather than from a customer who waited all night, so this reports rather
-   * than skipping.
+   * The pilot's forty-five hour silence, in one test.
+   *
+   * Nobody configured a fallback owner, so the escalation named null, so the
+   * only thing that happened was a log line nobody read. An operator always has
+   * at least one member; there is always somebody to name.
    */
-  it('still reports when no fallback owner is configured', async () => {
+  it('names somebody even when no fallback owner is configured', async () => {
     await raise()
     await makeOverdue()
     const escalated = await escalateOverdueHandoffs(run)
     expect(escalated).toHaveLength(1)
-    expect(escalated[0]!.fallbackOwnerMembershipId).toBeNull()
+    expect(escalated[0]!.escalatedToMembershipId).not.toBeNull()
+    // Still worth saying that we chose rather than they did.
+    expect(escalated[0]!.ownerWasImplied).toBe(true)
+  })
+
+  it('prefers an admin over a manager when choosing for them', async () => {
+    const ADMIN = '44444444-4444-4444-4444-4444444444dd'
+    await run(
+      `insert into memberships (id, operator_id, user_id, role)
+       values ($1, $2, '10000000-0000-0000-0000-000000000004', 'admin')`,
+      [ADMIN, OP],
+    )
+    await raise()
+    await makeOverdue()
+    expect((await escalateOverdueHandoffs(run))[0]!.escalatedToMembershipId).toBe(ADMIN)
+  })
+
+  it('never chooses somebody who has left the team', async () => {
+    await run(`update memberships set active = false where operator_id = $1 and id <> $2`, [OP, SARA])
+    await raise()
+    await makeOverdue()
+    expect((await escalateOverdueHandoffs(run))[0]!.escalatedToMembershipId).toBe(SARA)
+  })
+
+  /**
+   * The operator's own choice outranks ours even when ours would look better.
+   */
+  it('keeps the configured owner over a more senior member', async () => {
+    await run(`update operators set fallback_owner_membership_id = $1 where id = $2`, [SARA, OP])
+    await raise()
+    await makeOverdue()
+    const escalated = await escalateOverdueHandoffs(run)
+    expect(escalated[0]).toMatchObject({ escalatedToMembershipId: SARA, ownerWasImplied: false })
+  })
+
+  /** Named on the row, not only in the return value the worker logs. */
+  it('records who was told on the handoff itself', async () => {
+    await raise()
+    await makeOverdue()
+    await escalateOverdueHandoffs(run)
+    const [row] = await run(
+      `select escalated_to_membership_id from handoffs where conversation_id = $1`, [CONV],
+    )
+    expect(row!['escalated_to_membership_id']).toBe(MANAGER)
   })
 
   it('can still be accepted after escalating', async () => {

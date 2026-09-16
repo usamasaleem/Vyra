@@ -88,7 +88,10 @@ export type ReopenedConversation = {
   handoffId: string
   conversationId: string
   waitingMinutes: number
+  /** Who dropped it. Kept on purpose — that is part of what this records. */
   ownerMembershipId: string | null
+  /** Who was told they dropped it. */
+  escalatedToMembershipId: string | null
 }
 
 export async function escalateAbandonedConversations(
@@ -110,7 +113,17 @@ export async function escalateAbandonedConversations(
          and c.opted_out_at is null
      )
      update handoffs h
-     set state = 'escalated', escalated_at = now(), updated_at = now()
+     set state = 'escalated', escalated_at = now(), updated_at = now(),
+         -- Named for the same reason as the overdue sweep: an escalation
+         -- nobody is pointed at is indistinguishable from no escalation.
+         -- The operator's choice, else the longest-standing active admin.
+         escalated_to_membership_id = coalesce(
+           (select op.fallback_owner_membership_id from operators op
+             where op.id = h.operator_id),
+           (select m.id from memberships m
+             where m.operator_id = h.operator_id and m.active
+             order by (m.role = 'admin') desc, (m.role = 'manager') desc, m.created_at
+             limit 1))
      from waiting w
      where h.conversation_id = w.conversation_id
        and h.operator_id = w.operator_id
@@ -119,6 +132,7 @@ export async function escalateAbandonedConversations(
        -- the customer is waiting on rather than from when it was accepted.
        and w.waiting_since < now() - make_interval(mins => w.handoff_sla_minutes)
      returning h.id, h.conversation_id, h.owner_membership_id,
+               h.escalated_to_membership_id,
                round(extract(epoch from now() - w.waiting_since) / 60)::int as waiting_minutes`,
     [],
   )
@@ -128,6 +142,7 @@ export async function escalateAbandonedConversations(
     conversationId: r['conversation_id'] as string,
     waitingMinutes: Number(r['waiting_minutes']),
     ownerMembershipId: (r['owner_membership_id'] as string) ?? null,
+    escalatedToMembershipId: (r['escalated_to_membership_id'] as string) ?? null,
   }))
 }
 

@@ -117,6 +117,39 @@ describe('escalateAbandonedConversations', () => {
     expect(row).toMatchObject({ state: 'escalated', owner_membership_id: SARA })
   })
 
+  /**
+   * Reopening it is only half the job. An escalation pointed at nobody is what
+   * left a customer waiting forty-five hours in the pilot, and it read exactly
+   * like an escalation somebody was chasing.
+   */
+  it('names who was told, even with no fallback owner configured', async () => {
+    await acceptedHandoff()
+    await say('inbound', 'any update?', 45)
+
+    const [reopened] = await escalateAbandonedConversations(run)
+    expect(reopened!.escalatedToMembershipId).not.toBeNull()
+  })
+
+  it('tells the operator\u2019s chosen person when there is one', async () => {
+    const MANAGER = '44444444-4444-4444-4444-4444444444cc'
+    await run(
+      `insert into memberships (id, operator_id, user_id, role)
+       values ($1, $2, '10000000-0000-0000-0000-000000000009', 'manager')`,
+      [MANAGER, OP],
+    )
+    await run(`update operators set fallback_owner_membership_id = $1 where id = $2`, [MANAGER, OP])
+    await acceptedHandoff()
+    await say('inbound', 'any update?', 45)
+
+    const [reopened] = await escalateAbandonedConversations(run)
+    expect(reopened).toMatchObject({
+      // The person who dropped it and the person told about it are different
+      // facts, and the row keeps both.
+      ownerMembershipId: SARA,
+      escalatedToMembershipId: MANAGER,
+    })
+  })
+
   it('leaves it alone while the customer is still inside the SLA', async () => {
     await acceptedHandoff()
     await say('inbound', 'any update?', 5)

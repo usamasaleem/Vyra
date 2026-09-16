@@ -148,9 +148,11 @@ export async function getSetupState(
     {
       key: 'fallback',
       title: 'Name who hears about an unanswered handoff',
-      why: 'When nobody accepts a handoff in time, the escalation goes to this person. With nobody named it is written to a log and reaches no one.',
+      why: 'When nobody accepts a handoff in time, the escalation goes to this person. Leave it and it goes to your longest-standing admin, which is a guess at what you would have chosen.',
       done: row?.['fallback_owner_membership_id'] != null,
-      detail: row?.['fallback_owner_membership_id'] == null ? 'Nobody named.' : null,
+      detail: row?.['fallback_owner_membership_id'] == null
+        ? 'Nobody named — escalations are going to your longest-standing admin.'
+        : null,
       href: '/settings',
       blocking: false,
     },

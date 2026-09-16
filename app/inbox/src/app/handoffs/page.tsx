@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { SiteNav } from '../site-nav'
-import { formatDuration, getNavCounts, listOpenHandoffs } from '@vyra/db'
+import { formatDuration, getNavCounts, listMembers, listOpenHandoffs } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { AcceptButton } from './accept-button'
@@ -48,10 +48,23 @@ export default async function HandoffsPage({
 }) {
   const actor = await requireActor()
   const filters = await searchParams
-  const [counts, handoffs] = await actorReads(actor, (run) => Promise.all([
+  const [counts, handoffs, members] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     listOpenHandoffs(run, actor.operatorId, { unclaimedOnly: filters.mine !== 'all' }),
+    listMembers(run, actor.operatorId),
   ]))
+
+  /**
+   * Who an escalation named, as a person rather than a uuid.
+   *
+   * The email rather than a display name because that is what the team page
+   * shows and what an invitation was sent to; there is no other name on file.
+   */
+  const nameOf = (membershipId: string | null): string | null => {
+    if (membershipId === null) return null
+    const member = members.find((m) => m.membershipId === membershipId)
+    return member?.email ?? null
+  }
 
   return (
     <main className="shell">
@@ -106,7 +119,18 @@ export default async function HandoffsPage({
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
                   <span className="tag">{REASON_LABEL[h.reason] ?? h.reason.replace(/_/g, ' ')}</span>
                   {h.priority !== 'normal' && <span className="tag">{h.priority}</span>}
-                  {h.escalatedAt !== null && <span className="tag">escalated</span>}
+                  {h.escalatedAt !== null && (
+                    /*
+                     * Named, not just marked. "Escalated" on its own was true
+                     * of a handoff that reached nobody for forty-five hours,
+                     * and read exactly the same as one somebody was chasing.
+                     */
+                    <span className="tag">
+                      {nameOf(h.escalatedToMembershipId) === null
+                        ? 'escalated to nobody'
+                        : `escalated to ${nameOf(h.escalatedToMembershipId)}`}
+                    </span>
+                  )}
                   <span className="tag">waiting {formatDuration(h.waitingSinceMinutes * 60)}</span>
                 </div>
 

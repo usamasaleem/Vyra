@@ -190,42 +190,84 @@ export type Escalation = {
   priority: string
   reason: string
   minutesLate: number
-  /** Null when the operator has not named one — the caller must say so loudly. */
-  fallbackOwnerMembershipId: string | null
+  /** Who was told. Null only for an operator with no active members at all. */
+  escalatedToMembershipId: string | null
+  /**
+   * True when the operator never named a fallback and we chose for them.
+   *
+   * Worth logging — the setting is still theirs to make — but no longer worth
+   * panicking about, because somebody was told either way.
+   */
+  ownerWasImplied: boolean
 }
+
+/**
+ * The person an escalation goes to.
+ *
+ * The operator's own choice first. Failing that, the longest-standing active
+ * admin, because an operator cannot exist without the person who signed it up
+ * and that person can always be found. `order by role = 'admin' desc` before
+ * `created_at` so a manager is preferred over nobody but an admin over both.
+ *
+ * Deliberately not a stored default. Writing one at signup would be correct
+ * exactly once and then drift every time the team changed; resolved at the
+ * moment of escalation it is right for the team as it stands tonight.
+ */
+const FALLBACK_OWNER = `
+  coalesce(
+    op.fallback_owner_membership_id,
+    (select m.id from memberships m
+      where m.operator_id = op.id and m.active
+      order by (m.role = 'admin') desc, (m.role = 'manager') desc, m.created_at
+      limit 1)
+  )`
 
 /**
  * Handoffs nobody accepted in time.
  *
- * Escalating marks them and names the fallback owner; it does not reassign.
+ * Escalating marks them and names the person to chase; it does not reassign.
  * Section 18.11 wants the queue item to stay visible, and silently handing it
  * to one person removes it from everyone else's view — which is the same
- * failure as nobody seeing it, with an extra step.
+ * failure as nobody seeing it, with an extra step. So `owner_membership_id`
+ * stays null and `escalated_to_membership_id` carries the name.
  *
- * A null fallback owner is returned rather than skipped. An operator who never
- * named one should learn it from a warning in their logs, not from a customer
- * who waited all night.
+ * Until tonight a null fallback owner was returned rather than resolved, on the
+ * reasoning that an operator who never named one should learn it from a warning
+ * in their logs rather than from a customer who waited all night. The pilot ran
+ * both experiments at once and the log won: nobody configured a fallback,
+ * nobody read the warning, and a customer who had been promised a person waited
+ * forty-five hours. The setting was built, the checklist asked for it, and the
+ * consequence of skipping it landed on the customer.
+ *
+ * An operator always has at least one active member. So now there is always
+ * somebody to name, the choice is still the operator's to make, and skipping it
+ * costs them a better answer rather than any answer at all.
  */
 export async function escalateOverdueHandoffs(run: QueryRunner): Promise<Escalation[]> {
   const rows = await run(
     `with overdue as (
        update handoffs h
-       set state = 'escalated', escalated_at = now(), updated_at = now()
+       set state = 'escalated', escalated_at = now(), updated_at = now(),
+           escalated_to_membership_id = (
+             select ${FALLBACK_OWNER} from operators op where op.id = h.operator_id
+           )
        where h.state = 'waiting' and h.due_at < now()
        returning h.id, h.operator_id, h.conversation_id, h.summary,
-                 h.priority, h.reason, h.due_at
+                 h.priority, h.reason, h.due_at, h.escalated_to_membership_id
      ),
      audited as (
        insert into audit_events (operator_id, actor_type, action, subject_type, subject_id, data)
        select o.operator_id, 'system', 'handoff.escalated', 'handoff', o.id,
-              jsonb_build_object('due_at', o.due_at)
+              jsonb_build_object('due_at', o.due_at,
+                                 'escalated_to', o.escalated_to_membership_id)
        from overdue o
        returning id
      )
      select o.id, o.conversation_id, o.summary, o.priority::text as priority,
             o.reason::text as reason,
             extract(epoch from now() - o.due_at)::int / 60 as minutes_late,
-            op.fallback_owner_membership_id
+            o.escalated_to_membership_id,
+            op.fallback_owner_membership_id is null as owner_was_implied
      from overdue o
      join operators op on op.id = o.operator_id`,
     [],
@@ -238,7 +280,8 @@ export async function escalateOverdueHandoffs(run: QueryRunner): Promise<Escalat
     priority: r['priority'] as string,
     reason: r['reason'] as string,
     minutesLate: Number(r['minutes_late'] ?? 0),
-    fallbackOwnerMembershipId: (r['fallback_owner_membership_id'] as string) ?? null,
+    escalatedToMembershipId: (r['escalated_to_membership_id'] as string) ?? null,
+    ownerWasImplied: r['owner_was_implied'] === true,
   }))
 }
 
@@ -269,6 +312,8 @@ export type QueuedHandoff = {
   minutesRemaining: number
   escalatedAt: Date | null
   ownerMembershipId: string | null
+  /** Who the escalation named. Read with `escalatedAt`, not on its own. */
+  escalatedToMembershipId: string | null
   customerName: string | null
   whatsappNumber: string
   /** The customer's last message, so the queue can be read without opening each one. */
@@ -287,7 +332,7 @@ export type QueuedHandoff = {
 const QUEUE_SQL = `
   select h.id, h.conversation_id, h.reason::text as reason, h.summary,
          h.priority::text as priority, h.state::text as state, h.due_at,
-         h.escalated_at, h.owner_membership_id,
+         h.escalated_at, h.owner_membership_id, h.escalated_to_membership_id,
          extract(epoch from h.due_at - now())::int / 60 as minutes_remaining,
          extract(epoch from now() - h.created_at)::int / 60 as waiting_since_minutes,
          c.display_name, c.channel_identifier,
@@ -339,6 +384,7 @@ export async function listOpenHandoffs(
     minutesRemaining: Number(r['minutes_remaining'] ?? 0),
     escalatedAt: r['escalated_at'] == null ? null : new Date(r['escalated_at'] as string),
     ownerMembershipId: (r['owner_membership_id'] as string) ?? null,
+    escalatedToMembershipId: (r['escalated_to_membership_id'] as string) ?? null,
     customerName: (r['display_name'] as string) ?? null,
     whatsappNumber: r['channel_identifier'] as string,
     lastCustomerMessage: (r['last_customer_message'] as string) ?? null,

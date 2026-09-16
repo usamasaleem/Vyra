@@ -135,7 +135,7 @@ export function SettingsForm({
         <Field
           name="fallbackOwnerMembershipId"
           label="Who to escalate to"
-          hint="Who hears about it when nobody accepts. With nobody named, the escalation is written to a log and reaches no one — which is the state this operator has been in."
+          hint="Who hears about it when nobody accepts. Leave it blank and escalations go to your longest-standing admin, which is a guess at who you would have picked."
         >
           <select
             className="input" id="fallbackOwnerMembershipId" name="fallbackOwnerMembershipId"

@@ -201,11 +201,12 @@ async function relayLoop(): Promise<void> {
             reason: late.reason,
             priority: late.priority,
             minutesLate: late.minutesLate,
-            fallbackOwner: late.fallbackOwnerMembershipId,
-            // Loud on purpose. An operator with no fallback owner should learn
-            // it here rather than from a customer who waited all night.
-            warning: late.fallbackOwnerMembershipId === null
-              ? 'no fallback owner configured for this operator'
+            escalatedTo: late.escalatedToMembershipId,
+            // Still worth saying — naming someone is the operator's call and a
+            // longest-standing admin is a guess at it. But it is now a nudge
+            // rather than the sound of an escalation hitting nobody.
+            note: late.ownerWasImplied
+              ? 'no fallback owner configured — escalated to the longest-standing admin'
               : undefined,
           })
         }
@@ -229,6 +230,7 @@ async function relayLoop(): Promise<void> {
             conversation: stalled.conversationId,
             waitingMinutes: stalled.waitingMinutes,
             owner: stalled.ownerMembershipId,
+            escalatedTo: stalled.escalatedToMembershipId,
           })
         }
 
