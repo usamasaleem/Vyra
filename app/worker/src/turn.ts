@@ -1,6 +1,7 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  FULL_RANGE_LABEL, invitesACarChoice, mightNeedTheFleet, offersTheFullRange, usableWebsite,
+  carChosenIn, FULL_RANGE_LABEL, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
+  usableWebsite,
   vehicleList,
 } from '@vyra/contracts'
 
@@ -865,16 +866,44 @@ const FLEET_CARDS = 6
    * from the Huracán to the Cullinan leaves both rows and a correction that
    * can be read back.
    */
-  if (subject !== null) {
-    const named = [subject.make, subject.model].join(' ')
+  /**
+   * Only when the customer settled on it, or when nothing was on file.
+   *
+   * The first version of this recorded whichever car the turn was about, and
+   * watching it run was the correction: across four messages the enquiry went
+   * Huracán, Cullinan, then back to Huracán — the last because somebody asked
+   * "it's popular as compared to lambo?" and the lambo got looked up. A
+   * comparison is not a choice and a car the agent mentions is not a car the
+   * customer picked.
+   *
+   * Thrashing is worse than the staleness it was meant to fix. A stale value
+   * is at least something the customer once said; a thrashed one is whichever
+   * car came up last, and prepare_quote prices from it.
+   *
+   * So: their own words settling on one car, or filling a field nobody has
+   * filled. Everything else waits for the model to say so through the tool,
+   * which is the right place for a judgement that needs reading a sentence.
+   */
+  const onFile = await getEnquiryFields(deps.run, context.operator.id, enquiryId)
+    .catch(() => [])
+
+  const settledOn = carChosenIn(context.message.body, fleet)
+  const noVehicleYet = !onFile.some((f) => f.field === 'vehicle')
+  const vehicleToRecord = settledOn !== null
+    ? `${settledOn.make} ${settledOn.model}`
+    : noVehicleYet && subject !== null
+    ? `${subject.make} ${subject.model}`
+    : null
+
+  if (vehicleToRecord !== null) {
     await recordFields(deps.transact, {
       operatorId: context.operator.id,
       enquiryId,
       observations: [{
         field: 'vehicle',
-        value: named,
+        value: vehicleToRecord,
         sourceMessageId: context.message.id,
-        verificationState: 'system_verified',
+        verificationState: settledOn !== null ? 'customer_stated' : 'system_verified',
       }],
     }).catch((error: unknown) => {
       console.error(JSON.stringify({
@@ -894,9 +923,6 @@ const FLEET_CARDS = 6
    * it had got — which made the qualification rate on the reports page
    * structurally zero.
    */
-  const onFile = await getEnquiryFields(deps.run, context.operator.id, enquiryId)
-    .catch(() => [])
-
   await advanceStage(deps.run, {
     operatorId: context.operator.id,
     conversationId: context.conversation.id,

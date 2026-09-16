@@ -1208,7 +1208,8 @@ describe('what a turn remembers about the enquiry', () => {
       `select value from field_evidence where field = 'vehicle' and superseded_at is null`, [],
     ))[0]?.['value'] ?? null
 
-  it('records the car it just talked about, without being asked', async () => {
+  /** Filling a field nobody has filled, which is the gap this started as. */
+  it('records the car it just talked about when nothing is on file', async () => {
     await addCars()
     const ctx = await asking('the lambo')
 
@@ -1221,7 +1222,7 @@ describe('what a turn remembers about the enquiry', () => {
    * The failure this exists for: a customer who moves from one car to another
    * and an enquiry that still names the first.
    */
-  it('supersedes the car when the conversation moves on', async () => {
+  it('supersedes the car when the customer settles on another', async () => {
     await addCars()
     await turn(
       [{ toolCalls: [], reply: 'The Lamborghini Huracán — a lovely thing.' }],
@@ -1229,13 +1230,48 @@ describe('what a turn remembers about the enquiry', () => {
     )
     await turn(
       [{ toolCalls: [], reply: 'The Rolls-Royce Cullinan it is.' }],
-      'send', await asking('cullinan please'),
+      'send', await asking('actually the cullinan'),
     )
 
     expect(await vehicleOnFile()).toBe('Rolls-Royce Cullinan')
     // Superseded rather than overwritten: what they said first is still there.
     const history = await run(`select value from field_evidence where field = 'vehicle'`, [])
     expect(history).toHaveLength(2)
+  })
+
+  /**
+   * The correction that came from watching it run. Across four messages the
+   * enquiry went Huracán, Cullinan, then back to Huracán — the last because
+   * somebody asked "it's popular as compared to lambo?" and the lambo got
+   * looked up. A comparison is not a choice.
+   */
+  it('does not change the car because one was mentioned in passing', async () => {
+    await addCars()
+    await turn(
+      [{ toolCalls: [], reply: 'The Rolls-Royce Cullinan it is.' }],
+      'send', await asking('actually the cullinan'),
+    )
+    await turn(
+      [{ toolCalls: [], reply: 'The Cullinan is the more popular of the two.' }],
+      'send', await asking('is it popular compared to the lambo?'),
+    )
+
+    expect(await vehicleOnFile()).toBe('Rolls-Royce Cullinan')
+  })
+
+  /** Asking to see a car is browsing, not picking. */
+  it('does not change the car because they asked to see another', async () => {
+    await addCars()
+    await turn(
+      [{ toolCalls: [], reply: 'The Rolls-Royce Cullinan it is.' }],
+      'send', await asking('actually the cullinan'),
+    )
+    await turn(
+      [{ toolCalls: [], reply: 'Here is the Huracán.' }],
+      'send', await asking('can i see the lambo'),
+    )
+
+    expect(await vehicleOnFile()).toBe('Rolls-Royce Cullinan')
   })
 
   /** A reply about no car in particular establishes nothing. */
