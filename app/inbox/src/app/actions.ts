@@ -17,6 +17,7 @@ import {
   setPriority,
   takeOverConversation,
 } from '@vyra/db'
+import { complaintAboutImage } from '@vyra/contracts'
 import { revalidatePath } from 'next/cache'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner } from '@/lib/db'
@@ -385,6 +386,43 @@ export async function saveRate(
 export type PhotoState = { error: string | null }
 
 /**
+ * Does this link actually serve a picture?
+ *
+ * Until now the answer was found out by a customer. The shape of the URL was
+ * checked here and the fetch was left to WhatsApp, so a photograph that had
+ * moved, or sat behind hotlink protection, or was a webp, became a message that
+ * silently arrived with nothing in it — and nothing in this system knew.
+ *
+ * Deliberately generous about failure: a host that refuses HEAD is common
+ * enough that treating it as a broken link would block real photographs, so it
+ * falls back to asking for the first byte. A network failure here is reported
+ * as a network failure rather than as a bad link, because the difference
+ * matters to whoever has to fix it.
+ */
+async function servesAPicture(url: string): Promise<string | null> {
+  const attempt = async (init: RequestInit): Promise<Response> =>
+    await fetch(url, { ...init, redirect: 'follow', signal: AbortSignal.timeout(8000) })
+
+  let response: Response
+  try {
+    response = await attempt({ method: 'HEAD' })
+    // Plenty of CDNs answer HEAD with a refusal and a GET with the file.
+    if (response.status === 403 || response.status === 405 || response.status === 501) {
+      response = await attempt({ method: 'GET', headers: { Range: 'bytes=0-0' } })
+    }
+  } catch {
+    return 'could not be reached. If the link is right, try saving again.'
+  }
+
+  return complaintAboutImage({
+    status: response.status,
+    contentType: response.headers.get('content-type'),
+    contentLength: response.headers.get('content-length'),
+    contentRange: response.headers.get('content-range'),
+  })
+}
+
+/**
  * Photographs of a car, as public links.
  *
  * https only, and checked here rather than trusted: WhatsApp fetches the image
@@ -412,6 +450,20 @@ export async function savePhotos(_previous: PhotoState, formData: FormData): Pro
     } catch {
       return { error: `"${url.slice(0, 40)}" is not a valid address.` }
     }
+  }
+
+  /**
+   * Fetched together rather than one at a time — six links checked in sequence
+   * is six timeouts in the worst case, and a save that takes a minute is a save
+   * somebody stops making. The first complaint is the one reported, so the
+   * message names one link to fix rather than listing all of them.
+   */
+  const verdicts = await Promise.all(urls.map(servesAPicture))
+  const broken = verdicts.findIndex((v) => v !== null)
+  if (broken !== -1) {
+    const url = urls[broken]!
+    const shown = url.length > 52 ? `${url.slice(0, 49)}…` : url
+    return { error: `"${shown}" ${verdicts[broken]!}` }
   }
 
   /**

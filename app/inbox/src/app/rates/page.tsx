@@ -24,6 +24,16 @@ export default async function RatesPage() {
   const canEdit = permissions.canAdminister(actor)
   const unpriced = rates.filter((r) => r.dailyRateMinor === null).length
 
+  /**
+   * The line-up needs two photographed cars, and says so here.
+   *
+   * "What have you got?" answers with a picture of each car, and the reply
+   * falls back to a text list below two of them. The operator had one car with
+   * photographs and no way to know that was the reason — the feature was simply
+   * absent, which is indistinguishable from not existing.
+   */
+  const photographed = rates.filter((r) => r.photoUrls.length > 0).length
+
   return (
     <main className="shell">
       <SiteNav current="rates" counts={counts} />
@@ -38,6 +48,16 @@ export default async function RatesPage() {
         <p className="card" style={{ borderLeft: '3px solid var(--accent, #b45309)' }}>
           {unpriced} vehicle{unpriced === 1 ? ' has' : 's have'} no rate. The agent will refuse to
           quote {unpriced === 1 ? 'it' : 'them'}.
+        </p>
+      )}
+
+      {rates.length > 0 && photographed < 2 && (
+        <p className="card" style={{ borderLeft: '3px solid var(--accent, #b45309)' }}>
+          {photographed === 0
+            ? 'No car has photographs.'
+            : 'One car has photographs.'}{' '}
+          A customer asking what you have is answered with a picture of each car once two of
+          them have one — until then they get a list of names.
         </p>
       )}
 

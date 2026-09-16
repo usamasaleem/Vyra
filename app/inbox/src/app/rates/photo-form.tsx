@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
+import { hostsOf } from '@vyra/contracts'
 import { savePhotos, type PhotoState } from '../actions'
 
 /**
@@ -13,6 +14,7 @@ import { savePhotos, type PhotoState } from '../actions'
  */
 export function PhotoForm({ vehicleId, current }: { vehicleId: string; current: string[] }) {
   const [state, action, pending] = useActionState<PhotoState, FormData>(savePhotos, { error: null })
+  const hosts = hostsOf(current)
 
   return (
     <form action={action} className="stack" style={{ gap: '0.5rem', marginTop: '0.9rem' }}>
@@ -37,6 +39,7 @@ export function PhotoForm({ vehicleId, current }: { vehicleId: string; current: 
         {current.length > 0 && (
           <span className="muted" style={{ fontSize: '0.8rem' }}>
             {current.length} saved
+            {hosts.length > 0 && <> · served from {hosts.join(', ')}</>}
           </span>
         )}
         {state.error !== null && <span className="notice">{state.error}</span>}
