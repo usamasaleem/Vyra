@@ -35,6 +35,14 @@ export const POLICY_TOPICS = [
   'follow-up-timing',
   /** The words themselves, sent verbatim. Nothing composes this. */
   'follow-up-message',
+  /**
+   * And the second chase, which has to say something the first did not.
+   *
+   * One answer reused for every attempt is what produced two identical
+   * messages thirty minutes apart. A machine repeats itself; a salesperson
+   * following up has a new reason to be in touch.
+   */
+  'follow-up-message-2',
 ] as const
 
 export type PolicyTopic = (typeof POLICY_TOPICS)[number]

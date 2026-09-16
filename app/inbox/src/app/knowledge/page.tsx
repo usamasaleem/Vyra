@@ -56,6 +56,13 @@ const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = 
       'The message itself, word for word. This is sent to the customer as you write it — '
       + 'nothing rephrases it. "Still thinking about those dates? Happy to hold the car."',
   },
+  'follow-up-message-2': {
+    question: 'And if they still have not replied, hours later?',
+    placeholder:
+      'A different message, saying something the first one did not — a reason to come back, '
+      + 'not the same nudge again. Leave this blank and a second chase becomes a task for '
+      + 'somebody to call instead.',
+  },
 }
 
 export default async function KnowledgePage() {

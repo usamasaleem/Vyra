@@ -115,13 +115,23 @@ describe('the answers', () => {
     expect(await step('answers')).toMatchObject({ done: true })
   })
 
-  /** Chasing needs wording of its own, which is a different published answer. */
-  it('asks for the follow-up wording separately', async () => {
+  /**
+   * Chasing needs wording of its own, and the second chase needs different
+   * wording again. One answer reused for both is what sent the same sentence
+   * twice, thirty minutes apart.
+   */
+  it('asks for the follow-up wording separately from the rule', async () => {
     await publish('follow-up-timing')
     expect(await step('follow-up-wording')).toMatchObject({ done: false })
+  })
 
+  it('is not finished until both chases have their own words', async () => {
     await publish('follow-up-message')
-    expect(await step('follow-up-wording')).toMatchObject({ done: true })
+    expect(await step('follow-up-wording'))
+      .toMatchObject({ done: false, detail: expect.stringContaining('one to go') })
+
+    await publish('follow-up-message-2')
+    expect(await step('follow-up-wording')).toMatchObject({ done: true, detail: 'Both published.' })
   })
 })
 

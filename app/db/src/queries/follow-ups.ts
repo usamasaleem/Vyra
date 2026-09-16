@@ -120,10 +120,21 @@ export async function findDueFollowUps(
      join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
      left join lateral (
        select answer from knowledge_entries
-       -- The wording, not the rule. 'follow-up-timing' describes when to chase
-       -- and was briefly what got sent, which is how a policy note came within
-       -- hours of reaching a customer.
-       where operator_id = f.operator_id and topic = 'follow-up-message'
+       -- The wording for this attempt, not the rule. 'follow-up-timing'
+       -- describes when to chase and was briefly what got sent, which is how a
+       -- policy note came within hours of reaching a customer.
+       --
+       -- A second chase has wording of its own, because the same sentence
+       -- twice is the thing that makes a follow-up read as a machine. Live:
+       -- "Still thinking about those dates?" arrived at 7:02 and again at
+       -- 7:32, word for word. A person's second nudge says something new.
+       --
+       -- With nothing published for the later attempt the chase becomes a task
+       -- for somebody rather than a repeat, which is section 11's rule working
+       -- rather than being worked around.
+       where operator_id = f.operator_id
+         and topic = case when f.attempt <= 1 then 'follow-up-message'
+                          else 'follow-up-message-2' end
          and published_at is not null
          and effective_from <= now() and (effective_to is null or effective_to > now())
        order by version desc limit 1

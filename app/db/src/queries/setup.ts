@@ -58,10 +58,10 @@ const SURVEY_SQL = `
     (select count(distinct k.confirmed_by)::int from knowledge_entries k
       where k.operator_id = $1 and k.published_at is not null
         and k.confirmed_by is not null)                                           as confirmers,
-    (select count(*)::int from knowledge_entries k
+    (select count(distinct k.topic)::int from knowledge_entries k
       where k.operator_id = $1 and k.published_at is not null
-        and k.topic = 'follow-up-message'
-        and (k.effective_to is null or k.effective_to > now()))                   as has_follow_up_wording,
+        and k.topic in ('follow-up-message', 'follow-up-message-2')
+        and (k.effective_to is null or k.effective_to > now()))                   as follow_up_wordings,
     o.ai_sending_enabled,
     o.fallback_owner_membership_id
   from operators o
@@ -123,10 +123,14 @@ export async function getSetupState(
     },
     {
       key: 'follow-up-wording',
-      title: 'Write what a follow-up says',
-      why: 'The agent chases a quiet customer using your words, sent exactly as you write them. With nothing published it chases nobody and raises a task instead.',
-      done: n('has_follow_up_wording') > 0,
-      detail: n('has_follow_up_wording') > 0 ? 'Published.' : 'Nothing published.',
+      title: 'Write what a follow-up says — both of them',
+      why: 'The agent chases a quiet customer twice, in your words exactly as you write them. The second has to say something the first did not; the same sentence twice is what makes a follow-up read as a machine. Either one missing becomes a task for a person instead of a message.',
+      done: n('follow_up_wordings') >= 2,
+      detail: n('follow_up_wordings') === 0
+        ? 'Neither published.'
+        : n('follow_up_wordings') === 1
+        ? 'One published, one to go — a second chase currently becomes a task.'
+        : 'Both published.',
       href: '/knowledge',
       blocking: false,
     },

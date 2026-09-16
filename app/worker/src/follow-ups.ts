@@ -24,28 +24,29 @@ import {
  */
 
 /**
- * Each later chase as a multiple of the operator's own first gap.
+ * When the second chase goes, and why there is no third.
  *
- * Fixed hours were wrong the moment the first gap changed. They were written
- * around a four-hour opening chase; the pilot set it to ten minutes, because a
- * customer who asks about a Huracán and goes quiet for ten minutes is still
- * holding their phone, and six hours later they are not. A ladder in multiples
- * moves with that instead of contradicting it.
+ * The first version laddered in multiples of the operator's own gap — six
+ * times, then twelve. With a five-minute opening nudge that produced three
+ * messages inside ninety-five minutes, and the middle two arrived thirty
+ * minutes apart saying exactly the same sentence. Read back, it is not a
+ * salesperson following up. It is a machine with a timer.
  *
- * Nothing caps the total. It does not need one: the 24-hour window is checked
- * at the moment of sending, and a chase that has fallen outside it becomes a
- * task for a person rather than a message. That check was already there and is
- * the only thing that can be right about it, since the window is measured from
- * the customer's last message and not from anything scheduled here.
+ * The two gaps are not proportional to each other and treating them as such
+ * was the mistake. The first is about catching somebody who is still holding
+ * their phone, which is minutes. The second is about catching them later in
+ * the day, which is hours, and it does not get shorter because the first one
+ * was quick.
  *
- * Three attempts. Before this there was one — `attempt` existed and nothing
- * incremented it, so a customer who went quiet was chased once and then never
- * contacted by anything again.
+ * So: four hours, or twice the operator's gap if they have set a long one.
+ * Then a person. Three unanswered messages is where a lead stops being a lead
+ * and starts being a complaint.
  */
-const LATER_CHASES_AT: Record<number, number> = {
-  1: 6,
-  2: 12,
-}
+const SECOND_CHASE_AFTER_MINUTES = (firstGapMinutes: number): number =>
+  Math.max(4 * 60, firstGapMinutes * 2)
+
+/** Two, then somebody calls. */
+const LAST_ATTEMPT = 2
 
 export type FollowUpSweep = {
   sent: number
@@ -117,12 +118,11 @@ export async function sendDueFollowUps(
      * conditions live inside scheduleFollowUp's own predicate, so a takeover,
      * an opt-out or a closed lead between now and then all stop it there.
      */
-    const multiple = LATER_CHASES_AT[item.attempt]
-    if (multiple !== undefined) {
+    if (item.attempt < LAST_ATTEMPT) {
       const [operator] = await run(
         `select follow_up_after_minutes from operators where id = $1`, [item.operatorId],
       )
-      const gap = Number(operator?.['follow_up_after_minutes'] ?? 240) * multiple
+      const gap = SECOND_CHASE_AFTER_MINUTES(Number(operator?.['follow_up_after_minutes'] ?? 240))
       const next = await scheduleFollowUp(run, {
         operatorId: item.operatorId,
         conversationId: item.conversationId,

@@ -26,6 +26,9 @@ const ANSWERS = {
   // because the rule is a note to the team and this is a sentence a customer
   // reads — and for a while the sending code used the rule as the message.
   'follow-up-message': 'Still thinking about those dates? Happy to hold the car for you if it helps.',
+  // Different words, because the same sentence twice is what makes a chase
+  // read as a machine — which it did, at 7:02 and again at 7:32.
+  'follow-up-message-2': 'No rush at all — the car is still free for those dates if you would like me to hold it. Otherwise I will leave you to it.',
 }
 
 const env = Object.fromEntries(

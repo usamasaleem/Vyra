@@ -58,16 +58,19 @@ beforeEach(async () => {
 
   // Without an approved policy there is no wording to send, and every chase
   // becomes a task for a person instead. That path is the operator's to fix.
-  const draft = await draftKnowledge(run, {
-    operatorId: OP, topic: 'follow-up-message',
-    answer: 'Just checking whether you are still looking at those dates.',
-    confirmedBy: 'Owner',
-  })
-  await publishKnowledge(transact, { operatorId: OP, entryId: draft.id, membershipId: SARA })
-  await run(
-    `update knowledge_entries set effective_from = now() - interval '1 day' where id = $1`,
-    [draft.id],
-  )
+  for (const [topic, answer] of [
+    ['follow-up-message', 'Just checking whether you are still looking at those dates.'],
+    ['follow-up-message-2', 'The green one is still free that week if it helps.'],
+  ] as const) {
+    const draft = await draftKnowledge(run, {
+      operatorId: OP, topic, answer, confirmedBy: 'Owner',
+    })
+    await publishKnowledge(transact, { operatorId: OP, entryId: draft.id, membershipId: SARA })
+    await run(
+      `update knowledge_entries set effective_from = now() - interval '1 day' where id = $1`,
+      [draft.id],
+    )
+  }
 })
 
 const scheduleDue = async (attempt = 1) => {
@@ -98,12 +101,13 @@ describe('chasing more than once', () => {
   })
 
   /**
-   * The later gaps are multiples of the operator's own first one, so an
-   * operator who wants a ten-minute nudge gets an hour and two hours after it
-   * rather than the six and ten that a four-hour opening chase implied.
+   * The two gaps are not proportional. The first catches somebody still
+   * holding their phone; the second catches them later in the day, and does
+   * not get shorter because the first one was quick. Multiplying them produced
+   * three messages inside ninety-five minutes.
    */
-  it('scales the later gaps to the operator own first gap', async () => {
-    await run(`update operators set follow_up_after_minutes = 10 where id = $1`, [OP])
+  it('waits hours before the second, however short the first was', async () => {
+    await run(`update operators set follow_up_after_minutes = 5 where id = $1`, [OP])
     await scheduleDue(1)
     await sendDueFollowUps(run, silently)
 
@@ -111,16 +115,44 @@ describe('chasing more than once', () => {
       `select round(extract(epoch from due_at - now()) / 60)::int as minutes
        from follow_ups where attempt = 2`, [],
     )
-    expect(second!['minutes']).toBe(60)
+    expect(second!['minutes']).toBe(240)
+  })
 
+  it('leaves a long opening gap even longer', async () => {
+    await run(`update operators set follow_up_after_minutes = 360 where id = $1`, [OP])
+    await scheduleDue(1)
+    await sendDueFollowUps(run, silently)
+
+    const [second] = await run(
+      `select round(extract(epoch from due_at - now()) / 60)::int as minutes
+       from follow_ups where attempt = 2`, [],
+    )
+    expect(second!['minutes']).toBe(720)
+  })
+
+  /**
+   * Live, "Still thinking about those dates?" arrived at 7:02 and again at
+   * 7:32, word for word. A machine repeats itself.
+   */
+  it('says something different the second time', async () => {
+    await scheduleDue(1)
+    await sendDueFollowUps(run, silently)
     await run(`update follow_ups set due_at = now() - interval '1 minute' where attempt = 2`, [])
     await sendDueFollowUps(run, silently)
 
-    const [third] = await run(
-      `select round(extract(epoch from due_at - now()) / 60)::int as minutes
-       from follow_ups where attempt = 3`, [],
+    const sent = await run(
+      `select body from messages where direction = 'outbound' order by created_at`, [],
     )
-    expect(third!['minutes']).toBe(120)
+    expect(sent).toHaveLength(2)
+    expect(sent[0]!['body']).not.toBe(sent[1]!['body'])
+  })
+
+  /** Nothing published for the later attempt is a task, not a repeat. */
+  it('asks a person rather than sending the first message again', async () => {
+    await run(`delete from knowledge_entries where topic = 'follow-up-message-2'`, [])
+    await scheduleDue(2)
+
+    expect(await sendDueFollowUps(run, silently)).toMatchObject({ sent: 0, raisedForAPerson: 1 })
   })
 
   /**
@@ -144,16 +176,16 @@ describe('chasing more than once', () => {
    * automatic message is where it becomes somebody's to call, rather than where
    * it quietly stops existing.
    */
-  it('hands the third to a person rather than chasing a fourth time', async () => {
-    await scheduleDue(3)
+  it('hands the second to a person rather than chasing a third time', async () => {
+    await scheduleDue(2)
 
     const swept = await sendDueFollowUps(run, silently)
 
     expect(swept).toMatchObject({ sent: 1, rescheduled: 0, raisedForAPerson: 1 })
-    expect(await chases()).toEqual([{ attempt: 3, state: 'sent' }])
+    expect(await chases()).toEqual([{ attempt: 2, state: 'sent' }])
 
     const [handoff] = await run(`select summary from handoffs`, [])
-    expect(String(handoff!['summary'])).toContain('Chased 3 times')
+    expect(String(handoff!['summary'])).toContain('Chased 2 times')
   })
 
   /** Everything that stops a chase is re-checked when the next one is scheduled. */
