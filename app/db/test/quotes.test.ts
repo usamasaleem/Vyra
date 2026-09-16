@@ -267,11 +267,37 @@ describe('the message a customer reads', () => {
       validUntil: drafted.quote.validUntil,
     })
 
-    expect(message).toContain('3 days: AED 4,500')
-    expect(message).toContain('Total: AED 4,500')
+    /**
+     * One line and a total that repeats it is the same number twice, which
+     * reads as a system padding rather than as a quote. Live, a nineteen-day
+     * rental went out exactly that way.
+     */
+    expect(message).toContain('*3 days: AED 4,500*')
+    expect(message).not.toContain('Total: AED 4,500')
     expect(message).toContain('Refundable deposit: AED 5,000')
-    // A price with no end is a promise with no end.
+    // A price with no end is a promise with no end — and written the way a
+    // person writes a date, not as the ISO string that reached a customer.
     expect(message).toContain('Valid until')
+    expect(message).not.toMatch(/\d{4}-\d{2}-\d{2}/)
+  })
+
+  /** Several lines, and the total is then telling them something new. */
+  it('totals the lines when there is more than one', () => {
+    const message = renderQuoteMessage({
+      currency: 'AED',
+      lines: [
+        { label: '3 days', amountMinor: 450000 },
+        { label: 'Delivery', amountMinor: 50000 },
+      ],
+      totalMinor: 500000,
+      depositMinor: null,
+      days: 3,
+      validUntil: null,
+    })
+
+    expect(message).toContain('3 days: AED 4,500')
+    expect(message).toContain('Delivery: AED 500')
+    expect(message).toContain('*Total: AED 5,000*')
   })
 
   it('formats fils that are not whole currency', () => {

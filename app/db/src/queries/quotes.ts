@@ -1,3 +1,4 @@
+import { formatDateForMessage } from '@vyra/contracts'
 import type { QueryRunner } from '../runner.js'
 
 /**
@@ -445,18 +446,41 @@ export function renderQuoteMessage(quote: {
   depositMinor: number | null
   days: number
   validUntil: Date | null
+  /** For the expiry date. Defaults to the pilot's, which is where this began. */
+  timezone?: string
 }): string {
-  const parts = [
-    ...quote.lines.map((l) => `${l.label}: ${formatMoney(l.amountMinor, quote.currency)}`),
-    `Total: ${formatMoney(quote.totalMinor, quote.currency)}`,
-  ]
+  const money = (minor: number) => formatMoney(minor, quote.currency)
+
+  /**
+   * The total is a line of its own only when it is telling the customer
+   * something they cannot already see.
+   *
+   * Live, a nineteen-day rental went out as "19 days: AED 104,500" followed by
+   * "Total: AED 104,500" — the same number twice, which reads as a system
+   * padding rather than as a quote.
+   */
+  const onlyLine = quote.lines.length === 1 && quote.lines[0]!.amountMinor === quote.totalMinor
+
+  const parts = quote.lines.map((l) => `${l.label}: ${money(l.amountMinor)}`)
+
+  // Bold, because it is the number the whole message is about. One asterisk:
+  // WhatsApp renders that and shows the asterisks for Markdown's two.
+  if (!onlyLine) parts.push(`*Total: ${money(quote.totalMinor)}*`)
+  else parts[0] = `*${parts[0]}*`
+
   if (quote.depositMinor !== null) {
-    parts.push(`Refundable deposit: ${formatMoney(quote.depositMinor, quote.currency)}`)
+    parts.push(`Refundable deposit: ${money(quote.depositMinor)}`)
   }
   if (quote.validUntil !== null) {
-    // An expiry the customer can see, because a price with no end is a promise
-    // with no end.
-    parts.push(`Valid until ${quote.validUntil.toISOString().slice(0, 10)}.`)
+    /**
+     * An expiry the customer can see, because a price with no end is a promise
+     * with no end — written the way a person writes a date.
+     *
+     * It was an ISO string, which is the exact thing the instructions forbid
+     * the model from doing: "Valid until 2026-09-17" reached a customer. A
+     * rule enforced on the model and not on ourselves is half a rule.
+     */
+    parts.push(`Valid until ${formatDateForMessage(quote.validUntil, quote.timezone ?? 'Asia/Dubai')}.`)
   }
   return parts.join('\n')
 }

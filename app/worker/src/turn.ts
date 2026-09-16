@@ -1,6 +1,6 @@
 import {
-  asksToSeePhotos, buttonsFor, claimsPhotosAttached, detectDiscountRequest, invitesACarChoice,
-  vehicleList,
+  asksToSeePhotos, asWhatsAppText, buttonsFor, claimsPhotosAttached, detectDiscountRequest,
+  invitesACarChoice, vehicleList,
 } from '@vyra/contracts'
 
 /** The shape search_vehicles returns, as much of it as a list row needs. */
@@ -650,7 +650,16 @@ const FLEET_CARDS = 6
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
     revisionAtTurnStart,
-    body: end.reply as string,
+    /**
+     * Repaired on the way out, not argued about in the instructions.
+     *
+     * v12 lets the model use WhatsApp's formatting, and a model told it may
+     * use bold reaches for Markdown's two asterisks, which arrive visible.
+     * This fixes that and the three other near-misses and leaves every other
+     * character alone — a reply is a person's words, and rewriting them is not
+     * something this system does.
+     */
+    body: asWhatsAppText(end.reply as string),
     /**
      * Two closed questions get a tap instead of a typed answer. Everything
      * else — which is nearly everything — goes as plain text, because a menu

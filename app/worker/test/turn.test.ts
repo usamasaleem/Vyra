@@ -671,6 +671,33 @@ describe('showing a car the model did not look up', () => {
 })
 
 /**
+ * v12 lets the model use WhatsApp's formatting, which means it will sometimes
+ * reach for Markdown's. Repaired on the way out rather than argued about in
+ * the instructions.
+ */
+describe('a reply written with Markdown in it', () => {
+  it('sends one asterisk where the model wrote two', async () => {
+    await turn([{ toolCalls: [], reply: 'The **Huracán Tecnica** is AED 5,500 per day.' }])
+
+    const [sent] = await run(
+      `select body from messages where direction = 'outbound' order by created_at desc limit 1`, [],
+    )
+    expect(sent!['body']).toBe('The *Huracán Tecnica* is AED 5,500 per day.')
+  })
+
+  /** A reply is a person's words; rewriting them is not something this does. */
+  it('leaves an ordinary reply exactly as written', async () => {
+    const reply = 'Nice choice — the yellow one is the 488 Spider.'
+    await turn([{ toolCalls: [], reply }])
+
+    const [sent] = await run(
+      `select body from messages where direction = 'outbound' order by created_at desc limit 1`, [],
+    )
+    expect(sent!['body']).toBe(reply)
+  })
+})
+
+/**
  * Showing a fleet rather than a car.
  *
  * "What have you got?" sent a tappable list of names and no pictures at all,
