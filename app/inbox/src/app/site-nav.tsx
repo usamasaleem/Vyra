@@ -1,6 +1,5 @@
 import Link from 'next/link'
-import { getNavCounts } from '@vyra/db'
-import { actorRunner } from '@/lib/db'
+import type { NavCounts } from '@vyra/db'
 
 /**
  * The one list of places in this application.
@@ -27,20 +26,21 @@ const DESTINATIONS = [
 
 export type NavKey = (typeof DESTINATIONS)[number]['key']
 
-export async function SiteNav({
+export function SiteNav({
   current,
-  actor,
+  counts,
 }: {
   current: NavKey
   /**
-   * The whole actor rather than an operator id, because the badge counts are
-   * now read as the restricted role and that needs to know who is asking. The
-   * operator id alone was never enough to prove anything; it is a scope being
-   * requested, and the policies decide whether it is held.
+   * Read by the page, not here.
+   *
+   * This component used to do its own query, which was one more scoped
+   * transaction — four more round trips — on every page in the application.
+   * Counting badges is not worth a second of somebody's afternoon, and a
+   * navigation bar doing I/O was the thing that made it easy to miss.
    */
-  actor: { userId: string; operatorId: string }
+  counts: NavCounts
 }) {
-  const counts = await getNavCounts(actorRunner(actor), actor.operatorId)
 
   /**
    * A badge appears only above zero. An empty queue and a queue of one look

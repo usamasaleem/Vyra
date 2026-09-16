@@ -82,11 +82,23 @@ export function transactor(): Transactor {
  * two operators' customers, forever, with no second line.
  */
 async function enterRestrictedRole(tx: QueryRunner, userId: string): Promise<void> {
-  await tx(`select set_config('app.current_user_id', $1, true)`, [userId])
-  await tx(`set local role vyra_app`, [])
+  // One statement rather than two, because each is a round trip and the
+  // database is about 170ms away. set_config('role', ...) is SET LOCAL ROLE.
+  await tx(
+    `select set_config('app.current_user_id', $1, true), set_config('role', 'vyra_app', true)`,
+    [userId],
+  )
 }
 
-/** What a signed-in staff member's request runs as. */
+/**
+ * One statement, in its own transaction.
+ *
+ * Costs four round trips where an unscoped query costs one — begin, the role,
+ * the statement, commit — which against a database 170ms away is most of a
+ * second. Fine for a single write behind a button. Not fine for a page: the
+ * conversation view ran five of these and took six seconds to render, which is
+ * how it was found. Pages use `actorReads`.
+ */
 export function actorRunner(actor: { userId: string }): QueryRunner {
   const sql = sqlClient()
   return async (text, params) =>
@@ -114,4 +126,25 @@ export function actorTransactor(actor: { userId: string }): Transactor {
       await enterRestrictedRole(tx, actor.userId)
       return fn(tx)
     })) as Transactor
+}
+
+
+/**
+ * Every read a page performs, in one scoped transaction.
+ *
+ * The transaction is not for atomicity — these are reads — it is because the
+ * role only lasts as long as one. So the thing to avoid is opening a
+ * transaction per statement, and that is exactly what the first version of
+ * this did: the conversation page went from four queries at one round trip
+ * each to four at four, and stopped rendering inside Netlify's timeout.
+ *
+ * Measured against production, five statements: 5971ms one transaction each,
+ * 2345ms sharing one. The remaining overhead is the three round trips the
+ * sharing cannot avoid, paid once instead of five times.
+ */
+export function actorReads<T>(
+  actor: { userId: string },
+  fn: (run: QueryRunner) => Promise<T>,
+): Promise<T> {
+  return actorTransactor(actor)(fn) as Promise<T>
 }

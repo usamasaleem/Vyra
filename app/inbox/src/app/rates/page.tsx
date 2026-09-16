@@ -1,7 +1,7 @@
 import { SiteNav } from '../site-nav'
-import { listRates } from '@vyra/db'
+import { getNavCounts, listRates } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
-import { actorRunner } from '@/lib/db'
+import { actorReads } from '@/lib/db'
 import { RateForm } from './rate-form'
 import { PhotoForm } from './photo-form'
 
@@ -16,13 +16,16 @@ export const dynamic = 'force-dynamic'
 
 export default async function RatesPage() {
   const actor = await requireActor()
-  const rates = await listRates(actorRunner(actor), actor.operatorId)
+  const [counts, rates] = await actorReads(actor, (run) => Promise.all([
+    getNavCounts(run, actor.operatorId),
+    listRates(run, actor.operatorId),
+  ]))
   const canEdit = permissions.canAdminister(actor)
   const unpriced = rates.filter((r) => r.dailyRateMinor === null).length
 
   return (
     <main className="shell">
-      <SiteNav current="rates" actor={actor} />
+      <SiteNav current="rates" counts={counts} />
       <h1>Rates</h1>
       <p className="muted">
         The agent prices from these and from nothing else. A vehicle with no rate cannot be

@@ -1,11 +1,11 @@
-import { getOperatorStatus } from '@vyra/db'
+import { getNavCounts, getOperatorStatus } from '@vyra/db'
 import Link from 'next/link'
 import { LiveRefresh } from './live-refresh'
 import { SiteNav } from './site-nav'
 import { signOut } from './login/actions'
 import { toggleAiSending } from './actions'
 import { permissions, requireActor } from '@/lib/auth'
-import { actorRunner } from '@/lib/db'
+import { actorReads } from '@/lib/db'
 import { listConversations } from '@/lib/queries/conversations'
 
 export const dynamic = 'force-dynamic'
@@ -28,11 +28,12 @@ export default async function InboxPage({
 }) {
   const actor = await requireActor()
   const filters = await searchParams
-  const run = actorRunner(actor)
-
-  // The queue counts moved into SiteNav, which asks for two numbers rather
-  // than two full lists this page then took the length of.
-  const [status, conversations] = await Promise.all([
+  /**
+   * Every read in one scoped transaction. The role only lasts as long as a
+   * transaction, so the thing to avoid is opening one per statement.
+   */
+  const [counts, status, conversations] = await actorReads(actor, (run) => Promise.all([
+    getNavCounts(run, actor.operatorId),
     getOperatorStatus(run, actor.operatorId),
     listConversations(run, actor.operatorId, {
       salesStage: filters.stage ?? null,
@@ -43,14 +44,14 @@ export default async function InboxPage({
       owner: filters.owner === 'mine' ? actor.membershipId : (filters.owner ?? null),
       needsAttention: filters.needs === 'me',
     }),
-  ])
+  ]))
 
   const aiOn = status?.aiSendingEnabled === true
 
   return (
     <main className="shell">
       <LiveRefresh />
-      <SiteNav current="inbox" actor={actor} />
+      <SiteNav current="inbox" counts={counts} />
       <div className="topbar">
         <div>
           <h1>{status?.name ?? 'Inbox'}</h1>

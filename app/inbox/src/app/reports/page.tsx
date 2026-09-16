@@ -3,12 +3,13 @@ import { SiteNav } from '../site-nav'
 import {
   findQueueBacklog,
   formatDuration,
+  getNavCounts,
   getAgentCosts,
   getMetrics,
   getQueueWaits,
 } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
-import { actorRunner, queryRunner } from '@/lib/db'
+import { actorReads, queryRunner } from '@/lib/db'
 
 /**
  * Build plan step 32 — the ten measures section 15 asks for, and only those.
@@ -56,11 +57,13 @@ export default async function ReportsPage({
   const { range } = await searchParams
   const days = RANGES[range ?? 'week'] ?? 7
   const since = new Date(Date.now() - days * 86_400_000)
-  const run = actorRunner(actor)
-  const [m, ai, waits, backlog] = await Promise.all([
-    getMetrics(run, actor.operatorId, since),
-    getAgentCosts(run, actor.operatorId, since),
-    getQueueWaits(run, actor.operatorId, since),
+  const [[counts, m, ai, waits], backlog] = await Promise.all([
+    actorReads(actor, (run) => Promise.all([
+      getNavCounts(run, actor.operatorId),
+      getMetrics(run, actor.operatorId, since),
+      getAgentCosts(run, actor.operatorId, since),
+      getQueueWaits(run, actor.operatorId, since),
+    ])),
     /**
      * Privileged, alone on this page.
      *
@@ -82,7 +85,7 @@ export default async function ReportsPage({
 
   return (
     <main className="shell">
-      <SiteNav current="reports" actor={actor} />
+      <SiteNav current="reports" counts={counts} />
       <h1>Reporting</h1>
       <p className="muted">
         The ten sales measures. Fleet, utilisation, payments and maintenance belong to Operations,

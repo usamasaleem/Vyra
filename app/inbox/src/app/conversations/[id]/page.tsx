@@ -1,11 +1,11 @@
-import { listMembers, listNotes, PRIORITIES } from '@vyra/db'
+import { getNavCounts, listMembers, listNotes, PRIORITIES } from '@vyra/db'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { assignTo, changePriority, handBackToAi, takeOver } from '@/app/actions'
 import { LiveRefresh } from '@/app/live-refresh'
 import { SiteNav } from '@/app/site-nav'
 import { permissions, requireActor } from '@/lib/auth'
-import { actorRunner } from '@/lib/db'
+import { actorReads } from '@/lib/db'
 import { getConversationThread } from '@/lib/queries/conversations'
 import { NoteForm } from './note-form'
 import { ReplyForm } from './reply-form'
@@ -32,14 +32,29 @@ export default async function ConversationPage({
 }) {
   const actor = await requireActor()
   const { id } = await params
-  const run = actorRunner(actor)
-  const thread = await getConversationThread(run, actor.operatorId, id)
-  if (thread === null) notFound()
-
-  const [notes, members] = await Promise.all([
-    listNotes(run, actor.operatorId, thread.id),
-    permissions.canReassign(actor) ? listMembers(run, actor.operatorId) : Promise.resolve([]),
-  ])
+  /**
+   * One transaction for the page, not one per statement. Four reads at four
+   * round trips each is six seconds against this database; sharing the
+   * transaction pays the begin, the role and the commit once.
+   */
+  const page = await actorReads(actor, async (run) => {
+    const thread = await getConversationThread(run, actor.operatorId, id)
+    if (thread === null) return null
+    /**
+     * Sequential rather than Promise.all, and it costs nothing: these share
+     * one connection, so the driver serialises them whatever this file asks
+     * for. Writing it as concurrent would only claim a parallelism that does
+     * not exist.
+     */
+    const counts = await getNavCounts(run, actor.operatorId)
+    const notes = await listNotes(run, actor.operatorId, thread.id)
+    const members = permissions.canReassign(actor)
+      ? await listMembers(run, actor.operatorId)
+      : []
+    return { thread, counts, notes, members }
+  })
+  if (page === null) notFound()
+  const { thread, counts, notes, members } = page
 
   const humanOwned = thread.handlerMode === 'human'
   const canReply = permissions.canReply(actor)
@@ -52,7 +67,7 @@ export default async function ConversationPage({
   return (
     <main className="shell">
       <LiveRefresh conversationId={thread.id} />
-      <SiteNav current="inbox" actor={actor} />
+      <SiteNav current="inbox" counts={counts} />
       <div className="topbar">
         <div>
           <h1>{thread.contactName ?? thread.channelIdentifier}</h1>

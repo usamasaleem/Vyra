@@ -1,6 +1,6 @@
-import { listAvailability, listRates } from '@vyra/db'
+import { getNavCounts, listAvailability, listRates } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
-import { actorRunner } from '@/lib/db'
+import { actorReads } from '@/lib/db'
 import { SiteNav } from '../site-nav'
 import { BlockForm } from './block-form'
 import { releaseBlock, setCalendarIsComplete } from './actions'
@@ -26,14 +26,13 @@ const REASON_LABEL: Record<string, string> = {
 
 export default async function AvailabilityPage() {
   const actor = await requireActor()
-  const run = actorRunner(actor)
-
-  const [blocks, rates, operator] = await Promise.all([
+  const [counts, blocks, rates, operator] = await actorReads(actor, (run) => Promise.all([
+    getNavCounts(run, actor.operatorId),
     listAvailability(run, actor.operatorId),
     listRates(run, actor.operatorId),
     run(`select availability_calendar_complete as complete from operators where id = $1`,
       [actor.operatorId]),
-  ])
+  ]))
 
   const complete = operator[0]?.['complete'] === true
   const canEdit = permissions.canReply(actor)
@@ -41,7 +40,7 @@ export default async function AvailabilityPage() {
 
   return (
     <main className="shell">
-      <SiteNav current="availability" actor={actor} />
+      <SiteNav current="availability" counts={counts} />
       <h1>When cars are taken</h1>
       <p className="muted">
         A booking recorded here answers every enquiry that touches those dates, without anyone

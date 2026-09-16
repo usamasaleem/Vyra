@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { SiteNav } from '../site-nav'
-import { formatMoney, listDraftQuotes, listOpenOperationsRequests } from '@vyra/db'
+import {
+  formatMoney, getNavCounts, listDraftQuotes, listOpenOperationsRequests,
+} from '@vyra/db'
 import { requireActor } from '@/lib/auth'
-import { actorRunner } from '@/lib/db'
+import { actorReads } from '@/lib/db'
 import { AnswerForm } from './answer-form'
 import { ApproveQuote } from './approve-quote'
 
@@ -20,15 +22,15 @@ export const dynamic = 'force-dynamic'
 
 export default async function OperationsPage() {
   const actor = await requireActor()
-  const run = actorRunner(actor)
-  const [requests, drafts] = await Promise.all([
+  const [counts, requests, drafts] = await actorReads(actor, (run) => Promise.all([
+    getNavCounts(run, actor.operatorId),
     listOpenOperationsRequests(run, actor.operatorId),
     listDraftQuotes(run, actor.operatorId),
-  ])
+  ]))
 
   return (
     <main className="shell">
-      <SiteNav current="operations" actor={actor} />
+      <SiteNav current="operations" counts={counts} />
       <h1>Operations requests</h1>
       <p className="muted">
         Questions the agent could not answer. A customer is waiting on each of these, and the
