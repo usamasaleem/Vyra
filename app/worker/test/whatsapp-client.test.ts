@@ -343,6 +343,29 @@ describe('sending a Flow', () => {
     expect(calls[0]).toMatchObject({ interactive: { type: 'list' } })
   })
 
+  /**
+   * Meta refuses to publish a Flow for an unverified business — "Integrity
+   * requirements not met" — so the only way to see this one on a phone before
+   * verification comes through is to send the draft.
+   */
+  it('can send a draft, for testing before Meta will publish it', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001', body: 'Here is the range.', flow: { ...flow, draft: true },
+    })
+
+    expect((calls[0] as { interactive: { action: { parameters: Record<string, unknown> } } })
+      .interactive.action.parameters['mode']).toBe('draft')
+  })
+
+  it('says nothing about the mode for a published one', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Here is the range.', flow })
+
+    expect((calls[0] as { interactive: { action: { parameters: Record<string, unknown> } } })
+      .interactive.action.parameters).not.toHaveProperty('mode')
+  })
+
   it('quotes an earlier message alongside a Flow', async () => {
     const { client, calls } = clientCapturing()
     await client.sendText({

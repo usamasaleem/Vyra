@@ -91,6 +91,19 @@ export type SendTextInput = {
     data: Record<string, unknown>
     /** Echoed back with the reply, so a response can be tied to its request. */
     token: string
+    /**
+     * Send a Flow that is still a draft.
+     *
+     * Meta refuses to publish one until the business is verified — "Blocked by
+     * Integrity", which is a policy gate rather than anything wrong with the
+     * Flow. A draft can still be opened by people with a role on the business
+     * account, which is how this gets tested on a real phone in the months
+     * before verification comes through.
+     *
+     * It shows a warning banner to whoever opens it, so it is a test mode and
+     * not a way to skip the queue.
+     */
+    draft?: boolean
   } | null
 }
 
@@ -231,6 +244,7 @@ export function createWhatsAppClient(config: {
                   // everything it needs here, so there is no endpoint to call
                   // and no keys to hold.
                   flow_action: 'navigate',
+                  ...(flow.draft === true ? { mode: 'draft' } : {}),
                   flow_action_payload: { screen: flow.screen, data: flow.data },
                 },
               },

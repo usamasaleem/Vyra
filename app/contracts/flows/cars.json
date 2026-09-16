@@ -4,30 +4,39 @@
     {
       "id": "CARS",
       "title": "Our cars",
-      "terminal": true,
       "data": {
         "cars": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "id": { "type": "string" },
-              "main-content": { "type": "object" },
-              "start": { "type": "object" },
-              "on-click-action": { "type": "object" }
+              "id": {
+                "type": "string"
+              },
+              "main-content": {
+                "type": "object"
+              },
+              "start": {
+                "type": "object"
+              },
+              "on-click-action": {
+                "type": "object"
+              }
             }
           },
           "__example__": [
             {
-              "id": "vehicle:Lamborghini Huracán Tecnica",
+              "id": "vehicle:Lamborghini Hurac\u00e1n Tecnica",
               "main-content": {
-                "title": "Lamborghini Huracán",
+                "title": "Lamborghini Hurac\u00e1n",
                 "description": "Verde",
-                "metadata": "5.2 L naturally aspirated V10 · AED 5,500/day"
+                "metadata": "5.2 L naturally aspirated V10 \u00b7 AED 5,500/day"
               },
               "on-click-action": {
                 "name": "complete",
-                "payload": { "car": "Lamborghini Huracán Tecnica" }
+                "payload": {
+                  "car": "Lamborghini Hurac\u00e1n Tecnica"
+                }
               }
             }
           ]
@@ -40,6 +49,29 @@
             "type": "NavigationList",
             "name": "cars",
             "list-items": "${data.cars}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "DONE",
+      "title": "Thanks",
+      "terminal": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextBody",
+            "text": "Thanks \u2014 one moment."
+          },
+          {
+            "type": "Footer",
+            "label": "Done",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {}
+            }
           }
         ]
       }

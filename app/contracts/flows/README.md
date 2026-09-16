@@ -36,6 +36,38 @@ for a system user. It is in WhatsApp Manager, under the account's settings.
 Then set `WHATSAPP_FLOW_ID` on the worker. Until that variable is set nothing
 changes: the agent sends the list message it sends today.
 
+## What the validator settled
+
+Meta's own component reference does not document NavigationList, and the
+third-party specification that does contradicts itself about whether the
+component may share a screen. Uploading the JSON answered both in two minutes,
+which is worth remembering the next time a question like this eats an
+afternoon:
+
+- A screen carrying a NavigationList **cannot be terminal**. `"terminal": true`
+  on it is rejected as `INVALID_PROPERTY_KEY`.
+- A Flow **must** have a terminal screen somewhere, or `MISSING_TERMINAL_SCREEN`.
+- So there are two screens. CARS holds the list; DONE exists to be the terminal
+  one. Items complete the Flow directly from CARS, which the validator accepts
+  — whether it works at runtime is the one thing left for a phone to answer.
+- The heading and footer the third-party example showed beside a NavigationList
+  were never tried, because the component needs no company.
+
+## Publishing is blocked, and not by us
+
+    "error_user_title": "Flow publishing failed"
+    "error_user_msg": "Integrity requirements not met."
+
+Meta will not publish a Flow for a business that has not completed verification
+— the first unticked step in the build plan. The Flow exists as a DRAFT with no
+validation errors and stays there until that clears.
+
+A draft can still be opened by anybody with a role on the business account, so
+it can be tested now: send it with `draft: true`, which adds `mode: "draft"` to
+the parameters and shows the tester a warning banner.
+
+Flow id: `1913050626319671`. WABA: `1053819110616183`.
+
 ## What is not yet known
 
 Meta's own component reference does not document `NavigationList`. The
