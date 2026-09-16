@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  findVehiclePhoto, findVehiclePhotos, photosSentIn, photosShownIn,
+  findFleetShowcase, findVehiclePhoto, findVehiclePhotos, photosSentIn, photosShownIn,
 } from '../src/queries/photos.ts'
 import type { QueryRunner } from '../src/runner.ts'
 
@@ -242,5 +242,75 @@ describe('photosShownIn', () => {
     expect(await photosShownIn(run, {
       conversationId: '99999999-9999-9999-9999-999999999999', operatorId: OP,
     })).toEqual([])
+  })
+})
+
+/**
+ * A line-up rather than a car. "What have you got?" used to send names with no
+ * pictures at all, because the photo path wants exactly one vehicle.
+ */
+describe('findFleetShowcase', () => {
+  const CARS = [{ make: 'Lamborghini', model: 'Huracán' }, { make: 'Ferrari', model: '488' }]
+
+  const addFerrari = (photos: string[] | null = ['https://example.com/ferrari.jpg']) =>
+    addCar({ make: 'Ferrari', model: '488', photos })
+
+  it('returns one photograph per car, named', async () => {
+    await addCar({ photos: [PHOTO, 'https://example.com/huracan-2.jpg'] })
+    await addFerrari()
+
+    const cards = await findFleetShowcase(run, { operatorId: OP, cars: CARS })
+    expect(cards.map((c) => [c.make, c.model, c.photoUrl])).toEqual([
+      ['Lamborghini', 'Huracán', PHOTO],
+      ['Ferrari', '488', 'https://example.com/ferrari.jpg'],
+    ])
+  })
+
+  /** The pictures have to arrive in the order the reply names the cars. */
+  it('keeps the order the cars were searched in', async () => {
+    await addCar({ photos: [PHOTO] })
+    await addFerrari()
+
+    const cards = await findFleetShowcase(run, {
+      operatorId: OP,
+      cars: [{ make: 'Ferrari', model: '488' }, { make: 'Lamborghini', model: 'Huracán' }],
+    })
+    expect(cards.map((c) => c.make)).toEqual(['Ferrari', 'Lamborghini'])
+  })
+
+  /** A car with no photograph is left out rather than shown as a gap. */
+  it('leaves out a car that has no photographs', async () => {
+    await addCar({ photos: [PHOTO] })
+    await addFerrari([])
+
+    const cards = await findFleetShowcase(run, { operatorId: OP, cars: CARS })
+    expect(cards.map((c) => c.make)).toEqual(['Lamborghini'])
+  })
+
+  /**
+   * Two cars sharing a make and model is a real fleet shape, and there is no
+   * way to tell from here which one was meant. The same refusal as the
+   * single-car lookup, for the same reason.
+   */
+  it('shows nothing for a make and model two vehicles share', async () => {
+    await addCar({ photos: [PHOTO] })
+    await addCar({ photos: ['https://example.com/huracan-other.jpg'] })
+
+    expect(await findFleetShowcase(run, { operatorId: OP, cars: CARS })).toEqual([])
+  })
+
+  it('ignores a car that is not active or not confirmed', async () => {
+    await addCar({ photos: [PHOTO], active: false })
+    expect(await findFleetShowcase(run, { operatorId: OP, cars: CARS })).toEqual([])
+  })
+
+  it('refuses anything that is not an https link', async () => {
+    await addCar({ photos: ['javascript:alert(1)', PHOTO] })
+    const [card] = await findFleetShowcase(run, { operatorId: OP, cars: CARS })
+    expect(card!.photoUrl).toBe(PHOTO)
+  })
+
+  it('asks for nothing when there are no cars', async () => {
+    expect(await findFleetShowcase(run, { operatorId: OP, cars: [] })).toEqual([])
   })
 })

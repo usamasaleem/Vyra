@@ -186,3 +186,70 @@ export async function photosShownIn(
     lastMessageId: r['last_message_id'] as string,
   }))
 }
+
+/**
+ * One photograph of each car, for showing a fleet rather than a car.
+ *
+ * "What have you got?" used to send a tappable list of names and no pictures at
+ * all: the photo path requires exactly one car, because a reply about three of
+ * them has no single picture. True, and it answered the wrong question — the
+ * answer is not one picture, it is one picture each.
+ *
+ * Deliberately narrow. The first photograph, the name, and nothing else: no
+ * rate, no availability, no description. A car that has no photograph is left
+ * out rather than represented by a gap, and the reply still names it.
+ *
+ * The same refusals as findVehiclePhoto, for the same reasons: confirmed and
+ * active cars only, https only, and a make and model shared by two vehicles
+ * yields nothing, because there is no way to tell from here which one was
+ * meant and the wrong car is worse than no car.
+ */
+export type FleetCard = {
+  make: string
+  model: string
+  variant: string | null
+  colour: string
+  photoUrl: string
+}
+
+export async function findFleetShowcase(
+  run: QueryRunner,
+  input: { operatorId: string; cars: ReadonlyArray<{ make: string; model: string }> },
+): Promise<FleetCard[]> {
+  if (input.cars.length === 0) return []
+
+  const rows = await run(
+    `select make, model, variant, colour, photo_urls,
+            count(*) over (partition by make, model)::int as same_name
+     from vehicles
+     where operator_id = $1 and active and provenance = 'operator_confirmed'
+       and jsonb_typeof(photo_urls) = 'array'
+       -- Ordinary text comparison rather than the folded one: these names came
+       -- from a search result this turn, so they are already the database's own
+       -- spelling and an accent cannot have gone missing on the way.
+       and (make || ' ' || model) = any($2::text[])`,
+    [input.operatorId, input.cars.map((c) => `${c.make} ${c.model}`)],
+  )
+
+  const cards: FleetCard[] = []
+  for (const row of rows) {
+    if (Number(row['same_name']) !== 1) continue
+    const urls = row['photo_urls']
+    if (!Array.isArray(urls)) continue
+    const first = urls.find((u): u is string => typeof u === 'string' && u.startsWith('https://'))
+    if (first === undefined) continue
+    cards.push({
+      make: row['make'] as string,
+      model: row['model'] as string,
+      variant: (row['variant'] as string) ?? null,
+      colour: row['colour'] as string,
+      photoUrl: first,
+    })
+  }
+
+  // The order the cars were searched in, so the pictures match the reply.
+  const order = new Map(input.cars.map((c, i) => [`${c.make} ${c.model}`, i]))
+  return cards.sort(
+    (a, b) => (order.get(`${a.make} ${a.model}`) ?? 0) - (order.get(`${b.make} ${b.model}`) ?? 0),
+  )
+}

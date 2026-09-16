@@ -95,11 +95,14 @@ export async function acceptTurnOutput(
     /** A photograph to send with this reply, as a public HTTPS link. */
     replyImageUrl?: string | null
     /**
-     * More photographs of the same car, each sent as its own message after the
-     * reply. WhatsApp has no album; the client makes one from messages that
-     * arrive together.
+     * Photographs sent after the reply, each as its own message. WhatsApp has
+     * no album; the client makes one from messages that arrive together.
+     *
+     * A caption when the picture needs naming — one car each, in a reply about
+     * several — and none when it does not, which is every further photograph
+     * of a car the reply has already named.
      */
-    extraImageUrls?: string[]
+    extraImages?: ReadonlyArray<{ url: string; caption?: string }>
     /**
      * An earlier message to quote, so the reply arrives attached to what it is
      * about. Only the reply itself quotes: a follow-up photograph carries no
@@ -177,14 +180,15 @@ export async function acceptTurnOutput(
      * message queued without a job can never be left with nothing to send it.
      */
     const followUps: string[] = []
-    for (const [index, url] of (input.extraImageUrls ?? []).entries()) {
+    for (const [index, image] of (input.extraImages ?? []).entries()) {
       const extra = await queueOutboundText(tx, {
         conversationId: input.conversationId,
         operatorId: input.operatorId,
-        // A single space: an image message's caption is optional, but the
-        // column is what we store and the client omits a blank one.
-        body: ' ',
-        replyImageUrl: url,
+        // A single space where there is no caption: an image message's caption
+        // is optional, but the column is what we store and the client omits a
+        // blank one.
+        body: image.caption ?? ' ',
+        replyImageUrl: image.url,
         idempotencyKey: `${input.idempotencyKey}:photo:${index + 1}`,
         withoutOwnJob: true,
       })

@@ -669,3 +669,135 @@ describe('showing a car the model did not look up', () => {
     expect(sent!['reply_image_url']).toBeNull()
   })
 })
+
+/**
+ * Showing a fleet rather than a car.
+ *
+ * "What have you got?" sent a tappable list of names and no pictures at all,
+ * because the photo path wants exactly one vehicle. True, and the wrong answer:
+ * it is not one picture, it is one picture each.
+ */
+describe('a reply about several cars', () => {
+  const HURACAN = 'https://example.com/huracan.jpg'
+  const FERRARI = 'https://example.com/ferrari.jpg'
+
+  const addCars = async () => {
+    await run(
+      `insert into vehicles (operator_id, make, model, variant, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by, photo_urls)
+       values ($1,'Lamborghini','Huracán','Tecnica',2023,'Verde','exotic','D 1','VIN1',
+               'operator_confirmed','Owner',$2::jsonb),
+              ($1,'Ferrari','488',null,2022,'Rosso','exotic','D 2','VIN2',
+               'operator_confirmed','Owner',$3::jsonb)`,
+      [OP, JSON.stringify([HURACAN]), JSON.stringify([FERRARI])],
+    )
+  }
+
+  /** What search_vehicles returns; the rows the list and the pictures come from. */
+  const searched = (reply: string): ModelResponse[] => [
+    {
+      toolCalls: [{
+        id: 't1', name: 'search_vehicles',
+        arguments: { vehicle: null, startDate: null, endDate: null },
+      }],
+      reply: null,
+    },
+    { toolCalls: [], reply },
+  ]
+
+  const asking = async (body: string) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  const photosSent = async () =>
+    run(
+      `select body, reply_image_url from messages
+       where direction = 'outbound' and reply_image_url is not null
+       order by created_at`, [],
+    )
+
+  it('sends one photograph per car, captioned with its name', async () => {
+    await addCars()
+    const ctx = await asking('show me your cars')
+
+    await turn(searched('We have two that would suit — which one takes your fancy?'), 'send', ctx)
+
+    const sent = await photosSent()
+    expect(sent.map((m) => [m['body'], m['reply_image_url']])).toEqual([
+      ['Ferrari 488', FERRARI],
+      ['Lamborghini Huracán Tecnica', HURACAN],
+    ])
+  })
+
+  /**
+   * A message carries an image or an interactive and never both, so the reply
+   * goes first with its taps and the photographs follow. Losing the list to
+   * attach a picture to it would trade a tappable choice for a caption.
+   */
+  it('keeps the tappable list on the reply and sends the pictures after it', async () => {
+    await addCars()
+    const ctx = await asking('show me your cars')
+
+    await turn(searched('We have two that would suit — which one takes your fancy?'), 'send', ctx)
+
+    const [reply] = await run(
+      `select reply_list, reply_image_url from messages
+       where direction = 'outbound' and reply_list is not null`, [],
+    )
+    expect(reply!['reply_image_url']).toBeNull()
+    expect(reply!['reply_list']).not.toBeNull()
+  })
+
+  /**
+   * The caption is the car and nothing else. A rate or an availability under a
+   * photograph reads as a claim, and neither is one this turn can make.
+   */
+  it('puts nothing but the name under the photograph', async () => {
+    await addCars()
+    // A confirmed rate exists for one of them, and still must not appear: a
+    // caption is read as a claim, and a price under a picture is a price
+    // quoted without the dates that decide it.
+    const [car] = await run(`select id from vehicles where make = 'Ferrari'`, [])
+    await run(
+      `insert into vehicle_rates (operator_id, vehicle_id, currency, daily_rate_minor,
+                                  confirmed_by, confirmed_at)
+       values ($1, $2, 'AED', 350000, 'Sara', now())`,
+      [OP, car!['id']],
+    )
+    const ctx = await asking('show me your cars')
+
+    await turn(searched('Two that would suit — which one takes your fancy?'), 'send', ctx)
+
+    const captions = (await photosSent()).map((m) => String(m['body']))
+    expect(captions).toEqual(['Ferrari 488', 'Lamborghini Huracán Tecnica'])
+    for (const caption of captions) {
+      expect(caption).not.toMatch(/AED|3,500|available|per day/i)
+    }
+  })
+
+  /** Once. A line-up repeated at every question is the bot this is not. */
+  it('does not send the line-up again once they have seen it', async () => {
+    await addCars()
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
+                             reply_image_url, delivery_state)
+       values ($1, $2, 'outbound', 'text', 'Lamborghini Huracán Tecnica', $3, $4, 'accepted')`,
+      [OP, CONV, 'wamid.old', HURACAN],
+    )
+    const ctx = await asking('what else do you have?')
+
+    await turn(searched('We also have a Ferrari 488 — interested?'), 'send', ctx)
+
+    const pending = await run(
+      `select reply_image_url from messages
+       where direction = 'outbound' and delivery_state = 'pending' and reply_image_url is not null`,
+      [],
+    )
+    expect(pending).toEqual([])
+  })
+})

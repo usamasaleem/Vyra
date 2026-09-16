@@ -31,6 +31,7 @@ import {
   loadMessagesBeforeWindow,
   photosSentIn,
   photosShownIn,
+  findFleetShowcase,
   saveConversationSummary,
   requestHandoff,
   recordOutstandingWork,
@@ -492,6 +493,16 @@ export async function runConversationTurn(
  */
 const PHOTOS_PER_CAR = 6
 
+/**
+ * How many cars appear in a fleet line-up.
+ *
+ * The list message already caps at ten rows, and ten photographs is a phone
+ * full of pictures rather than a look at what is on offer. Six matches the
+ * per-car cap for the same reason: enough for the client to make an album, few
+ * enough to scroll past.
+ */
+const FLEET_CARDS = 6
+
   const seen = images.photos.length === 0
     ? new Set<string>()
     : await photosSentIn(deps.run, {
@@ -569,6 +580,67 @@ const PHOTOS_PER_CAR = 6
     ? photosShown[0]!.lastMessageId
     : null
 
+  /**
+   * A reply about several cars: one photograph each, named.
+   *
+   * The single-car path above wants exactly one vehicle, because a reply about
+   * three of them has no single picture. That is true and it answered the wrong
+   * question. The answer is not one picture — it is one picture each.
+   *
+   * Deliberately the car's name and nothing else. No rate under the photograph
+   * and no availability, because a caption is read as a claim and neither of
+   * those is a claim this turn is in a position to make. The reply says what
+   * the agent actually knows; the pictures say what the cars look like.
+   *
+   * Sent alongside the list rather than instead of it. A WhatsApp message
+   * carries an image or an interactive and never both, so the list goes first,
+   * carrying the reply and the taps, and the photographs follow.
+   */
+  /**
+   * The first time the agent lays the fleet out, and every time they ask.
+   *
+   * "Show me your cars" is the obvious case. The other is the list itself: a
+   * reply that invites someone to pick between cars is the moment pictures are
+   * worth most, and a line-up of names with no photographs is the catalogue
+   * nobody reads.
+   *
+   * Once, though. Measured against the whole conversation rather than this
+   * turn's `seen`, which is empty here by construction — the single-car lookup
+   * never ran — so without it every list would send the line-up again.
+   */
+  const firstLook = offered.list !== null && photosShown.length === 0
+
+  const showcase = showing.length === 0 && fleet.length > 1 && (asked || claimed || firstLook)
+    ? await findFleetShowcase(deps.run, {
+        operatorId: context.operator.id,
+        cars: fleet.map((v) => ({ make: v.make, model: v.model })),
+      }).catch((error: unknown) => {
+        console.error(JSON.stringify({
+          event: 'fleet_showcase.lookup_failed',
+          conversationId: context.conversation.id,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+        return []
+      })
+    : []
+
+  /**
+   * A car the customer has already been sent is still part of the fleet.
+   *
+   * The once-only rule is about not repeating the same photograph in answer to
+   * the same question. A showcase is a different question — "what have you
+   * got" — and leaving one car out of the line-up because its picture went out
+   * on Tuesday would make the fleet look smaller than it is.
+   */
+  const cards = showcase.slice(0, FLEET_CARDS)
+
+  /**
+   * The name under each photograph. Variant where the operator recorded one,
+   * because "Huracán Tecnica" is the car and "Huracán" is the family.
+   */
+  const cardCaption = (card: (typeof cards)[number]): string =>
+    [card.make, card.model, card.variant].filter((p) => p !== null && p !== '').join(' ')
+
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
@@ -581,9 +653,16 @@ const PHOTOS_PER_CAR = 6
      */
     replyButtons: offered.list === null ? offered.buttons : null,
     replyList: offered.list,
-    replyImageUrl: showing[0] ?? null,
-    // The rest follow as their own messages, with no caption.
-    extraImageUrls: showing.slice(1),
+    /**
+     * The reply carries the first photograph when there is one — except when
+     * it carries a list or buttons, which an image message cannot hold. In
+     * that case every picture follows as its own message.
+     */
+    replyImageUrl: cards.length > 0 ? null : showing[0] ?? null,
+    extraImages: cards.length > 0
+      ? cards.map((card) => ({ url: card.photoUrl, caption: cardCaption(card) }))
+      // Further photographs of a car the reply has already named, so no caption.
+      : showing.slice(1).map((url) => ({ url })),
     quotesMessageId: quoting,
     // Per inbound message, so a retried job cannot produce a second reply to
     // the same customer message.
