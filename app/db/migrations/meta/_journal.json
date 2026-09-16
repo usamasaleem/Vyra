@@ -204,6 +204,13 @@
       "when": 1789562019091,
       "tag": "0028_member_emails",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789564386276,
+      "tag": "0029_yellow_firestar",
+      "breakpoints": true
     }
   ]
 }

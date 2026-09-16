@@ -171,6 +171,52 @@ export const whatsappAccounts = pgTable(
  * migration that wires Supabase Auth (build plan step 13), because the auth
  * schema is not managed by this package.
  */
+/**
+ * Somebody an admin has asked to join, who has not signed up yet.
+ *
+ * The alternative is Supabase's admin invite API, which needs the service-role
+ * key — a credential that can read and write every row for every operator,
+ * held by the web application, to send an email. That is a large thing to
+ * carry for a small feature.
+ *
+ * So an invitation is a row, and signing up with an invited address joins that
+ * operator at the role the admin chose. The admin sends the link themselves,
+ * which they were going to do anyway.
+ *
+ * The email is stored lower-cased. Addresses are matched case-insensitively
+ * everywhere a person types one, and normalising on the way in is the only
+ * version of that which cannot be forgotten at a call site.
+ */
+export const operatorInvitations = pgTable(
+  'operator_invitations',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    email: text().notNull(),
+    role: membershipRole().notNull(),
+    /** Who asked. Null when the invitation outlived the person who sent it. */
+    invitedByMembershipId: uuid(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp({ withTimezone: true }),
+    acceptedUserId: uuid(),
+    revokedAt: timestamp({ withTimezone: true }),
+  },
+  (table) => [
+    /**
+     * One live invitation per address per operator. Inviting the same person
+     * twice is a mistake to absorb, not an error to show — the second invite
+     * updates the first rather than creating a duplicate somebody else has to
+     * reconcile later.
+     */
+    uniqueIndex('operator_invitations_live_key')
+      .on(table.operatorId, table.email)
+      .where(sql`accepted_at is null and revoked_at is null`),
+    index('operator_invitations_email_idx').on(table.email),
+  ],
+)
+
 export const memberships = pgTable(
   'memberships',
   {

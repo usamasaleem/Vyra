@@ -74,6 +74,7 @@ describe('schema v1 applies', () => {
       'memberships',
       'messages',
       'operations_requests',
+      'operator_invitations',
       'operators',
       'outbox',
       'quotes',

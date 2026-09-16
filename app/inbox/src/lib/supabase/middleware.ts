@@ -39,7 +39,11 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   const path = request.nextUrl.pathname
   // The webhook never reaches here — it is excluded at the matcher, so no edge
   // hop can disturb the bytes its signature is computed over.
-  const isPublic = path === '/login'
+  // Sign-up is public for the same reason sign-in is: there is nobody to
+  // authenticate yet. It grants no access to anybody's data on its own — a new
+  // account is a member of nothing until it creates a company or accepts an
+  // invitation, and both of those happen after Supabase has verified who it is.
+  const isPublic = path === '/login' || path === '/signup' || path.startsWith('/signup/')
 
   if (data.user === null && !isPublic) {
     /**
