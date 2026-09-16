@@ -115,9 +115,27 @@ import { renderExamples } from './examples.js'
  * closing the subject. A person who only knows about the cars says that, and
  * asks what the customer needs.
  *
+ * v11 tells it what this customer has already been shown.
+ *
+ * "Can you show me the lambo?" was answered with "I've attached the photos
+ * here" and nothing attached. Two separate faults met in one message. The
+ * request detector wanted the word "photo" and the customer had named the car,
+ * so the once-only rule held and the pictures were suppressed; and the model
+ * narrated an attachment, which v9 already forbids, so a suppression that
+ * should have been invisible became a lie.
+ *
+ * The forbidding is kept and given a reason, because "never mention it" reads
+ * as style until you know what it protects. But a rule the model can break is
+ * not the fix, and the fix is not more prompt: `claimsPhotosAttached` now
+ * detects the claim and the turn honours it by sending the photographs.
+ *
+ * What belongs here is the missing fact. A model that knows four pictures of
+ * the Huracán went out this morning can say so — which is both the honest reply
+ * and the better one.
+ *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v10'
+export const PROMPT_VERSION = 'sales-v11'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -161,7 +179,8 @@ Use the tools as you go:
 - Record what they tell you the moment they say it, not at the end.
 - Look up the operator's policy before answering a policy question.
 - When several cars would suit and you want them to choose, you may ask which one in a sentence, without describing each. The customer is shown a tappable list of exactly the cars you looked up — names, colours and rates — so listing them again in the message repeats what they can already see. Describe them in full when you are answering rather than asking.
-- You can show them the car. When you talk about one specific car, its photographs are attached to your message for you — you do not ask for them and you never mention doing it. So never tell a customer you cannot send a picture: you can, and saying otherwise is both untrue and the thing they asked for. If one has no photographs on file, say you will get some rather than that you are unable to send any.
+- You can show them the car. When you talk about one specific car, its photographs are attached to your message for you — you do not ask for them and you never mention doing it. Never write that a picture is attached, below, or on its way: you are not the one attaching it, and a message announcing a photograph that did not go out sends the customer looking for something that is not there. Let the picture arrive and speak for itself. Never tell a customer you cannot send one either: you can, and saying otherwise is both untrue and the thing they asked for. If a car has no photographs on file, say you will get some rather than that you are unable to send any.
+- If they have already been sent pictures of a car, say so plainly when it comes up again — "sent you a few this morning" — and offer different angles rather than pretending it is the first time.
 - Look up the cars before answering anything about what is in the fleet or what it costs — including "what is your most expensive car". The rates are there. Asking a colleague for a number the lookup would have given you wastes the customer's time and yours.
 - A tool refusing is telling you something true about what nobody has confirmed yet. Say that plainly and move the conversation forward.
 
@@ -187,6 +206,13 @@ export function systemPromptFor(input: {
   now: Date
   timezone: string
   /**
+   * Cars this customer has already been shown, most recent first.
+   *
+   * Here rather than in SYSTEM_PROMPT because it is a fact about one
+   * conversation, and the constant above is what PROMPT_VERSION names.
+   */
+  photosShown?: ReadonlyArray<{ make: string; model: string; sent: number; lastSentAt: Date }>
+  /**
    * The enquiry this turn is about.
    *
    * prepare_quote takes it as an argument and refuses anything else, so that a
@@ -206,7 +232,19 @@ export function systemPromptFor(input: {
 
   const iso = formatCivil(civilDateIn(input.now, input.timezone))
 
-  return `${SYSTEM_PROMPT}
+  const shown = (input.photosShown ?? []).map((v) => {
+    const when = new Intl.DateTimeFormat('en-GB', {
+      timeZone: input.timezone, day: 'numeric', month: 'long',
+    }).format(v.lastSentAt)
+    return `${v.sent} of the ${v.make} ${v.model} on ${when}`
+  })
+
+  const alreadySeen = shown.length === 0
+    ? ''
+    : `\n\nThis customer has already been sent photographs: ${shown.join('; ')}. `
+      + `Mention that rather than talking as though they have seen nothing.`
+
+  return `${SYSTEM_PROMPT}${alreadySeen}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

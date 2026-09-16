@@ -135,3 +135,54 @@ export async function photosSentIn(
   )
   return new Set(rows.map((r) => r['reply_image_url'] as string))
 }
+
+/**
+ * Which cars this customer has already been shown, and when.
+ *
+ * `photosSentIn` answers "has this URL gone out", which is what the once-only
+ * rule needs. This answers the question the model needs, which is a different
+ * one: what does this customer already have. Asked "can you show me the
+ * lambo?" after four photographs of it were sent that morning, the right reply
+ * mentions them. The model could not, because nothing told it.
+ *
+ * Matched two ways because photographs go out two ways: an individual picture
+ * is one of the vehicle's own photo_urls, and a composite is served from a URL
+ * carrying the vehicle id. jsonb_exists rather than the `?` operator so the
+ * statement carries no character a driver might read as a placeholder.
+ */
+export type PhotosShown = {
+  make: string
+  model: string
+  sent: number
+  lastSentAt: Date
+  /** The message that carried the most recent one, so a reply can quote it. */
+  lastMessageId: string
+}
+
+export async function photosShownIn(
+  run: QueryRunner,
+  input: { conversationId: string; operatorId: string },
+): Promise<PhotosShown[]> {
+  const rows = await run(
+    `select v.make, v.model, count(*)::int as sent, max(m.created_at) as last_sent_at,
+            (array_agg(m.id order by m.created_at desc))[1] as last_message_id
+     from messages m
+     join vehicles v
+       on v.operator_id = m.operator_id
+      and (
+        (jsonb_typeof(v.photo_urls) = 'array' and jsonb_exists(v.photo_urls, m.reply_image_url))
+        or position('/fleet-photo/' || v.id::text in m.reply_image_url) > 0
+      )
+     where m.conversation_id = $1 and m.operator_id = $2 and m.reply_image_url is not null
+     group by v.make, v.model
+     order by max(m.created_at) desc`,
+    [input.conversationId, input.operatorId],
+  )
+  return rows.map((r) => ({
+    make: r['make'] as string,
+    model: r['model'] as string,
+    sent: Number(r['sent'] ?? 0),
+    lastSentAt: new Date(r['last_sent_at'] as string),
+    lastMessageId: r['last_message_id'] as string,
+  }))
+}

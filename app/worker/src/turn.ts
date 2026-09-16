@@ -1,5 +1,6 @@
 import {
-  asksToSeePhotos, buttonsFor, detectDiscountRequest, invitesACarChoice, vehicleList,
+  asksToSeePhotos, buttonsFor, claimsPhotosAttached, detectDiscountRequest, invitesACarChoice,
+  vehicleList,
 } from '@vyra/contracts'
 
 /** The shape search_vehicles returns, as much of it as a list row needs. */
@@ -29,6 +30,7 @@ import {
   findVehicleImages,
   loadMessagesBeforeWindow,
   photosSentIn,
+  photosShownIn,
   saveConversationSummary,
   requestHandoff,
   recordOutstandingWork,
@@ -213,6 +215,12 @@ export async function runConversationTurn(
    * cannot reach a variable assigned later in a try/catch, and naming the shape
    * is better than widening it to any.
    */
+  /**
+   * Declared out here because it is read twice: once before the model, as a
+   * fact for the instructions, and once after, to decide what to quote.
+   */
+  let photosShown: Awaited<ReturnType<typeof photosShownIn>> = []
+
   let end: (TurnEnd & {
     rounds: number
     usage?: TurnUsage
@@ -270,10 +278,32 @@ export async function runConversationTurn(
         text: m.body as string,
       }))
 
+    /**
+     * What this customer has already been shown, before the model is asked
+     * anything — the once-only rule is applied after the reply is written, so
+     * without this the model cannot know a photograph it is about to describe
+     * has already been sent, or is about to be suppressed.
+     *
+     * A nicety, like the pictures themselves, so a failure here costs a
+     * sentence of context and never the reply.
+     */
+    photosShown = await photosShownIn(deps.run, {
+      conversationId: context.conversation.id,
+      operatorId: context.operator.id,
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'photos_shown.lookup_failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      return []
+    })
+
     const outcome = await runTurn(deps.model, toolContext, transcript, {
       // What fell out of the window. Null until a conversation is long enough
       // to have lost anything.
       summary: context.conversation.summary,
+      photosShown,
     })
     end = {
       reply: outcome.reply,
@@ -470,9 +500,53 @@ const PHOTOS_PER_CAR = 6
     : [images.collage]
   const unseen = candidates.filter((url) => !seen.has(url))
 
-  const showing = asked
+  /**
+   * The model saying pictures are attached counts as asking for them.
+   *
+   * The prompt forbids it precisely so that a suppressed photograph stays
+   * invisible. Live it said "I've attached the photos here" on a turn that
+   * attached nothing, and the customer was left looking for them.
+   *
+   * Arguing with the model is not available — the reply is already written and
+   * rewriting it is not something this system does. What is available is making
+   * the sentence true. So a claimed attachment sends the photographs, even
+   * when the customer never used the word.
+   *
+   * Recorded as a defect either way. A turn reaching this line means the model
+   * broke a rule the instructions state plainly, and that is worth knowing
+   * about however gracefully it is handled.
+   */
+  const claimed = claimsPhotosAttached(end.reply)
+  if (claimed) {
+    console.error(JSON.stringify({
+      event: 'photos.claimed_in_reply',
+      conversationId: context.conversation.id,
+      promptVersion: PROMPT_VERSION,
+      candidates: candidates.length,
+      alreadyAsked: asked,
+    }))
+  }
+
+  const showing = asked || claimed
     ? (unseen.length > 0 ? unseen : candidates).slice(0, PHOTOS_PER_CAR)
     : (seen.size === 0 ? candidates.slice(0, PHOTOS_PER_CAR) : [])
+
+  /**
+   * When the answer is "I sent those earlier", say it attached to the message
+   * that did.
+   *
+   * Meta calls this a contextual reply: the quoted message appears in a bubble
+   * above the new one, and tapping it scrolls there. It is the difference
+   * between telling a customer the photographs are somewhere above and handing
+   * them the photographs.
+   *
+   * Only when nothing is going out this turn — a reply carrying pictures does
+   * not need to point at older ones — and only when they asked. An unprompted
+   * quote of a week-old message is a bot demonstrating that it has a memory.
+   */
+  const quoting = showing.length === 0 && asked && photosShown.length > 0
+    ? photosShown[0]!.lastMessageId
+    : null
 
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
@@ -489,6 +563,7 @@ const PHOTOS_PER_CAR = 6
     replyImageUrl: showing[0] ?? null,
     // The rest follow as their own messages, with no caption.
     extraImageUrls: showing.slice(1),
+    quotesMessageId: quoting,
     // Per inbound message, so a retried job cannot produce a second reply to
     // the same customer message.
     idempotencyKey: `turn:${context.message.id}`,

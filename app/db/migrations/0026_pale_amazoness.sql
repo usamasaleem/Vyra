@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "quotes_message_id" uuid;

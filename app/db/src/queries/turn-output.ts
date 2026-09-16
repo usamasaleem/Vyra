@@ -100,6 +100,12 @@ export async function acceptTurnOutput(
      * arrive together.
      */
     extraImageUrls?: string[]
+    /**
+     * An earlier message to quote, so the reply arrives attached to what it is
+     * about. Only the reply itself quotes: a follow-up photograph carries no
+     * caption and has nothing to be about.
+     */
+    quotesMessageId?: string | null
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -192,6 +198,7 @@ export async function acceptTurnOutput(
       replyButtons: input.replyButtons ?? null,
       replyList: input.replyList ?? null,
       replyImageUrl: input.replyImageUrl ?? null,
+      quotesMessageId: input.quotesMessageId ?? null,
       conversationId: input.conversationId,
       operatorId: input.operatorId,
       body: input.body,

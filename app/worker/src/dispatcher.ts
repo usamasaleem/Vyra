@@ -25,6 +25,15 @@ export type SendIntent = {
   replyList: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
   /** A photograph to send with this reply, as a public HTTPS link. */
   replyImageUrl: string | null
+  /**
+   * Meta's id for the earlier message this one quotes, resolved here rather
+   * than stored.
+   *
+   * Null whenever that message never reached Meta — a draft, a failed send, or
+   * one still queued. A quote is a nicety and this is where it is allowed to
+   * come to nothing: the reply goes out either way.
+   */
+  quotesProviderId: string | null
   /** Null for AI messages, set for a salesperson's own message. */
   sentByMembershipId: string | null
   revisionAtSend: number | null
@@ -139,10 +148,17 @@ const LOAD_INTENT_SQL = `
   select
     m.id, m.operator_id, m.conversation_id, m.body, m.kind, m.reply_buttons, m.reply_list, m.reply_image_url,
     m.sent_by_membership_id, m.revision_at_send,
+    q.provider_id as quotes_provider_id,
     v.revision, v.handler_mode, v.owner_membership_id, v.last_customer_message_at,
     c.channel_identifier, c.opted_out_at,
     a.phone_number_id
   from messages m
+  -- The quoted message, if there is one and it actually reached Meta. A left
+  -- join because a missing quote must not hide the message that carries it.
+  left join messages q
+    on q.id = m.quotes_message_id
+   and q.operator_id = m.operator_id
+   and q.conversation_id = m.conversation_id
   join conversations v on v.id = m.conversation_id and v.operator_id = m.operator_id
   join contacts c on c.id = v.contact_id and c.operator_id = m.operator_id
   join whatsapp_accounts a on a.id = v.whatsapp_account_id and a.operator_id = m.operator_id
@@ -186,6 +202,7 @@ export async function dispatchMessage(
       (row['reply_buttons'] as Array<{ id: string; title: string }> | null) ?? null,
     replyList: (row['reply_list'] as SendIntent['replyList']) ?? null,
     replyImageUrl: (row['reply_image_url'] as string) ?? null,
+    quotesProviderId: (row['quotes_provider_id'] as string) ?? null,
     sentByMembershipId: (row['sent_by_membership_id'] as string) ?? null,
     revisionAtSend: row['revision_at_send'] === null ? null : Number(row['revision_at_send']),
     conversationRevision: Number(row['revision']),
@@ -215,6 +232,7 @@ export async function dispatchMessage(
       buttons: intent.replyButtons,
       list: intent.replyList,
       imageUrl: intent.replyImageUrl,
+      quotesProviderId: intent.quotesProviderId,
     })
     await run(
       `update messages

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asksToSeePhotos } from '../src/photo-requests.ts'
+import { asksToSeePhotos, claimsPhotosAttached } from '../src/photo-requests.ts'
 
 describe('asksToSeePhotos', () => {
   /** Both taken from a live conversation where both got prose. */
@@ -12,6 +12,14 @@ describe('asksToSeePhotos', () => {
     'any other angles?',
     'show me the interior',
     'can we see more pics',
+    // The one that reached a customer: it names the car, not the pictures.
+    'can you show me the lambo?',
+    'show me the huracan',
+    'can I see the Ferrari',
+    "let's see it",
+    'show me',
+    'how does it look',
+    "i'd like to see the car",
   ])('reads %j as asking to see the car', (text) => {
     expect(asksToSeePhotos(text)).toBe(true)
   })
@@ -26,12 +34,60 @@ describe('asksToSeePhotos', () => {
     'what engine does it have?',
     'tell me about the green lambo',
     'i want to rent it',
+    // "show me the X" where X is not something you can photograph. Without
+    // this the broader patterns answer a pricing question with pictures.
+    'show me the price',
+    'can i see the rates for next week',
+    'show me the available dates',
+    'show me your terms and conditions',
+    'can we see the discount options',
   ])('reads %j as an ordinary question', (text) => {
     expect(asksToSeePhotos(text)).toBe(false)
+  })
+
+  /** The picture noun settles it, whatever else the sentence asks for. */
+  it('still sends pictures when they are asked for alongside a price', () => {
+    expect(asksToSeePhotos('show me the photos and the price')).toBe(true)
   })
 
   it('finds nothing in an empty message', () => {
     expect(asksToSeePhotos(null)).toBe(false)
     expect(asksToSeePhotos('  ')).toBe(false)
+  })
+})
+
+describe('claimsPhotosAttached', () => {
+  /** The first is verbatim from the reply that attached nothing. */
+  it.each([
+    "Of course \u2014 the Lamborghini Hurac\u00e1n Tecnica in Verde green. I\u2019ve attached the photos here.",
+    'Here are some pictures of the car.',
+    'Sending the photos now.',
+    'Photos below.',
+    'Have a look at these pictures.',
+    "Here's a few images for you.",
+  ])('reads %j as claiming an attachment', (reply) => {
+    expect(claimsPhotosAttached(reply)).toBe(true)
+  })
+
+  /**
+   * Talking about photographs is not claiming to have sent any. An offer must
+   * not trigger a send the model did not make.
+   */
+  it.each([
+    'I can send you photos if you like.',
+    'Would you like to see some pictures?',
+    'I will get some photos of that one for you.',
+    'The Hurac\u00e1n is AED 5,500 per day.',
+  ])('reads %j as not claiming one', (reply) => {
+    expect(claimsPhotosAttached(reply)).toBe(false)
+  })
+
+  it('reads a typographic apostrophe the same as a plain one', () => {
+    expect(claimsPhotosAttached('I\u2019ve attached the photos here.')).toBe(true)
+    expect(claimsPhotosAttached("I've attached the photos here.")).toBe(true)
+  })
+
+  it('finds nothing in an empty reply', () => {
+    expect(claimsPhotosAttached(null)).toBe(false)
   })
 })

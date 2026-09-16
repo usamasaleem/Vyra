@@ -61,6 +61,14 @@ export type RunTurnOptions = {
   system?: string
   /** What happened before the transcript starts. See ModelRequest.summary. */
   summary?: string | null
+  /**
+   * Cars this customer has already been sent photographs of.
+   *
+   * Passed through to the instructions rather than looked up here, because
+   * this package does not read the database — the tool boundary does, and it
+   * is the only thing here that should.
+   */
+  photosShown?: ReadonlyArray<{ make: string; model: string; sent: number; lastSentAt: Date }>
 }
 
 /** A prior exchange, oldest first. The last entry is the message being answered. */
@@ -102,7 +110,12 @@ export async function runTurn(
       // Composed per turn so the model is told what day it is. It was not, for
       // every turn before this, and could not resolve "the 20th" as a result.
       system: options.system
-        ?? systemPromptFor({ now: ctx.now, timezone: ctx.timezone, enquiryId: ctx.enquiryId }),
+        ?? systemPromptFor({
+          now: ctx.now,
+          timezone: ctx.timezone,
+          enquiryId: ctx.enquiryId,
+          ...(options.photosShown === undefined ? {} : { photosShown: options.photosShown }),
+        }),
       summary: options.summary ?? null,
       transcript: [...transcript],
       tools: boundary.definitions,

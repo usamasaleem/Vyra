@@ -199,3 +199,82 @@ describe('sending a photograph', () => {
       expect(calls[0]).toMatchObject({ type: 'text' })
     })
 })
+
+/**
+ * Contextual replies — quoting an earlier message so it appears in a bubble
+ * above the new one.
+ *
+ * What it is for: "sent you a few this morning" is a better answer when the
+ * morning's photographs are attached to the sentence saying so, rather than
+ * somewhere above in a thread the customer has to scroll.
+ */
+describe('quoting an earlier message', () => {
+  it('sends the context object Meta expects', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: 'Sent you a few of those this morning.',
+      quotesProviderId: 'wamid.EARLIER',
+    })
+
+    expect(calls[0]).toMatchObject({
+      type: 'text',
+      context: { message_id: 'wamid.EARLIER' },
+    })
+  })
+
+  it('quotes alongside a photograph too', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: 'Here is the side profile.',
+      imageUrl: 'https://example.com/side.jpg',
+      quotesProviderId: 'wamid.EARLIER',
+    })
+
+    expect(calls[0]).toMatchObject({ type: 'image', context: { message_id: 'wamid.EARLIER' } })
+  })
+
+  it('quotes alongside buttons', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: '20th to 23rd September — that right?',
+      buttons: BUTTONS,
+      quotesProviderId: 'wamid.EARLIER',
+    })
+
+    expect(calls[0]).toMatchObject({ type: 'interactive', context: { message_id: 'wamid.EARLIER' } })
+  })
+
+  it('sends nothing when there is nothing to quote', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Morning.' })
+
+    expect(calls[0]).not.toHaveProperty('context')
+  })
+
+  /**
+   * Meta rejects the whole message when the quoted id is not one of theirs, so
+   * anything that is not a wamid is dropped rather than sent. A reply that
+   * arrives without its quote is a much smaller loss than one that does not
+   * arrive — and a row id is exactly what would end up here by mistake.
+   */
+  it('drops an id that is not a wamid rather than failing the send', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: 'Morning.',
+      quotesProviderId: '66666666-6666-6666-6666-666666666666',
+    })
+
+    expect(calls[0]).not.toHaveProperty('context')
+    expect(calls[0]).toMatchObject({ type: 'text' })
+  })
+
+  it('drops a null without complaint', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Morning.', quotesProviderId: null })
+    expect(calls[0]).not.toHaveProperty('context')
+  })
+})

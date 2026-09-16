@@ -18,7 +18,7 @@ let run: QueryRunner
 
 const baseIntent = (overrides: Partial<SendIntent> = {}): SendIntent => ({
   messageId: 'm1', operatorId: OPERATOR, conversationId: CONVERSATION,
-  body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text', replyButtons: null, replyList: null, replyImageUrl: null,
+  body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text', replyButtons: null, replyList: null, replyImageUrl: null, quotesProviderId: null,
   sentByMembershipId: null, revisionAtSend: 0, conversationRevision: 0,
   handlerMode: 'ai', ownerMembershipId: null, lastCustomerMessageAt: new Date(NOW.getTime() - 60_000),
   recipient: '971500000001', optedOutAt: null, phoneNumberId: '111',
@@ -153,11 +153,13 @@ describe('dispatching against the database', () => {
   const queueOutbound = async (fields: Record<string, unknown> = {}) => {
     const rows = await run(
       `insert into messages (operator_id, conversation_id, direction, kind, body, delivery_state,
-                             revision_at_send, sent_by_membership_id, idempotency_key, reply_buttons)
-       values ($1, $2, 'outbound', 'text', $3, 'pending', $4, $5, $6, $7::jsonb) returning id`,
+                             revision_at_send, sent_by_membership_id, idempotency_key, reply_buttons,
+                             quotes_message_id)
+       values ($1, $2, 'outbound', 'text', $3, 'pending', $4, $5, $6, $7::jsonb, $8::uuid) returning id`,
       [OPERATOR, CONVERSATION, fields.body ?? 'Here are two options.',
        fields.revisionAtSend ?? 0, fields.sentBy ?? null, fields.key ?? `turn-${Math.random()}`,
-       fields.replyButtons === undefined ? null : JSON.stringify(fields.replyButtons)],
+       fields.replyButtons === undefined ? null : JSON.stringify(fields.replyButtons),
+       fields.quotesMessageId ?? null],
     )
     return rows[0]!.id as string
   }
@@ -194,6 +196,7 @@ describe('dispatching against the database', () => {
     expect(await stateOf(id)).toMatchObject({ delivery_state: 'accepted', provider_id: 'wamid.REAL' })
     expect(client.sendText).toHaveBeenCalledWith({
       to: '971500000001', body: 'Here are two options.', buttons: null, list: null, imageUrl: null,
+      quotesProviderId: null,
     })
   })
 
@@ -216,6 +219,7 @@ describe('dispatching against the database', () => {
 
     expect(client.sendText).toHaveBeenCalledWith({
       to: '971500000001', body: '20th to 23rd September — that right?', buttons, list: null, imageUrl: null,
+      quotesProviderId: null,
     })
   })
 
@@ -313,4 +317,46 @@ describe('dispatching against the database', () => {
     expect(await stateOf(id)).toMatchObject({ delivery_state: 'failed', error_code: '100' })
     expect((await dispatchMessage(run, sending(), id)).outcome).toBe('already_handled')
   })
+
+  /**
+   * The quoted message is resolved at the moment of sending rather than stored,
+   * because a wamid only exists once Meta has accepted the message it names.
+   */
+  describe('quoting an earlier message', () => {
+    it('sends the wamid of the message being quoted', async () => {
+      const earlier = await queueOutbound({ body: 'Here she is.' })
+      await run(
+        `update messages set provider_id = 'wamid.EARLIER', delivery_state = 'accepted' where id = $1`,
+        [earlier],
+      )
+
+      const reply = await queueOutbound({ body: 'Sent you a few this morning.', quotesMessageId: earlier })
+      const client = sending('wamid.NEW')
+      await dispatchMessage(run, client, reply)
+
+      expect(client.sendText).toHaveBeenCalledWith(
+        expect.objectContaining({ quotesProviderId: 'wamid.EARLIER' }),
+      )
+    })
+
+    /**
+     * A quote is a nicety. A message quoting one that never reached Meta — a
+     * draft, a failed send, one still queued — goes out without the bubble
+     * rather than not going out at all.
+     */
+    it('sends without a quote when the quoted message never reached Meta', async () => {
+      const earlier = await queueOutbound({ body: 'Here she is.' })
+      const reply = await queueOutbound({ body: 'Sent you a few this morning.', quotesMessageId: earlier })
+
+      const client = sending('wamid.NEW')
+      const result = await dispatchMessage(run, client, reply)
+
+      expect(result).toMatchObject({ outcome: 'sent' })
+      expect(client.sendText).toHaveBeenCalledWith(
+        expect.objectContaining({ quotesProviderId: null }),
+      )
+    })
+  })
+
 })
+

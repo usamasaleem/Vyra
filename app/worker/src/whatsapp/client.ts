@@ -61,6 +61,20 @@ export type SendTextInput = {
    * than a burst of them.
    */
   imageUrl?: string | null
+  /**
+   * A message to quote, by its Meta id (wamid), so the reply arrives in a
+   * contextual bubble above the new one.
+   *
+   * What it buys is a customer who does not have to work out which of twenty
+   * messages you meant. "Sent you a few this morning" is better when the
+   * morning's photographs are attached to the sentence saying so.
+   *
+   * Meta calls these contextual replies. An id that is too old, deleted, or
+   * from another conversation is rejected for the whole message — so this is
+   * dropped rather than allowed to fail a send: a reply that arrives without
+   * its quote is a smaller loss than one that does not arrive.
+   */
+  quotesProviderId?: string | null
 }
 
 export type SendTextResult = {
@@ -131,7 +145,7 @@ export function createWhatsAppClient(config: {
       }
     },
 
-    async sendText({ to, body, buttons, list, imageUrl }) {
+    async sendText({ to, body, buttons, list, imageUrl, quotesProviderId }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
 
       /**
@@ -161,11 +175,22 @@ export function createWhatsAppClient(config: {
         imageUrl !== undefined && imageUrl !== null && imageUrl.startsWith('https://')
         && body.length <= 1024 && !useList && !useButtons
 
+      /**
+       * Only a wamid is worth sending. Meta's ids are prefixed, and a value
+       * from anywhere else — a row id, an empty string — would fail the send
+       * rather than the quote.
+       */
+      const quote =
+        typeof quotesProviderId === 'string' && quotesProviderId.startsWith('wamid.')
+          ? { context: { message_id: quotesProviderId } }
+          : {}
+
       const payload = useImage
         ? {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to,
+            ...quote,
             type: 'image',
             image: {
               link: imageUrl,
@@ -180,6 +205,7 @@ export function createWhatsAppClient(config: {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to,
+            ...quote,
             type: 'interactive',
             interactive: {
               type: 'list',
@@ -205,6 +231,7 @@ export function createWhatsAppClient(config: {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to,
+            ...quote,
             type: 'interactive',
             interactive: {
               type: 'button',
@@ -224,6 +251,7 @@ export function createWhatsAppClient(config: {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to,
+            ...quote,
             type: 'text',
             text: { preview_url: false, body },
           }

@@ -232,6 +232,21 @@ export const messages = pgTable(
       rows: Array<{ id: string; title: string; description?: string }>
     } | null>(),
 
+    /**
+     * The earlier message this one quotes, shown in a contextual bubble above
+     * it — Meta calls them contextual replies.
+     *
+     * Our id rather than Meta's, so it is a reference that survives and can be
+     * read in the inbox. The wamid is looked up at the moment of sending,
+     * which is the only place it is needed and the only place it is known to
+     * still be valid.
+     *
+     * No foreign key, deliberately: a quote is a nicety, and a constraint that
+     * can fail a send is a worse trade than a quote that silently does not
+     * render.
+     */
+    quotesMessageId: uuid(),
+
     deliveryState: deliveryState().notNull().default('pending'),
     errorCode: text(),
     errorDetail: text(),

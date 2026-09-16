@@ -3,7 +3,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { findVehiclePhoto, findVehiclePhotos, photosSentIn } from '../src/queries/photos.ts'
+import {
+  findVehiclePhoto, findVehiclePhotos, photosSentIn, photosShownIn,
+} from '../src/queries/photos.ts'
 import type { QueryRunner } from '../src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
@@ -181,5 +183,64 @@ describe('findVehiclePhotos', () => {
     await expect(
       findVehiclePhotos(run, { operatorId: OP, make: 'Lamborghini', model: 'Huracán' }),
     ).resolves.toEqual([])
+  })
+})
+
+/**
+ * What the model needs, which is not what the once-only rule needs.
+ *
+ * `photosSentIn` answers "has this URL gone out". This answers "what does this
+ * customer already have", and its absence is why a reply said "I've attached
+ * the photos here" the morning after four of them had already been sent.
+ */
+describe('photosShownIn', () => {
+  const sendWithPhoto = (url: string) =>
+    run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id, reply_image_url)
+       values ($1, $2, 'outbound', 'text', '', $3, $4) returning id`,
+      [OP, CONV, `wamid.${Math.random()}`, url],
+    )
+
+  it('is empty before anything has been shown', async () => {
+    await addCar()
+    expect(await photosShownIn(run, { conversationId: CONV, operatorId: OP })).toEqual([])
+  })
+
+  it('counts what went out, per car, and names when', async () => {
+    await addCar({ photos: [PHOTO, 'https://example.com/side.jpg'] })
+    await sendWithPhoto(PHOTO)
+    await sendWithPhoto('https://example.com/side.jpg')
+
+    const [shown] = await photosShownIn(run, { conversationId: CONV, operatorId: OP })
+    expect(shown).toMatchObject({ make: 'Lamborghini', model: 'Huracán', sent: 2 })
+    expect(shown!.lastSentAt).toBeInstanceOf(Date)
+  })
+
+  /** A composite carries the vehicle id in its URL rather than being one of the photos. */
+  it('recognises a collage by the vehicle id in its link', async () => {
+    await addCar({ photos: [PHOTO] })
+    const [car] = await run(`select id from vehicles`, [])
+    await sendWithPhoto(`https://vyra-inbox.netlify.app/api/fleet-photo/${car!['id']}`)
+
+    const [shown] = await photosShownIn(run, { conversationId: CONV, operatorId: OP })
+    expect(shown).toMatchObject({ make: 'Lamborghini', sent: 1 })
+  })
+
+  /** The message id is what a contextual reply quotes, so it has to be the latest one. */
+  it('names the message that carried the most recent photograph', async () => {
+    await addCar({ photos: [PHOTO, 'https://example.com/side.jpg'] })
+    await sendWithPhoto(PHOTO)
+    const [latest] = await sendWithPhoto('https://example.com/side.jpg')
+
+    const [shown] = await photosShownIn(run, { conversationId: CONV, operatorId: OP })
+    expect(shown!.lastMessageId).toBe(latest!['id'])
+  })
+
+  it('does not report another conversation as already shown', async () => {
+    await addCar()
+    await sendWithPhoto(PHOTO)
+    expect(await photosShownIn(run, {
+      conversationId: '99999999-9999-9999-9999-999999999999', operatorId: OP,
+    })).toEqual([])
   })
 })
