@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buttonsFor, DATE_CONFIRMATION, DELIVERY_CHOICE, invitesACarChoice, LIST_LIMITS,
-  meaningOfButton, vehicleList,
+  DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor, invitesACarChoice, meaningOfButton, vehicleList,
 } from '../src/confirmations.ts'
 
 describe("Meta's limits", () => {
@@ -162,5 +161,55 @@ describe('a tapped car', () => {
         engine: '3.9L V8', dayRate: 'AED 5,000' },
     ])!.rows
     expect(meaningOfButton(cullinan!.id, cullinan!.title)).toBe('Rolls-Royce Cullinan, please.')
+  })
+})
+
+/**
+ * A few words the operator wants beside a car.
+ *
+ * A WhatsApp list row has no badge and no tag — id, a 24-character title and a
+ * 72-character description, and that is the whole of it. The description is
+ * the only place this can go, and the colour, engine and rate already use
+ * about fifty of those characters.
+ */
+describe('a highlight on a list row', () => {
+  const cars = (highlight: string | null) => [
+    {
+      make: 'Lamborghini', model: 'Huracán', variant: 'Tecnica', colour: 'Verde',
+      engine: '5.2 L V10', dayRate: 'AED 5,500', highlight,
+    },
+    {
+      make: 'Ferrari', model: '488', variant: 'Spider', colour: 'Giallo Modena',
+      engine: '3.9 L V8', dayRate: 'AED 5,000', highlight: null,
+    },
+  ]
+
+  it('reads first, because that is the point of it', () => {
+    const list = vehicleList(cars('Best seller'))
+    expect(list!.rows[0]!.description)
+      .toBe('Best seller · Verde · 5.2 L V10 · AED 5,500/day')
+  })
+
+  it('leaves a car without one exactly as it was', () => {
+    const list = vehicleList(cars('Best seller'))
+    expect(list!.rows[1]!.description).toBe('Giallo Modena · 3.9 L V8 · AED 5,000/day')
+  })
+
+  it.each([null, '', '   '])('treats %j as none at all', (highlight) => {
+    const list = vehicleList(cars(highlight))
+    expect(list!.rows[0]!.description).toBe('Verde · 5.2 L V10 · AED 5,500/day')
+  })
+
+  /** Longer than this and the engine starts disappearing to make room. */
+  it('never spends more than the limit on it', () => {
+    const first = vehicleList(cars('The one everybody in Dubai asks us about'))!.rows[0]!
+    expect(first.description!.startsWith('The one everybody')).toBe(true)
+    expect(first.description!.split(' · ')[0]!.length).toBeLessThanOrEqual(HIGHLIGHT_LIMIT)
+  })
+
+  it('still fits the row WhatsApp allows', () => {
+    for (const row of vehicleList(cars('Best seller'))!.rows) {
+      expect(row.description!.length).toBeLessThanOrEqual(LIST_LIMITS.rowDescription)
+    }
   })
 })

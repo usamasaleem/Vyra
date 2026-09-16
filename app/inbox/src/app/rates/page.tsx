@@ -4,6 +4,7 @@ import { permissions, requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { RateForm } from './rate-form'
 import { PhotoForm } from './photo-form'
+import { HighlightForm } from './highlight-form'
 
 /**
  * Rates, the last thing standing between the agent and a price.
@@ -48,6 +49,9 @@ export default async function RatesPage() {
             <li key={r.vehicleId} className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
                 <strong>{r.vehicleLabel}</strong>
+                {r.highlight !== null && (
+                  <span className="tag">{r.highlight}</span>
+                )}
                 {r.confirmedBy !== null && (
                   <span className="muted" style={{ fontSize: '0.78rem' }}>set by {r.confirmedBy}</span>
                 )}
@@ -61,6 +65,7 @@ export default async function RatesPage() {
                 <div style={{ marginTop: '0.6rem' }}>
                   <RateForm vehicleId={r.vehicleId} current={r} />
                   <PhotoForm vehicleId={r.vehicleId} current={r.photoUrls} />
+                  <HighlightForm vehicleId={r.vehicleId} current={r.highlight} />
                 </div>
               ) : (
                 <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.85rem' }}>

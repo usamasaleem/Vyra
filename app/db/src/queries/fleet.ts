@@ -22,6 +22,8 @@ export type FleetVehicle = {
   variant: string | null
   year: number
   colour: string
+  /** A few words the operator wants beside this car. Null when they set none. */
+  highlight: string | null
   category: string
   plate: string
   chassisNumber: string
@@ -87,6 +89,7 @@ const SEARCH_SQL = `
   select v.id, v.make, v.model, v.variant, v.year, v.colour, v.category::text as category,
          v.plate, v.chassis_number, v.engine, v.power_hp, v.transmission, v.drivetrain,
          v.seats, v.doors,
+         v.highlight,
          r.daily_rate_minor, coalesce(r.currency, 'AED') as currency
   from vehicles v
   left join vehicle_rates r
@@ -235,6 +238,7 @@ export async function searchFleet(
       variant: (r['variant'] as string) ?? null,
       year: Number(r['year']),
       colour: r['colour'] as string,
+      highlight: (r['highlight'] as string) ?? null,
       category: r['category'] as string,
       plate: r['plate'] as string,
       chassisNumber: r['chassis_number'] as string,

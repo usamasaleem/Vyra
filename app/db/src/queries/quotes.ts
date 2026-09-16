@@ -1,4 +1,4 @@
-import { formatDateForMessage } from '@vyra/contracts'
+import { formatDateForMessage, HIGHLIGHT_LIMIT } from '@vyra/contracts'
 import type { QueryRunner } from '../runner.js'
 
 /**
@@ -331,6 +331,8 @@ export type RateRow = {
   confirmedBy: string | null
   /** Photographs of this car, shown to a customer asking about it. */
   photoUrls: string[]
+  /** A few words the operator wants beside it. Their claim, not ours. */
+  highlight: string | null
 }
 
 /**
@@ -342,7 +344,7 @@ export type RateRow = {
  */
 export async function listRates(run: QueryRunner, operatorId: string): Promise<RateRow[]> {
   const rows = await run(
-    `select v.id as vehicle_id, v.photo_urls,
+    `select v.id as vehicle_id, v.photo_urls, v.highlight,
             v.make || ' ' || v.model || coalesce(' ' || v.variant, '') ||
               ' · ' || v.colour as vehicle_label,
             r.id as rate_id, coalesce(r.currency, 'AED') as currency,
@@ -373,6 +375,7 @@ export async function listRates(run: QueryRunner, operatorId: string): Promise<R
     depositMinor: r['deposit_minor'] == null ? null : Number(r['deposit_minor']),
     deliveryFeeMinor: r['delivery_fee_minor'] == null ? null : Number(r['delivery_fee_minor']),
     confirmedBy: (r['confirmed_by'] as string) ?? null,
+    highlight: (r['highlight'] as string) ?? null,
   }))
 }
 
@@ -483,4 +486,43 @@ export function renderQuoteMessage(quote: {
     parts.push(`Valid until ${formatDateForMessage(quote.validUntil, quote.timezone ?? 'Asia/Dubai')}.`)
   }
   return parts.join('\n')
+}
+
+/**
+ * A few words the operator wants beside a car.
+ *
+ * On the vehicle rather than the rate, because it is a claim about the car and
+ * not about what it costs — and because a rate supersedes rather than edits,
+ * which would mean losing the highlight every time somebody changed a price.
+ *
+ * Audited like the rate beside it. "Best seller" is a statement about the
+ * business that customers read in the operator's voice, and who said it is
+ * worth keeping.
+ */
+export async function setVehicleHighlight(
+  run: QueryRunner,
+  input: {
+    operatorId: string
+    vehicleId: string
+    highlight: string | null
+    actorMembershipId: string
+  },
+): Promise<{ changed: boolean }> {
+  const trimmed = input.highlight === null ? null : input.highlight.trim()
+  const value = trimmed === null || trimmed === '' ? null : trimmed.slice(0, HIGHLIGHT_LIMIT)
+
+  const rows = await run(
+    `update vehicles set highlight = $3
+     where id = $1 and operator_id = $2 and active and provenance = 'operator_confirmed'
+     returning id`,
+    [input.vehicleId, input.operatorId, value],
+  )
+  if (rows.length === 0) return { changed: false }
+
+  await run(
+    `insert into audit_events (operator_id, actor_type, actor_id, action, subject_type, subject_id, data)
+     values ($1, 'user', $2, 'vehicle.highlight_set', 'vehicle', $3, $4::jsonb)`,
+    [input.operatorId, input.actorMembershipId, input.vehicleId, JSON.stringify({ highlight: value })],
+  )
+  return { changed: true }
 }

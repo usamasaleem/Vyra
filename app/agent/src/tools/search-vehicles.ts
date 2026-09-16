@@ -211,6 +211,12 @@ export async function searchVehicles(
     variant: v.variant,
     year: v.year,
     colour: v.colour,
+    /**
+     * The operator's own words about this car, when they set any. Worth the
+     * model knowing: a salesperson mentions that something is the one people
+     * ask for. It is a claim a person at the operator made, like the rate.
+     */
+    ...(v.highlight === null ? {} : { highlight: v.highlight }),
     category: v.category,
     engine: v.engine,
     powerHp: v.powerHp,

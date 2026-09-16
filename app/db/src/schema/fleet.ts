@@ -102,6 +102,24 @@ export const vehicles = pgTable(
      * `search_vehicles` returns confirmed rows only, so invented specifications
      * cannot reach a customer by accident.
      */
+    /**
+     * A few words the operator wants beside this car — "Best seller", "Newest
+     * arrival", "Only one in Dubai".
+     *
+     * Set by a person rather than computed, and that is the whole point.
+     * "Best seller" is a factual claim about the business, and the honest
+     * alternative is counting bookings — which early on means "the one we
+     * photographed" and puts a number we invented into the operator's voice.
+     * Every other claim this agent states carries somebody's name; so does
+     * this.
+     *
+     * Short because the only place it fits is the 72 characters of a WhatsApp
+     * list row's description, which the colour, engine and rate already use
+     * fifty of. The surface that has real tags is Flows, and Meta will not let
+     * this business use those.
+     */
+    highlight: text(),
+
     provenance: fleetProvenance().notNull().default('placeholder'),
     confirmedBy: text(),
     confirmedAt: timestamp({ withTimezone: true }),

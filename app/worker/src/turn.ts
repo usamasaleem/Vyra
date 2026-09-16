@@ -12,6 +12,8 @@ type VehicleRow = {
   colour: string
   engine: string | null
   dayRate: string | null
+  /** The operator's own few words, shown first in the list row. */
+  highlight?: string | null
 }
 import {
   classifyTurnEnd,

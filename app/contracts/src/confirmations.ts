@@ -34,6 +34,16 @@ export type ReplyList = {
   rows: Array<{ id: string; title: string; description?: string }>
 }
 
+/**
+ * A few words the operator wants beside a car, capped so the rest of the row
+ * survives.
+ *
+ * Eighteen characters plus the separator leaves fifty of the seventy-two for
+ * colour, engine and rate — which is what they already use. Longer than this
+ * and the engine starts disappearing to make room for a slogan.
+ */
+export const HIGHLIGHT_LIMIT = 18
+
 export const LIST_LIMITS = {
   rows: 10,
   rowTitle: 24,
@@ -65,6 +75,8 @@ export function vehicleList(
     colour: string
     engine: string | null
     dayRate: string | null
+    /** The operator's own few words. Shown first, because that is the point. */
+    highlight?: string | null
   }>,
 ): ReplyList | null {
   if (vehicles.length < 2 || vehicles.length > LIST_LIMITS.rows) return null
@@ -76,6 +88,12 @@ export function vehicleList(
       // Colour first because it is what a customer recognises, then the engine,
       // then the price. Truncated on a word where it can be.
       const detail = [
+        // First, because a row is read left to right and this is the thing the
+        // operator wanted noticed. WhatsApp list rows have no badge or tag —
+        // the description is the only place it can go.
+        v.highlight === null || v.highlight === undefined || v.highlight.trim() === ''
+          ? null
+          : v.highlight.trim().slice(0, HIGHLIGHT_LIMIT),
         v.colour.replace(/\s*\([^)]*\)/, ''),
         v.engine,
         v.dayRate === null ? null : `${v.dayRate}/day`,

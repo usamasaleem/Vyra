@@ -9,6 +9,7 @@ import {
   listDraftQuotes,
   renderQuoteMessage,
   setVehicleRate,
+  setVehicleHighlight,
   assignConversation,
   queueOutboundText,
   resumeAi,
@@ -436,6 +437,40 @@ export async function savePhotos(_previous: PhotoState, formData: FormData): Pro
       collageUrl,
     ],
   )
+
+  revalidatePath('/rates')
+  return { error: null }
+}
+
+
+export type HighlightState = { error: string | null }
+
+/**
+ * A few words the operator wants beside a car.
+ *
+ * An administrator's to set, like the rate: it is a claim customers read in
+ * the operator's voice, not a preference about how the screen looks.
+ */
+export async function saveHighlight(
+  _previous: HighlightState,
+  formData: FormData,
+): Promise<HighlightState> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canAdminister(actor), 'set what is said about a car')
+
+  const vehicleId = String(formData.get('vehicleId') ?? '')
+  const highlight = String(formData.get('highlight') ?? '')
+
+  const result = await setVehicleHighlight(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    vehicleId,
+    highlight,
+    actorMembershipId: actor.membershipId,
+  })
+
+  if (!result.changed) {
+    return { error: 'That car is not one of yours, or is no longer active.' }
+  }
 
   revalidatePath('/rates')
   return { error: null }

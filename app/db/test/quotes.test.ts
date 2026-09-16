@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   approveQuote, calculateDraftQuote, formatMoney, listDraftQuotes, listRates,
-  renderQuoteMessage, setVehicleRate,
+  renderQuoteMessage, setVehicleHighlight, setVehicleRate,
 } from '../src/queries/quotes.ts'
 import type { QueryRunner } from '../src/runner.ts'
 
@@ -302,5 +302,77 @@ describe('the message a customer reads', () => {
 
   it('formats fils that are not whole currency', () => {
     expect(formatMoney(150050, 'AED')).toBe('AED 1,500.50')
+  })
+})
+
+/**
+ * A few words the operator wants beside a car.
+ *
+ * Set by a person rather than computed. "Best seller" is a factual claim about
+ * the business, and counting bookings early means "the one we photographed" —
+ * a number we invented, in the operator's voice.
+ */
+describe('setting what is said about a car', () => {
+  const vehicle = async () =>
+    (await run(`select id from vehicles limit 1`, []))[0]!['id'] as string
+
+  it('is stored and comes back with the rate', async () => {
+    const id = await vehicle()
+    expect(await setVehicleHighlight(run, {
+      operatorId: OP, vehicleId: id, highlight: 'Best seller',
+      actorMembershipId: SARA,
+    })).toEqual({ changed: true })
+
+    const rates = await listRates(run, OP)
+    expect(rates.find((r) => r.vehicleId === id)!.highlight).toBe('Best seller')
+  })
+
+  it('is capped rather than allowed to eat the rest of the row', async () => {
+    const id = await vehicle()
+    await setVehicleHighlight(run, {
+      operatorId: OP, vehicleId: id,
+      highlight: 'The one everybody in Dubai asks us about',
+      actorMembershipId: SARA,
+    })
+
+    const [row] = await run(`select highlight from vehicles where id = $1`, [id])
+    expect((row!['highlight'] as string).length).toBeLessThanOrEqual(18)
+  })
+
+  it.each(['', '   '])('treats %j as clearing it', async (highlight) => {
+    const id = await vehicle()
+    await setVehicleHighlight(run, {
+      operatorId: OP, vehicleId: id, highlight: 'Best seller',
+      actorMembershipId: SARA,
+    })
+    await setVehicleHighlight(run, {
+      operatorId: OP, vehicleId: id, highlight, actorMembershipId: SARA,
+    })
+
+    const [row] = await run(`select highlight from vehicles where id = $1`, [id])
+    expect(row!['highlight']).toBeNull()
+  })
+
+  /** Customers read it in the operator's voice, so who said it is worth keeping. */
+  it('records who said it', async () => {
+    const id = await vehicle()
+    await setVehicleHighlight(run, {
+      operatorId: OP, vehicleId: id, highlight: 'Best seller',
+      actorMembershipId: SARA,
+    })
+
+    const [event] = await run(
+      `select actor_id, data from audit_events where action = 'vehicle.highlight_set'`, [],
+    )
+    expect(event!['actor_id']).toBe(SARA)
+    expect((event!['data'] as Record<string, unknown>)['highlight']).toBe('Best seller')
+  })
+
+  it('refuses a car belonging to somebody else', async () => {
+    const id = await vehicle()
+    expect(await setVehicleHighlight(run, {
+      operatorId: '99999999-9999-9999-9999-999999999999', vehicleId: id,
+      highlight: 'Best seller', actorMembershipId: SARA,
+    })).toEqual({ changed: false })
   })
 })
