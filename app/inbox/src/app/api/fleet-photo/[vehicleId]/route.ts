@@ -82,6 +82,12 @@ export async function GET(
 ) {
   const { vehicleId } = await params
 
+  /**
+   * Privileged, because this endpoint is deliberately public: WhatsApp fetches
+   * the image itself, unauthenticated, and there is no user to scope as. The
+   * vehicle id in the URL is the only scope, which is why this route returns
+   * photographs and nothing else about the car.
+   */
   const rows = await queryRunner()(
     `select photo_urls from vehicles
      where id = $1 and active and jsonb_typeof(photo_urls) = 'array'`,

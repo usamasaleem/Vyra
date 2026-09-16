@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { SiteNav } from '../site-nav'
 import { listOpenHandoffs } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 import { AcceptButton } from './accept-button'
 
 /**
@@ -41,13 +41,13 @@ export default async function HandoffsPage({
 }) {
   const actor = await requireActor()
   const filters = await searchParams
-  const handoffs = await listOpenHandoffs(queryRunner(), actor.operatorId, {
+  const handoffs = await listOpenHandoffs(actorRunner(actor), actor.operatorId, {
     unclaimedOnly: filters.mine !== 'all',
   })
 
   return (
     <main className="shell">
-      <SiteNav current="handoffs" operatorId={actor.operatorId} />
+      <SiteNav current="handoffs" actor={actor} />
       <h1>Handoff queue</h1>
       <p className="muted">
         Conversations the agent could not finish. Accepting one assigns the conversation to you.

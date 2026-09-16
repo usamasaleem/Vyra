@@ -1,7 +1,7 @@
 import { POLICY_TOPICS } from '@vyra/contracts'
 import { listKnowledge } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 import { SiteNav } from '../site-nav'
 import { AnswerForm } from './answer-form'
 
@@ -54,7 +54,7 @@ const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = 
 
 export default async function KnowledgePage() {
   const actor = await requireActor()
-  const rows = await listKnowledge(queryRunner(), actor.operatorId)
+  const rows = await listKnowledge(actorRunner(actor), actor.operatorId)
   const canEdit = permissions.canAdminister(actor)
 
   /** The live answer per topic: published, and not yet superseded. */
@@ -71,7 +71,7 @@ export default async function KnowledgePage() {
 
   return (
     <main className="shell">
-      <SiteNav current="knowledge" operatorId={actor.operatorId} />
+      <SiteNav current="knowledge" actor={actor} />
       <h1>What the agent may say</h1>
       <p className="muted">
         The agent answers these from here and from nowhere else. A question with no answer below is

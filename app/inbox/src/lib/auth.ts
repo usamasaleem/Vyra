@@ -53,6 +53,13 @@ async function actorForUser(
   email: string | null,
   requestedOperatorId?: string,
 ): Promise<Actor | null> {
+  /**
+   * Privileged, and it has to be: this is the lookup that establishes which
+   * operators the user belongs to, and the policies are written in terms of
+   * that answer. Its own scoping is the `where m.user_id = $1` below, against
+   * an id that came from the verified Supabase session rather than from the
+   * browser. Everything downstream of this line runs as vyra_app.
+   */
   const rows = await queryRunner()(MEMBERSHIP_SQL, [userId])
   if (rows.length === 0) return null
 

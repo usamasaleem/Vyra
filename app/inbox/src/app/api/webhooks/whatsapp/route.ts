@@ -118,6 +118,13 @@ export async function POST(request: Request): Promise<Response> {
     return new Response(null, { status: 200 })
   }
 
+  /**
+   * Privileged. Meta is calling, there is no signed-in user, and no session to
+   * scope by — the operator is resolved from the phone number id in the
+   * payload after the signature is verified. Section 18.7's answer for this
+   * path is explicit operator scoping, which is what the ingest statements do
+   * and what they are tested on.
+   */
   const run = queryRunner()
   const stored: Array<Record<string, unknown>> = []
 

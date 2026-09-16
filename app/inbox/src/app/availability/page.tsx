@@ -1,6 +1,6 @@
 import { listAvailability, listRates } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 import { SiteNav } from '../site-nav'
 import { BlockForm } from './block-form'
 import { releaseBlock, setCalendarIsComplete } from './actions'
@@ -26,7 +26,7 @@ const REASON_LABEL: Record<string, string> = {
 
 export default async function AvailabilityPage() {
   const actor = await requireActor()
-  const run = queryRunner()
+  const run = actorRunner(actor)
 
   const [blocks, rates, operator] = await Promise.all([
     listAvailability(run, actor.operatorId),
@@ -41,7 +41,7 @@ export default async function AvailabilityPage() {
 
   return (
     <main className="shell">
-      <SiteNav current="availability" operatorId={actor.operatorId} />
+      <SiteNav current="availability" actor={actor} />
       <h1>When cars are taken</h1>
       <p className="muted">
         A booking recorded here answers every enquiry that touches those dates, without anyone

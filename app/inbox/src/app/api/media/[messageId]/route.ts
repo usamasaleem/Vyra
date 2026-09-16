@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 
 /**
  * Playing a voice note a customer sent.
@@ -28,7 +28,7 @@ export async function GET(
   const actor = await requireActor()
   const { messageId } = await context.params
 
-  const run = queryRunner()
+  const run = actorRunner(actor)
   const rows = await run(
     `select m.media, m.kind
      from messages m

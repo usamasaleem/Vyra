@@ -18,7 +18,7 @@ import {
 } from '@vyra/db'
 import { revalidatePath } from 'next/cache'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 
 /**
  * Every action re-derives the actor and its operator from the session.
@@ -49,7 +49,7 @@ export async function sendReply(
    * the dispatcher. Section 18.12 forbids a second way to send, because a
    * direct call would skip the 24-hour window check and the delivery record.
    */
-  const result = await queueOutboundText(queryRunner(), {
+  const result = await queueOutboundText(actorRunner(actor), {
     conversationId,
     operatorId: actor.operatorId,
     body,
@@ -71,7 +71,7 @@ export async function takeOver(formData: FormData): Promise<void> {
   const conversationId = String(formData.get('conversationId') ?? '')
   assertPermitted(permissions.canReply(actor), 'take over a conversation')
 
-  await takeOverConversation(queryRunner(), {
+  await takeOverConversation(actorRunner(actor), {
     conversationId,
     operatorId: actor.operatorId,
     membershipId: actor.membershipId,
@@ -84,7 +84,7 @@ export async function handBackToAi(formData: FormData): Promise<void> {
   const conversationId = String(formData.get('conversationId') ?? '')
   assertPermitted(permissions.canReply(actor), 'return a conversation to the AI')
 
-  await resumeAi(queryRunner(), {
+  await resumeAi(actorRunner(actor), {
     conversationId,
     operatorId: actor.operatorId,
     membershipId: actor.membershipId,
@@ -96,7 +96,7 @@ export async function toggleAiSending(formData: FormData): Promise<void> {
   const actor = await requireActor()
   assertPermitted(permissions.canControlAi(actor), 'change the AI switch')
 
-  await setOperatorAiSending(queryRunner(), {
+  await setOperatorAiSending(actorRunner(actor), {
     operatorId: actor.operatorId,
     enabled: String(formData.get('enabled')) === 'true',
     membershipId: actor.membershipId,
@@ -118,7 +118,7 @@ export async function addInternalNote(
    * customer but must be able to leave a note — that is how they answer a
    * question about a vehicle without the customer hearing from them directly.
    */
-  const result = await addNote(queryRunner(), {
+  const result = await addNote(actorRunner(actor), {
     operatorId: actor.operatorId,
     conversationId,
     membershipId: actor.membershipId,
@@ -137,7 +137,7 @@ export async function assignTo(formData: FormData): Promise<void> {
   const conversationId = String(formData.get('conversationId') ?? '')
   const raw = String(formData.get('assignee') ?? '')
 
-  await assignConversation(queryRunner(), {
+  await assignConversation(actorRunner(actor), {
     operatorId: actor.operatorId,
     conversationId,
     assigneeMembershipId: raw === '' ? null : raw,
@@ -151,7 +151,7 @@ export async function changePriority(formData: FormData): Promise<void> {
   assertPermitted(permissions.canReply(actor), 'change priority')
 
   const conversationId = String(formData.get('conversationId') ?? '')
-  await setPriority(queryRunner(), {
+  await setPriority(actorRunner(actor), {
     operatorId: actor.operatorId,
     conversationId,
     priority: String(formData.get('priority') ?? 'normal'),
@@ -195,7 +195,7 @@ export async function claimHandoff(
     return { error: 'Your role cannot accept handoffs.' }
   }
 
-  const result = await acceptHandoff(queryRunner(), {
+  const result = await acceptHandoff(actorRunner(actor), {
     handoffId,
     operatorId: actor.operatorId,
     membershipId: actor.membershipId,
@@ -250,7 +250,7 @@ export async function answerOperations(
     return { error: 'Your role cannot answer Operations requests.' }
   }
 
-  const result = await answerOperationsRequest(queryRunner(), {
+  const result = await answerOperationsRequest(actorRunner(actor), {
     requestId,
     operatorId: actor.operatorId,
     membershipId: actor.membershipId,
@@ -291,7 +291,7 @@ export async function approveAndSendQuote(
     return { error: 'Your role cannot approve quotes.' }
   }
 
-  const run = queryRunner()
+  const run = actorRunner(actor)
   const draft = (await listDraftQuotes(run, actor.operatorId)).find((q) => q.id === quoteId)
   if (draft === undefined) return { error: 'That quote is no longer a draft.' }
 
@@ -361,7 +361,7 @@ export async function saveRate(
   const daily = toMinor('dailyRate')
   if (daily === null || daily === 0) return { error: 'A daily rate is required.' }
 
-  await setVehicleRate(queryRunner(), {
+  await setVehicleRate(actorRunner(actor), {
     operatorId: actor.operatorId,
     vehicleId,
     // The name on the rate is the person who entered it, from the session.
@@ -426,7 +426,7 @@ export async function savePhotos(_previous: PhotoState, formData: FormData): Pro
     ? `https://${host}/api/fleet-photo/${vehicleId}`
     : null
 
-  await queryRunner()(
+  await actorRunner(actor)(
     `update vehicles set photo_urls = $3::jsonb, collage_url = $4, updated_at = now()
      where id = $1 and operator_id = $2`,
     [

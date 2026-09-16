@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getNavCounts } from '@vyra/db'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 
 /**
  * The one list of places in this application.
@@ -27,8 +27,20 @@ const DESTINATIONS = [
 
 export type NavKey = (typeof DESTINATIONS)[number]['key']
 
-export async function SiteNav({ current, operatorId }: { current: NavKey; operatorId: string }) {
-  const counts = await getNavCounts(queryRunner(), operatorId)
+export async function SiteNav({
+  current,
+  actor,
+}: {
+  current: NavKey
+  /**
+   * The whole actor rather than an operator id, because the badge counts are
+   * now read as the restricted role and that needs to know who is asking. The
+   * operator id alone was never enough to prove anything; it is a scope being
+   * requested, and the policies decide whether it is held.
+   */
+  actor: { userId: string; operatorId: string }
+}) {
+  const counts = await getNavCounts(actorRunner(actor), actor.operatorId)
 
   /**
    * A badge appears only above zero. An empty queue and a queue of one look

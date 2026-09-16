@@ -1,5 +1,5 @@
 import { currentActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 
 /**
  * A cheap "has anything moved?" check for the inbox to poll.
@@ -51,7 +51,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const conversationId = new URL(request.url).searchParams.get('conversation')
-  const run = queryRunner()
+  const run = actorRunner(actor)
 
   if (conversationId === null) {
     const rows = await run(LIST_SQL, [actor.operatorId])

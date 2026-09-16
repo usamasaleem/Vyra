@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { isPolicyTopic } from '@vyra/contracts'
 import { draftKnowledge, publishKnowledge } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
-import { queryRunner, transactor } from '@/lib/db'
+import { actorRunner, actorTransactor } from '@/lib/db'
 
 export type AnswerState = { error: string | null; saved?: string }
 
@@ -42,14 +42,14 @@ export async function saveAnswer(
     return { error: 'Say who confirmed this. A published answer binds the business.' }
   }
 
-  const draft = await draftKnowledge(queryRunner(), {
+  const draft = await draftKnowledge(actorRunner(actor), {
     operatorId: actor.operatorId,
     topic,
     answer,
     confirmedBy,
   })
 
-  const result = await publishKnowledge(transactor(), {
+  const result = await publishKnowledge(actorTransactor(actor), {
     entryId: draft.id,
     operatorId: actor.operatorId,
     membershipId: actor.membershipId,

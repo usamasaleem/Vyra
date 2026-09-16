@@ -5,7 +5,7 @@ import { SiteNav } from './site-nav'
 import { signOut } from './login/actions'
 import { toggleAiSending } from './actions'
 import { permissions, requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 import { listConversations } from '@/lib/queries/conversations'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +28,7 @@ export default async function InboxPage({
 }) {
   const actor = await requireActor()
   const filters = await searchParams
-  const run = queryRunner()
+  const run = actorRunner(actor)
 
   // The queue counts moved into SiteNav, which asks for two numbers rather
   // than two full lists this page then took the length of.
@@ -50,7 +50,7 @@ export default async function InboxPage({
   return (
     <main className="shell">
       <LiveRefresh />
-      <SiteNav current="inbox" operatorId={actor.operatorId} />
+      <SiteNav current="inbox" actor={actor} />
       <div className="topbar">
         <div>
           <h1>{status?.name ?? 'Inbox'}</h1>

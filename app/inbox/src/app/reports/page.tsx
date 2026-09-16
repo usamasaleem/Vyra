@@ -8,7 +8,7 @@ import {
   getQueueWaits,
 } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner, queryRunner } from '@/lib/db'
 
 /**
  * Build plan step 32 — the ten measures section 15 asks for, and only those.
@@ -56,12 +56,22 @@ export default async function ReportsPage({
   const { range } = await searchParams
   const days = RANGES[range ?? 'week'] ?? 7
   const since = new Date(Date.now() - days * 86_400_000)
-  const run = queryRunner()
+  const run = actorRunner(actor)
   const [m, ai, waits, backlog] = await Promise.all([
     getMetrics(run, actor.operatorId, since),
     getAgentCosts(run, actor.operatorId, since),
     getQueueWaits(run, actor.operatorId, since),
-    findQueueBacklog(run),
+    /**
+     * Privileged, alone on this page.
+     *
+     * The queue lives in graphile_worker's own schema, which vyra_app has no
+     * access to at all — deliberately: it holds every operator's jobs and is
+     * not scoped by anything. Reading it as the restricted role fails with
+     * "permission denied for schema graphile_worker", which is the database
+     * being right. What is shown is a count, a task name and a duration; no
+     * customer data and nothing another operator could be identified from.
+     */
+    findQueueBacklog(queryRunner()),
   ])
 
   // Thousands separators, and an em dash when nobody reported a number. "0"
@@ -72,7 +82,7 @@ export default async function ReportsPage({
 
   return (
     <main className="shell">
-      <SiteNav current="reports" operatorId={actor.operatorId} />
+      <SiteNav current="reports" actor={actor} />
       <h1>Reporting</h1>
       <p className="muted">
         The ten sales measures. Fleet, utilisation, payments and maintenance belong to Operations,

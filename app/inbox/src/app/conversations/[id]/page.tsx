@@ -5,7 +5,7 @@ import { assignTo, changePriority, handBackToAi, takeOver } from '@/app/actions'
 import { LiveRefresh } from '@/app/live-refresh'
 import { SiteNav } from '@/app/site-nav'
 import { permissions, requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 import { getConversationThread } from '@/lib/queries/conversations'
 import { NoteForm } from './note-form'
 import { ReplyForm } from './reply-form'
@@ -32,7 +32,7 @@ export default async function ConversationPage({
 }) {
   const actor = await requireActor()
   const { id } = await params
-  const run = queryRunner()
+  const run = actorRunner(actor)
   const thread = await getConversationThread(run, actor.operatorId, id)
   if (thread === null) notFound()
 
@@ -52,7 +52,7 @@ export default async function ConversationPage({
   return (
     <main className="shell">
       <LiveRefresh conversationId={thread.id} />
-      <SiteNav current="inbox" operatorId={actor.operatorId} />
+      <SiteNav current="inbox" actor={actor} />
       <div className="topbar">
         <div>
           <h1>{thread.contactName ?? thread.channelIdentifier}</h1>

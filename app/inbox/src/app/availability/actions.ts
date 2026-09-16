@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { recordUnavailable, releaseAvailability, setCalendarComplete } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
-import { queryRunner } from '@/lib/db'
+import { actorRunner } from '@/lib/db'
 
 export type BlockState = { error: string | null }
 
@@ -26,7 +26,7 @@ export async function markUnavailable(
   if (!ISO_DATE.test(endDate)) return { error: 'Pick an end date.' }
   if (endDate < startDate) return { error: 'The end date is before the start date.' }
 
-  await recordUnavailable(queryRunner(), {
+  await recordUnavailable(actorRunner(actor), {
     operatorId: actor.operatorId,
     vehicleId,
     startDate,
@@ -47,7 +47,7 @@ export async function releaseBlock(formData: FormData): Promise<void> {
   const actor = await requireActor()
   assertPermitted(permissions.canReply(actor), 'release a booking')
 
-  await releaseAvailability(queryRunner(), {
+  await releaseAvailability(actorRunner(actor), {
     operatorId: actor.operatorId,
     id: String(formData.get('blockId') ?? ''),
     releasedBy: actor.email ?? actor.role,
@@ -66,7 +66,7 @@ export async function setCalendarIsComplete(formData: FormData): Promise<void> {
   const actor = await requireActor()
   assertPermitted(permissions.canAdminister(actor), 'change how the calendar is read')
 
-  await setCalendarComplete(queryRunner(), {
+  await setCalendarComplete(actorRunner(actor), {
     operatorId: actor.operatorId,
     complete: String(formData.get('complete')) === 'true',
     membershipId: actor.membershipId,
