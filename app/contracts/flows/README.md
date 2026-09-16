@@ -62,9 +62,29 @@ Meta will not publish a Flow for a business that has not completed verification
 — the first unticked step in the build plan. The Flow exists as a DRAFT with no
 validation errors and stays there until that clears.
 
-A draft can still be opened by anybody with a role on the business account, so
-it can be tested now: send it with `draft: true`, which adds `mode: "draft"` to
-the parameters and shows the tester a warning banner.
+Draft mode does not get round it. Sending the draft to a number with a role on
+the business account is refused identically:
+
+    (#139000) Blocked by Integrity
+    "details": "Integrity requirements not met."
+
+So the gate is on Flows as a feature for this business, not on publishing one.
+There is no way to see this on a phone — not by publishing, not by testing —
+until verification completes. Tried once and not retried: a policy gate does
+not clear because you ask it twice.
+
+That makes business verification the thing blocking a finished feature rather
+than a box on a plan. Everything else here is done and tested and will be
+worth nothing until it clears.
+
+What the attempt did prove, since the payload was assembled for real:
+
+- The thumbnail pipeline works. 6932 bytes of JPEG becomes 9244 base64
+  characters — nine percent of Meta's 100KB cap, so a whole fleet of
+  photographed cars fits comfortably.
+- The whole message came to 10KB with three cars in it.
+- carFlowItems produced correct items for all three, with a picture on the one
+  car that has photographs and no gap where the other two would be.
 
 Flow id: `1913050626319671`. WABA: `1053819110616183`.
 
