@@ -1,4 +1,4 @@
-import { getNavCounts, getOperatorStatus } from '@vyra/db'
+import { getNavCounts, getOperatorStatus, getSetupState } from '@vyra/db'
 import Link from 'next/link'
 import { LiveRefresh } from './live-refresh'
 import { SiteNav } from './site-nav'
@@ -32,8 +32,9 @@ export default async function InboxPage({
    * Every read in one scoped transaction. The role only lasts as long as a
    * transaction, so the thing to avoid is opening one per statement.
    */
-  const [counts, status, conversations] = await actorReads(actor, (run) => Promise.all([
+  const [counts, setup, status, conversations] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
+    getSetupState(run, actor.operatorId),
     getOperatorStatus(run, actor.operatorId),
     listConversations(run, actor.operatorId, {
       salesStage: filters.stage ?? null,
@@ -52,6 +53,28 @@ export default async function InboxPage({
     <main className="shell">
       <LiveRefresh />
       <SiteNav current="inbox" counts={counts} />
+
+      {/*
+        An empty Vyra is not visibly broken, which is exactly the problem: it
+        has no cars so it offers to check with the team, it has no answers so
+        it offers to check with the team, and the result looks like a working
+        product that sells nothing. Shown only while something actually stops
+        it — a permanent banner is a banner nobody reads.
+      */}
+      {setup.blocked > 0 && (
+        <div className="card" style={{ borderColor: '#b45309', marginBottom: '1rem' }}>
+          <strong>
+            {setup.blocked === 1
+              ? 'One thing still stops the agent selling.'
+              : `${setup.blocked} things still stop the agent selling.`}
+          </strong>
+          <p className="muted" style={{ fontSize: '0.85rem', margin: '0.4rem 0 0.6rem' }}>
+            Until they are done every reply is an honest offer to check with the team, which is
+            correct and sells nothing.
+          </p>
+          <Link className="button" href="/setup">Finish setting up</Link>
+        </div>
+      )}
       <div className="topbar">
         <div>
           <h1>{status?.name ?? 'Inbox'}</h1>
