@@ -194,7 +194,14 @@ export async function searchVehicles(
   const visible = [...matched]
     .sort((a, b) => (b.dailyRateMinor ?? -1) - (a.dailyRateMinor ?? -1))
     .slice(0, SHOWN_AT_MOST)
-  const notShown = matched.length - visible.length
+  /**
+   * Against how many matched, not how many came back. The query returns one
+   * page, so `matched.length` tops out at twenty however large the fleet is —
+   * and "and ten more" said to somebody with a hundred and ten more is worse
+   * than saying nothing.
+   */
+  const matchedCount = found.matches.length > 0 ? found.matchCount : (catalogue?.matchCount ?? 0)
+  const notShown = Math.max(0, matchedCount - visible.length)
 
   const fleet = visible.map((v) => ({
     make: v.make,
@@ -246,7 +253,7 @@ export async function searchVehicles(
       guidance:
         'These cars are in the fleet and you may describe them, including any dayRate shown — a named person at the operator set it. A car with dayRate null has no confirmed price: say that it needs checking rather than quoting another car\'s figure. You have NOT checked whether any of them is free, so do not say available, free or bookable. If the customer wants a total or a booking, ask which dates.'
         + (notShown > 0
-          ? ` These are the dearest ${fleet.length} of ${matched.length} that matched. Say there are ${notShown} more rather than listing these and stopping, and ask what would narrow it — a kind of car, or what they want to spend a day.`
+          ? ` These are the dearest ${fleet.length} of ${matchedCount} that matched. Say there are ${notShown} more rather than listing these and stopping, and ask what would narrow it — a kind of car, or what they want to spend a day.`
           : ''),
     })
   }

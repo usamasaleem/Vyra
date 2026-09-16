@@ -45,8 +45,16 @@ export type FleetVehicle = {
 }
 
 export type FleetSearch = {
-  /** Confirmed, active cars matching the request. */
+  /** Confirmed, active cars matching the request. One page of them. */
   matches: FleetVehicle[]
+  /**
+   * How many matched in total, which is not how many came back.
+   *
+   * The two are different the moment a fleet is bigger than a page, and
+   * telling a customer "and ten more" when there are a hundred and ten is
+   * worse than telling them nothing.
+   */
+  matchCount: number
   /**
    * Always false, and deliberately not optional.
    *
@@ -102,8 +110,19 @@ const SEARCH_SQL = `
   -- the order of the result rather than by the model comparing numbers.
   -- Unpriced cars sort last: they cannot answer a price question at all.
   order by r.daily_rate_minor desc nulls last, v.make, v.model
-  limit 20
 `
+
+/**
+ * One page of them, and separately how many there are.
+ *
+ * The limit has always been here — a few hundred cars in every tool result is
+ * a bill rather than a feature. What was missing is that the caller could not
+ * tell a fleet of twenty from a fleet of two hundred, because both come back
+ * as twenty rows. Saying "and ten more" to somebody with a hundred and ten
+ * more is worse than saying nothing.
+ */
+const PAGE = 20
+const SEARCH_PAGE_SQL = `${SEARCH_SQL} limit ${PAGE}`
 
 /**
  * Words worth requiring. Short connectives are dropped because a model may
@@ -140,16 +159,25 @@ export async function searchFleet(
   query: string | null,
   filters: FleetFilters = {},
 ): Promise<FleetSearch> {
-  const rows = await run(
-    `select * from (${SEARCH_SQL}) matched
-     where ($3::text is null or matched.category::text = $3)
-       -- A car with no confirmed rate is not excluded by a budget. We do not
-       -- know what it costs, and dropping it would quietly hide cars from a
-       -- customer on the strength of a figure nobody has entered.
-       and ($4::bigint is null or matched.daily_rate_minor is null
-            or matched.daily_rate_minor <= $4)`,
-    [operatorId, searchPatterns(query), filters.category ?? null, filters.maxDayRateMinor ?? null],
-  )
+  /**
+   * The filters wrap the match rather than joining it, so the free-text search
+   * and the stated constraints stay separable — one is a guess at a name and
+   * the other is something the customer said.
+   */
+  const narrow = (inner: string) => `
+    select * from (${inner}) matched
+    where ($3::text is null or matched.category::text = $3)
+      -- A car with no confirmed rate is not excluded by a budget. We do not
+      -- know what it costs, and dropping it would quietly hide cars from a
+      -- customer on the strength of a figure nobody has entered.
+      and ($4::bigint is null or matched.daily_rate_minor is null
+           or matched.daily_rate_minor <= $4)`
+
+  const args = [operatorId, searchPatterns(query), filters.category ?? null,
+                filters.maxDayRateMinor ?? null]
+
+  const rows = await run(`${narrow(SEARCH_PAGE_SQL)}`, args)
+  const [matched] = await run(`select count(*)::int as n from (${narrow(SEARCH_SQL)}) counted`, args)
   const [size] = await run(
     `select count(*)::int as n from vehicles
      where operator_id = $1 and active and provenance = 'operator_confirmed'`,
@@ -157,6 +185,7 @@ export async function searchFleet(
   )
 
   return {
+    matchCount: Number(matched?.['n'] ?? rows.length),
     matches: rows.map((r) => ({
       id: r['id'] as string,
       make: r['make'] as string,

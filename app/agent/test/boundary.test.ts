@@ -954,6 +954,29 @@ describe('search_vehicles on a large fleet', () => {
     expect(data.guidance).toContain('4 more')
   })
 
+  /**
+   * The count has to come from how many matched, not from how many came back.
+   * The query returns one page of twenty, so a fleet of sixty would otherwise
+   * report ten more when there are fifty — a number that is wrong in the
+   * direction that makes the operator look small.
+   */
+  it('counts the ones it did not show against the whole fleet, not the page', async () => {
+    await addCars(60, 'luxury', 300000)
+
+    const data = (await search({}) as { data: { fleet: unknown[]; notShown?: number } }).data
+    expect(data.fleet).toHaveLength(10)
+    expect(data.notShown).toBe(50)
+  })
+
+  /** Narrowed, the count is of what matched — not of the fleet. */
+  it('counts against the filter once one is applied', async () => {
+    await addCars(30, 'suv', 300000)
+    await addCars(5, 'sports', 300000)
+
+    const data = (await search({ category: 'sports' }) as { data: { notShown?: number } }).data
+    expect(data.notShown).toBeUndefined()
+  })
+
   it('says nothing about more when everything fits', async () => {
     await addCars(3, 'luxury', 300000)
 
