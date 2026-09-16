@@ -145,10 +145,36 @@ export const whatsappAccounts = pgTable(
     displayPhoneNumber: text(),
 
     /**
-     * A pointer into secret storage — never the access token itself.
-     * Section 18.5: secrets stay in server-side secret storage.
+     * A pointer into external secret storage, for a deployment that has some.
+     * Section 18.5 asks for exactly that and this project does not have it:
+     * there is no vault, and inventing one to hold a single field would be a
+     * larger thing to operate than the thing it protects.
      */
     secretRef: text(),
+
+    /**
+     * The operator's own WhatsApp access token, sealed.
+     *
+     * Multi-tenant sending needs a credential per operator, because Meta issues
+     * one per business and ours can only send as ours. The pilot ran on a
+     * single token in the worker's environment, which is why a second operator
+     * could sign up, add cars, and still not send a message.
+     *
+     * Sealed with AES-256-GCM against a key held in the environment, so a copy
+     * of this table is not a copy of the credential. Null means the number
+     * falls back to the worker's own token — which is what the pilot does and
+     * what nobody else should.
+     */
+    accessTokenCipher: text(),
+
+    /**
+     * The last four characters, so a screen can show that a token is stored
+     * and which one, without opening it.
+     */
+    tokenHint: text(),
+
+    connectedAt: timestamp({ withTimezone: true }),
+    connectedByMembershipId: uuid(),
 
     active: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

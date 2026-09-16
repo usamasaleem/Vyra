@@ -1,16 +1,18 @@
 import { parseServerEnv } from '@vyra/contracts'
+import { openSecret } from '@vyra/contracts/secrets'
 import { createClient } from '@vyra/db'
 import { run as runWorker, type Runner } from 'graphile-worker'
 import { dispatchMessage } from './dispatcher.js'
 import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
 import {
-  escalateAbandonedConversations, escalateOverdueHandoffs, resumeAbandonedConversations,
+  escalateAbandonedConversations, escalateOverdueHandoffs, findSendingCredentials,
+  resumeAbandonedConversations,
 } from '@vyra/db'
 import { sendDueFollowUps } from './follow-ups.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
-import { createWhatsAppClient } from './whatsapp/client.js'
+import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
 import { openaiModel, PROMPT_VERSION, type ModelAdapter } from '@vyra/agent'
 import { handleNonTextMessage, runConversationTurn } from './turn.js'
 
@@ -47,11 +49,76 @@ const model: ModelAdapter | null =
         effort: env.AI_REASONING_EFFORT,
       })
 
+/**
+ * The worker's own credentials, still used for one number.
+ *
+ * The pilot's number predates per-operator tokens and has none stored, so it
+ * falls back to these. Every number connected through the inbox carries its
+ * own, and this fallback applies to exactly the one phone number id the
+ * environment names — never to somebody else's, because sending as the wrong
+ * business is the worst thing this system could do quietly.
+ */
 const whatsapp = createWhatsAppClient({
   apiVersion: env.WHATSAPP_API_VERSION,
   phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
   accessToken: env.WHATSAPP_ACCESS_TOKEN,
 })
+
+/**
+ * One client per number, built once and kept.
+ *
+ * A client is a little configuration and a fetch; the reason to cache is not
+ * cost but the sealed token — opening it on every send would put the plaintext
+ * through the process far more often than it needs to be there.
+ *
+ * Cleared on a failed open rather than cached as null, so rotating a broken
+ * token takes effect on the next message instead of on the next deploy.
+ */
+const clients = new Map<string, WhatsAppClient>()
+
+const clientFor = async (phoneNumberId: string): Promise<WhatsAppClient | null> => {
+  const cached = clients.get(phoneNumberId)
+  if (cached !== undefined) return cached
+
+  const credentials = await findSendingCredentials(query, phoneNumberId)
+  if (credentials === null) {
+    log({ event: 'whatsapp.unknown_number', phoneNumberId })
+    return null
+  }
+
+  if (credentials.accessTokenCipher === null) {
+    if (phoneNumberId !== env.WHATSAPP_PHONE_NUMBER_ID) {
+      log({
+        event: 'whatsapp.no_token',
+        phoneNumberId,
+        operator: credentials.operatorId,
+        warning: 'this number has no stored token and is not the one this worker was configured with',
+      })
+      return null
+    }
+    clients.set(phoneNumberId, whatsapp)
+    return whatsapp
+  }
+
+  const token = openSecret(credentials.accessTokenCipher, env.WHATSAPP_TOKEN_KEY)
+  if (token === null) {
+    log({
+      event: 'whatsapp.token_unreadable',
+      phoneNumberId,
+      operator: credentials.operatorId,
+      warning: 'the stored token could not be opened — check WHATSAPP_TOKEN_KEY',
+    })
+    return null
+  }
+
+  const client = createWhatsAppClient({
+    apiVersion: env.WHATSAPP_API_VERSION,
+    phoneNumberId,
+    accessToken: token,
+  })
+  clients.set(phoneNumberId, client)
+  return client
+}
 
 const DISPATCHER_AVAILABLE = true
 
@@ -294,7 +361,7 @@ const runner: Runner = await runWorker({
         log({ event: 'queue.slow', task: 'dispatch_outbound', jobId: helpers.job.id, waitedMs: waited })
       }
 
-      const result = await dispatchMessage(query, whatsapp, messageId)
+      const result = await dispatchMessage(query, clientFor, messageId)
       log({ event: 'dispatch.result', jobId: helpers.job.id, messageId, queueWaitMs: waited, ...result })
 
       /**
@@ -315,7 +382,7 @@ const runner: Runner = await runWorker({
         for (const id of alongside) {
           if (typeof id !== 'string') continue
           try {
-            const extra = await dispatchMessage(query, whatsapp, id)
+            const extra = await dispatchMessage(query, clientFor, id)
             log({ event: 'dispatch.result', jobId: helpers.job.id, messageId: id, ...extra })
           } catch (error) {
             log({

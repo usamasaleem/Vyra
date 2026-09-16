@@ -358,5 +358,53 @@ describe('dispatching against the database', () => {
     })
   })
 
+
+  /**
+   * Which credentials to send with is a property of the message, not of the
+   * process. The pilot ran on one token in the worker's environment, which is
+   * why a second operator could sign up, add cars, publish answers and send
+   * nothing at all.
+   */
+  describe('sending as whoever owns the number', () => {
+    it('asks for a client for the number the message goes out from', async () => {
+      const id = await queueOutbound()
+      const client = sending('wamid.OWN')
+      const asked: string[] = []
+
+      await dispatchMessage(run, async (phoneNumberId) => {
+        asked.push(phoneNumberId)
+        return client
+      }, id)
+
+      expect(asked).toEqual(['100000000000001'])
+      expect(client.sendText).toHaveBeenCalled()
+    })
+
+    /**
+     * Sending as the wrong business is worse than not sending, so a number
+     * with no usable credentials fails and is seen. Not retryable: a missing
+     * token does not fix itself, and a queue of retries would bury the one
+     * thing that needs doing.
+     */
+    it('fails visibly rather than borrowing somebody else credentials', async () => {
+      const id = await queueOutbound()
+
+      const result = await dispatchMessage(run, async () => null, id)
+
+      expect(result).toMatchObject({ outcome: 'failed', retryable: false })
+      expect(await stateOf(id)).toMatchObject({
+        delivery_state: 'failed', error_code: 'no_credentials',
+      })
+    })
+
+    /** A single client still works, which is what every other test passes. */
+    it('accepts a client directly', async () => {
+      const id = await queueOutbound()
+      const client = sending('wamid.DIRECT')
+
+      expect(await dispatchMessage(run, client, id)).toMatchObject({ outcome: 'sent' })
+    })
+  })
+
 })
 

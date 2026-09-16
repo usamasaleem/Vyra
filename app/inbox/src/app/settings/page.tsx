@@ -1,4 +1,5 @@
 import { getNavCounts, getOperatorSettings, listTeam } from '@vyra/db'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SiteNav } from '../site-nav'
 import { SettingsForm } from './settings-form'
@@ -43,11 +44,14 @@ export default async function SettingsPage() {
         <p style={{ margin: '0.3rem 0' }}>
           <strong>{settings.whatsappNumber ?? 'Not connected yet'}</strong>
         </p>
-        <p className="muted" style={{ fontSize: '0.8rem', margin: 0 }}>
-          Connecting a number is not something this form can do — it happens in Meta's Business
-          Manager and then has to be linked here. Until it is, this operator can be configured but
-          cannot receive anything.
+        <p className="muted" style={{ fontSize: '0.8rem', margin: '0 0 0.6rem' }}>
+          Everything the agent sends goes out as this number, using credentials of your own.
+          Until one is connected, this operator can be configured but cannot receive or send
+          anything.
         </p>
+        <Link className="button secondary" href="/settings/whatsapp">
+          {settings.whatsappNumber === null ? 'Connect a number' : 'Manage credentials'}
+        </Link>
       </section>
 
       <SettingsForm

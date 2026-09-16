@@ -175,9 +175,20 @@ const CLAIM_SQL = `
   returning id
 `
 
+/**
+ * How to send as whoever owns the number this message goes out from.
+ *
+ * A function rather than a client, because which credentials to use is a
+ * property of the message and not of the process. The pilot sends with one
+ * token out of the worker's environment, which is exactly why a second
+ * operator could sign up, add cars, publish answers and send nothing: Meta
+ * issues a token per business and ours can only speak as ours.
+ */
+export type ClientFor = (phoneNumberId: string) => Promise<WhatsAppClient | null>
+
 export async function dispatchMessage(
   run: QueryRunner,
-  client: WhatsAppClient,
+  client: WhatsAppClient | ClientFor,
   messageId: string,
   now: Date = new Date(),
 ): Promise<DispatchResult> {
@@ -214,6 +225,28 @@ export async function dispatchMessage(
     phoneNumberId: row['phone_number_id'] as string,
   }
 
+  /**
+   * Resolved after the intent is loaded, because the number is on the intent.
+   *
+   * A number with no usable credentials fails rather than falling back to
+   * somebody else's token: sending as the wrong business is worse than not
+   * sending, and it is the failure a person must see rather than one to absorb.
+   * Not retryable — a missing or unopenable token does not fix itself, and a
+   * queue of retries would bury the one thing that needs doing.
+   */
+  const sender = typeof client === 'function' ? await client(intent.phoneNumberId) : client
+  if (sender === null) {
+    await run(
+      `update messages set delivery_state = 'failed', error_code = 'no_credentials' where id = $1`,
+      [messageId],
+    )
+    return {
+      outcome: 'failed',
+      error: `no usable WhatsApp credentials for number ${intent.phoneNumberId}`,
+      retryable: false,
+    }
+  }
+
   const verdict = checkEligibility(intent, now)
   if (!verdict.allowed) {
     await run(
@@ -224,7 +257,7 @@ export async function dispatchMessage(
   }
 
   try {
-    const { providerMessageId } = await client.sendText({
+    const { providerMessageId } = await sender.sendText({
       to: intent.recipient,
       body: intent.body as string,
       // Stored with the message when it was queued, so what the customer was

@@ -86,10 +86,10 @@ export async function getSetupState(
     {
       key: 'whatsapp',
       title: 'Connect a WhatsApp number',
-      why: 'Nothing reaches this inbox until a number is linked. This one is not self-serve — it happens in Meta Business Manager and then has to be pointed here.',
+      why: 'Nothing reaches this inbox until a number is linked, and nothing is sent without credentials of your own — Meta issues those per business.',
       done: n('numbers') > 0,
       detail: n('numbers') > 0 ? 'Connected.' : 'No number linked yet.',
-      href: null,
+      href: '/settings/whatsapp',
       blocking: true,
     },
     {

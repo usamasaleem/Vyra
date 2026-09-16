@@ -33,6 +33,19 @@ export const serverEnvSchema = z.object({
   WHATSAPP_PHONE_NUMBER_ID: required,
 
   /**
+   * The key that seals each operator's own WhatsApp token in the database.
+   *
+   * Optional, because a deployment with one operator on the credentials above
+   * needs none — and because a required variable would take the pilot down the
+   * moment this shipped. Without it an operator cannot connect their own
+   * number: sealing refuses rather than storing a sending credential in
+   * plaintext, which is the only failure worth having here.
+   *
+   * Thirty-two bytes, base64: openssl rand -base64 32
+   */
+  WHATSAPP_TOKEN_KEY: z.string().optional(),
+
+  /**
    * System-wide AI kill switch. When false, ingestion and staff replies keep
    * working and the AI sends nothing. Section 18.14.
    */
