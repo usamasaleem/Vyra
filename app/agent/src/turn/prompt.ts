@@ -1,4 +1,4 @@
-import { civilDateIn, formatCivil } from '@vyra/contracts'
+import { civilDateIn, formatCivil, relativeDay } from '@vyra/contracts'
 import { renderExamples } from './examples.js'
 
 /**
@@ -171,9 +171,24 @@ import { renderExamples } from './examples.js'
  * shortcut out of a question that is hard to answer. Narrowing is the job;
  * this is what happens when narrowing is not what they want.
  *
+ * v14 is two tells, read out of a real transcript.
+ *
+ * The first is not the model's fault and could not have been fixed here. It
+ * was handed "7 of the Lamborghini Huracán on 15 September" and so it said
+ * "I sent you 7 photos of the Lamborghini Huracán on the 15th" — three times
+ * in six minutes, and once with the count changed to 9. A model repeats the
+ * precision it is given, and no instruction talks it out of a value sitting in
+ * its context. The fact is vaguer now: photographs, and "earlier today".
+ *
+ * The second is here. Every single reply in that transcript opened with an
+ * acknowledgement — "Of course", "Absolutely", "Yes", "A beautiful choice",
+ * "Excellent choice". Five different words doing one identical move, without
+ * exception, in a conversation where nothing else was that consistent. That
+ * regularity is what reads as generated, not any individual word.
+ *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v13'
+export const PROMPT_VERSION = 'sales-v14'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -182,6 +197,8 @@ Your job is to have a real conversation and get the enquiry ready for a salesper
 How you talk:
 - Like a person who knows these cars and texts back quickly. Short. Warm without gushing.
 - React before you interrogate. Someone naming a 488 Spider has chosen a specific car; say something about it before asking for dates.
+- Do not open every message the same way. "Of course", "Absolutely", "Excellent choice" — one of those now and then is warm, and one every single time is the clearest sign you are not a person. Often the best first word is the answer itself.
+- Be as vague about your own past messages as a person would be: "sent you a few this morning". No count, no date. Nobody counts their own photographs out loud.
 - You do not have to ask a question every time. "Nice choice — the yellow one is the 488 Spider." is a complete message. Let them lead sometimes.
 - One question at a time is usually plenty. Two is the most. Nobody answers five.
 - Match their language, including when they mix. If they write half Arabic and half English, write back the same way.
@@ -275,17 +292,24 @@ export function systemPromptFor(input: {
 
   const iso = formatCivil(civilDateIn(input.now, input.timezone))
 
-  const shown = (input.photosShown ?? []).map((v) => {
-    const when = new Intl.DateTimeFormat('en-GB', {
-      timeZone: input.timezone, day: 'numeric', month: 'long',
-    }).format(v.lastSentAt)
-    return `${v.sent} of the ${v.make} ${v.model} on ${when}`
-  })
+  /**
+   * Deliberately vaguer than what we know.
+   *
+   * This used to read "7 of the Lamborghini Huracán on 15 September", and the
+   * reply came back "I sent you 7 photos of the Lamborghini Huracán on the
+   * 15th" — because that is what it was given. The count is not useful to the
+   * model either: which photographs to send is decided in code, and the only
+   * thing the reply needs is that some already went.
+   */
+  const shown = (input.photosShown ?? []).map(
+    (v) => `the ${v.make} ${v.model} ${relativeDay(v.lastSentAt, input.now, input.timezone)}`,
+  )
 
   const alreadySeen = shown.length === 0
     ? ''
-    : `\n\nThis customer has already been sent photographs: ${shown.join('; ')}. `
-      + `Mention that rather than talking as though they have seen nothing.`
+    : `\n\nYou have already sent this customer photographs of ${shown.join(', and ')}. `
+      + `Say so the way a person would — "sent you a few this morning" — rather than `
+      + `talking as though they have seen nothing. Never a count and never a date.`
 
   return `${SYSTEM_PROMPT}${alreadySeen}
 

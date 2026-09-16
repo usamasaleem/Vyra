@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asWhatsAppText, formatDateForMessage } from '../src/whatsapp-text.ts'
+import { asWhatsAppText, formatDateForMessage, relativeDay } from '../src/whatsapp-text.ts'
 
 describe('asWhatsAppText', () => {
   /** The v1 failure, verbatim: a customer saw the asterisks. */
@@ -58,5 +58,37 @@ describe('formatDateForMessage', () => {
     const at = new Date('2026-09-17T21:30:00Z')
     expect(formatDateForMessage(at, 'Asia/Dubai')).toBe('Friday 18 September')
     expect(formatDateForMessage(at, 'Europe/London')).toBe('Thursday 17 September')
+  })
+})
+
+describe('relativeDay', () => {
+  const now = new Date('2026-09-16T10:00:00Z')
+  const on = (iso: string) => relativeDay(new Date(iso), now, 'Asia/Dubai')
+
+  it.each([
+    ['2026-09-16T04:00:00Z', 'earlier today'],
+    ['2026-09-15T04:00:00Z', 'yesterday'],
+    ['2026-09-13T04:00:00Z', 'on Sunday'],
+    ['2026-09-08T04:00:00Z', 'last week'],
+    ['2026-08-20T04:00:00Z', 'a while back'],
+  ])('says %j was %j', (at, expected) => {
+    expect(on(at)).toBe(expected)
+  })
+
+  /** Never a date, and never a count beside one. That is what a database says. */
+  it('never gives a date', () => {
+    for (const at of ['2026-09-16T04:00:00Z', '2026-09-13T04:00:00Z', '2026-08-20T04:00:00Z']) {
+      expect(on(at)).not.toMatch(/\d/)
+    }
+  })
+
+  /**
+   * Late evening in London is already tomorrow in Dubai, and "yesterday" is
+   * decided where the operator is, not where the server happens to run.
+   */
+  it('counts days where the operator is', () => {
+    const at = new Date('2026-09-15T21:00:00Z')
+    expect(relativeDay(at, now, 'Asia/Dubai')).toBe('earlier today')
+    expect(relativeDay(at, now, 'Europe/London')).toBe('yesterday')
   })
 })

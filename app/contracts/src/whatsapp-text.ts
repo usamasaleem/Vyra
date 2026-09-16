@@ -56,3 +56,37 @@ export function formatDateForMessage(date: Date, timeZone: string): string {
     timeZone, weekday: 'long', day: 'numeric', month: 'long',
   }).format(date)
 }
+
+/**
+ * When something happened, the way somebody says it out loud.
+ *
+ * Not "on 15 September", and above all not "7 photos on the 15th". That exact
+ * sentence went to a customer three times in six minutes, with the count
+ * changing to 9 the fourth time, and it is the single clearest tell in the
+ * whole transcript that they are not talking to a person.
+ *
+ * The cause was not the model. The fact it was handed read "7 of the
+ * Lamborghini Huracán on 15 September", so it said a number and a date — a
+ * model repeats the precision it is given, and no instruction talks it out of
+ * a value that is sitting in its context. The fix is to hand it the vaguer
+ * truth in the first place.
+ */
+export function relativeDay(at: Date, now: Date, timeZone: string): string {
+  const day = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+      .format(d)
+
+  const days = Math.round(
+    (Date.parse(`${day(now)}T00:00:00Z`) - Date.parse(`${day(at)}T00:00:00Z`)) / 86_400_000,
+  )
+
+  if (days <= 0) return 'earlier today'
+  if (days === 1) return 'yesterday'
+  // Inside a week a weekday still locates it — "on Tuesday" is how somebody
+  // says it, where "6 days ago" is how a system counts.
+  if (days < 7) {
+    return `on ${new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'long' }).format(at)}`
+  }
+  if (days < 14) return 'last week'
+  return 'a while back'
+}
