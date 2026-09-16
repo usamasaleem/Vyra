@@ -20,6 +20,8 @@ export type ConversationContext = {
     name: string
     timezone: string
     responseExpectation: string | null
+    /** Where the whole fleet can be seen, for a customer the thread cannot hold. */
+    websiteUrl: string | null
     aiSendingEnabled: boolean
     policyVersion: number
   }
@@ -60,7 +62,7 @@ export type ConversationContext = {
 
 const CONTEXT_SQL = `
   select
-    o.id as operator_id, o.name as operator_name, o.timezone,
+    o.id as operator_id, o.name as operator_name, o.timezone, o.website_url,
     o.response_expectation, o.ai_sending_enabled, o.policy_version,
     v.id as conversation_id, v.revision, v.handler_mode, v.sales_stage,
     v.summary, v.summary_through_count,
@@ -113,6 +115,7 @@ export async function loadConversationContext(
       id: operatorId,
       name: row['operator_name'] as string,
       timezone: row['timezone'] as string,
+      websiteUrl: (row['website_url'] as string) ?? null,
       responseExpectation: (row['response_expectation'] as string) ?? null,
       aiSendingEnabled: row['ai_sending_enabled'] === true,
       policyVersion: Number(row['policy_version']),

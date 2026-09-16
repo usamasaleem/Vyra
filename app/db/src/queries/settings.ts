@@ -1,3 +1,4 @@
+import { usableWebsite } from '@vyra/contracts'
 import type { QueryRunner } from '../runner.js'
 
 /**
@@ -12,6 +13,8 @@ import type { QueryRunner } from '../runner.js'
 export type OperatorSettings = {
   name: string
   timezone: string
+  /** Where the whole fleet can be seen. Null when there is nowhere. */
+  websiteUrl: string | null
   aiSendingEnabled: boolean
   /** Null switches off taking a conversation back from a silent salesperson. */
   aiResumesAfterMinutes: number | null
@@ -29,7 +32,7 @@ export async function getOperatorSettings(
   operatorId: string,
 ): Promise<OperatorSettings | null> {
   const rows = await run(
-    `select o.name, o.timezone, o.ai_sending_enabled, o.ai_resumes_after_minutes,
+    `select o.name, o.timezone, o.website_url, o.ai_sending_enabled, o.ai_resumes_after_minutes,
             o.follow_up_after_minutes, o.handoff_sla_minutes, o.answer_valid_minutes,
             o.retention_days, o.fallback_owner_membership_id,
             (select w.display_phone_number from whatsapp_accounts w
@@ -44,6 +47,7 @@ export async function getOperatorSettings(
   return {
     name: row['name'] as string,
     timezone: row['timezone'] as string,
+    websiteUrl: (row['website_url'] as string) ?? null,
     aiSendingEnabled: row['ai_sending_enabled'] === true,
     aiResumesAfterMinutes: row['ai_resumes_after_minutes'] === null
       ? null
@@ -60,6 +64,7 @@ export async function getOperatorSettings(
 export type SettingsUpdate = {
   name: string
   timezone: string
+  websiteUrl: string | null
   aiResumesAfterMinutes: number | null
   followUpAfterMinutes: number
   handoffSlaMinutes: number
@@ -91,6 +96,17 @@ export function checkSettings(update: SettingsUpdate): SettingsProblem[] {
 
   if (update.name.trim() === '') {
     problems.push({ field: 'name', message: 'Enter the company name.' })
+  }
+
+  /**
+   * https or nothing. The cost of accepting something odd here is a customer
+   * sent somewhere the operator did not mean, from the operator's own number.
+   */
+  if (update.websiteUrl !== null && usableWebsite(update.websiteUrl) === null) {
+    problems.push({
+      field: 'websiteUrl',
+      message: 'Enter the full address, starting with https://',
+    })
   }
 
   for (const [field, bound] of Object.entries(SETTING_BOUNDS)) {
@@ -126,6 +142,7 @@ export async function updateOperatorSettings(
     `update operators o set
        name = $2,
        timezone = $3,
+       website_url = $10,
        ai_resumes_after_minutes = $4,
        follow_up_after_minutes = $5,
        handoff_sla_minutes = $6,
@@ -142,6 +159,7 @@ export async function updateOperatorSettings(
       input.operatorId, input.name.trim(), input.timezone,
       input.aiResumesAfterMinutes, input.followUpAfterMinutes, input.handoffSlaMinutes,
       input.answerValidMinutes, input.retentionDays, input.fallbackOwnerMembershipId,
+      usableWebsite(input.websiteUrl),
     ],
   )
   if (rows.length === 0) return { saved: false }

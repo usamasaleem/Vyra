@@ -828,3 +828,71 @@ describe('a reply about several cars', () => {
     expect(pending).toEqual([])
   })
 })
+
+/**
+ * A way out for a fleet the conversation cannot hold.
+ *
+ * Attached because the reply offered it, not because we decided to — the model
+ * judges the fleet is bigger than the thread and says so, and this makes the
+ * sentence true. A link is an exit: tested on a real device, the button opens
+ * the phone's default browser as a separate app.
+ */
+describe('pointing at the whole range', () => {
+  /**
+   * Reloaded, because the context is read once at the top of the turn and the
+   * fixture built it before this test changed anything.
+   */
+  const withWebsite = async (url: string | null) => {
+    await run(`update operators set website_url = $1 where id = $2`, [url, OP])
+    context = (await loadConversationContext(run, context.message.id))!
+  }
+
+  const lastSent = async () =>
+    (await run(
+      `select body, reply_link from messages where direction = 'outbound'
+       order by created_at desc limit 1`, [],
+    ))[0]!
+
+  it('attaches the link when the reply offers the full range', async () => {
+    await withWebsite('https://example.com/fleet')
+
+    await turn([{ toolCalls: [], reply: 'You can see our full range here.' }])
+
+    expect((await lastSent())['reply_link'])
+      .toEqual({ label: 'See all our cars', url: 'https://example.com/fleet' })
+  })
+
+  /**
+   * A link offered to somebody who did not ask costs the conversation they
+   * were already having.
+   */
+  it('attaches nothing to an ordinary reply', async () => {
+    await withWebsite('https://example.com/fleet')
+
+    await turn([{ toolCalls: [], reply: 'The Huracán is AED 5,500 per day.' }])
+
+    expect((await lastSent())['reply_link']).toBeNull()
+  })
+
+  /**
+   * With no website the reply is still a sentence rather than a broken
+   * promise, which is the right failure of the two available.
+   */
+  it('sends the reply without a link when the operator has no website', async () => {
+    await withWebsite(null)
+
+    await turn([{ toolCalls: [], reply: 'You can see our full range here.' }])
+
+    const sent = await lastSent()
+    expect(sent['reply_link']).toBeNull()
+    expect(sent['body']).toBe('You can see our full range here.')
+  })
+
+  it('refuses an address that is not https', async () => {
+    await withWebsite('http://example.com/fleet')
+
+    await turn([{ toolCalls: [], reply: 'You can see our full range here.' }])
+
+    expect((await lastSent())['reply_link']).toBeNull()
+  })
+})

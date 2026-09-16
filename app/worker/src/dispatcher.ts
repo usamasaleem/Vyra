@@ -25,6 +25,8 @@ export type SendIntent = {
   replyList: { button: string; rows: Array<{ id: string; title: string; description?: string }> } | null
   /** A photograph to send with this reply, as a public HTTPS link. */
   replyImageUrl: string | null
+  /** A labelled link, sent as a cta_url button. */
+  replyLink: { label: string; url: string } | null
   /**
    * Meta's id for the earlier message this one quotes, resolved here rather
    * than stored.
@@ -147,7 +149,7 @@ export type DispatchResult =
 const LOAD_INTENT_SQL = `
   select
     m.id, m.operator_id, m.conversation_id, m.body, m.kind, m.reply_buttons, m.reply_list, m.reply_image_url,
-    m.sent_by_membership_id, m.revision_at_send,
+    m.sent_by_membership_id, m.revision_at_send, m.reply_link,
     q.provider_id as quotes_provider_id,
     v.revision, v.handler_mode, v.owner_membership_id, v.last_customer_message_at,
     c.channel_identifier, c.opted_out_at,
@@ -213,6 +215,7 @@ export async function dispatchMessage(
       (row['reply_buttons'] as Array<{ id: string; title: string }> | null) ?? null,
     replyList: (row['reply_list'] as SendIntent['replyList']) ?? null,
     replyImageUrl: (row['reply_image_url'] as string) ?? null,
+    replyLink: (row['reply_link'] as SendIntent['replyLink']) ?? null,
     quotesProviderId: (row['quotes_provider_id'] as string) ?? null,
     sentByMembershipId: (row['sent_by_membership_id'] as string) ?? null,
     revisionAtSend: row['revision_at_send'] === null ? null : Number(row['revision_at_send']),
@@ -265,6 +268,7 @@ export async function dispatchMessage(
       buttons: intent.replyButtons,
       list: intent.replyList,
       imageUrl: intent.replyImageUrl,
+      link: intent.replyLink,
       quotesProviderId: intent.quotesProviderId,
     })
     await run(

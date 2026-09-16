@@ -375,3 +375,74 @@ describe('sending a Flow', () => {
     expect(calls[0]).toMatchObject({ context: { message_id: 'wamid.EARLIER' } })
   })
 })
+
+/**
+ * A labelled link, as WhatsApp's cta_url button.
+ *
+ * Not a panel over the chat, whatever the name suggests: tested on a real
+ * device, it opens the phone's default browser as a separate app. Which is why
+ * it loses to anything that keeps the customer in the thread.
+ */
+describe('sending a link', () => {
+  const link = { label: 'See all our cars', url: 'https://example.com/fleet' }
+
+  it('sends the shape Meta expects', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'All of them are here.', link })
+
+    expect(calls[0]).toMatchObject({
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        body: { text: 'All of them are here.' },
+        action: {
+          name: 'cta_url',
+          parameters: { display_text: 'See all our cars', url: 'https://example.com/fleet' },
+        },
+      },
+    })
+  })
+
+  /**
+   * A message asking somebody to choose between three cars must not also offer
+   * to take them out of the app.
+   */
+  it('loses to a list', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001',
+      body: 'Which one?',
+      list: { button: 'See the cars', rows: [{ id: 'vehicle:Ferrari 488', title: 'Ferrari 488' }] },
+      link,
+    })
+
+    expect(calls[0]).toMatchObject({ interactive: { type: 'list' } })
+  })
+
+  it('loses to buttons', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001', body: '20th to 23rd — that right?', buttons: BUTTONS, link,
+    })
+
+    expect(calls[0]).toMatchObject({ interactive: { type: 'button' } })
+  })
+
+  /** A reply about the whole range has no single car to photograph. */
+  it('wins over an image', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({
+      to: '971500000001', body: 'All of them are here.',
+      imageUrl: 'https://example.com/car.jpg', link,
+    })
+
+    expect(calls[0]).toMatchObject({ interactive: { type: 'cta_url' } })
+  })
+
+  it('sends plain text when there is no link', async () => {
+    const { client, calls } = clientCapturing()
+    await client.sendText({ to: '971500000001', body: 'Morning.', link: null })
+
+    expect(calls[0]).toMatchObject({ type: 'text' })
+  })
+})

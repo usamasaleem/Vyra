@@ -36,9 +36,12 @@ export async function saveSettings(
 
   const owner = String(formData.get('fallbackOwnerMembershipId') ?? '').trim()
 
+  const website = String(formData.get('websiteUrl') ?? '').trim()
+
   const update = {
     name: String(formData.get('name') ?? ''),
     timezone,
+    websiteUrl: website === '' ? null : website,
     // The one setting where blank means off: an operator can decide a person
     // handles it however long that takes.
     aiResumesAfterMinutes: minutes(formData, 'aiResumesAfterMinutes'),

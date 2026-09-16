@@ -1,6 +1,6 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, claimsPhotosAttached, detectDiscountRequest,
-  invitesACarChoice, vehicleList,
+  FULL_RANGE_LABEL, invitesACarChoice, offersTheFullRange, usableWebsite, vehicleList,
 } from '@vyra/contracts'
 
 /** The shape search_vehicles returns, as much of it as a list row needs. */
@@ -646,6 +646,24 @@ const FLEET_CARDS = 6
   const cardCaption = (card: (typeof cards)[number]): string =>
     [card.make, card.model, card.variant].filter((p) => p !== null && p !== '').join(' ')
 
+  /**
+   * A way out, for the customer a conversation cannot hold.
+   *
+   * Attached because the reply already offered it, not because we decided to:
+   * the model judges that the fleet is bigger than the thread and says so, and
+   * this makes the sentence true — the same shape as a claimed photograph.
+   *
+   * Nothing happens without an operator website, and the reply then reads as
+   * an ordinary sentence rather than a broken promise, which is the right
+   * failure. A link is an exit: tested, the button opens the phone's default
+   * browser as a separate app, so it costs the conversation and is worth it
+   * only when they asked for more than the conversation has.
+   */
+  const website = usableWebsite(context.operator.websiteUrl)
+  const link = website !== null && offersTheFullRange(end.reply)
+    ? { label: FULL_RANGE_LABEL, url: website }
+    : null
+
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
@@ -678,6 +696,7 @@ const FLEET_CARDS = 6
       // Further photographs of a car the reply has already named, so no caption.
       : showing.slice(1).map((url) => ({ url })),
     quotesMessageId: quoting,
+    replyLink: link,
     // Per inbound message, so a retried job cannot produce a second reply to
     // the same customer message.
     idempotencyKey: `turn:${context.message.id}`,

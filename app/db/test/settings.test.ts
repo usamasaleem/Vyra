@@ -33,7 +33,7 @@ beforeEach(async () => {
 })
 
 const valid: SettingsUpdate = {
-  name: 'Vyra Pilot', timezone: 'Asia/Dubai',
+  name: 'Vyra Pilot', timezone: 'Asia/Dubai', websiteUrl: null,
   aiResumesAfterMinutes: 60, followUpAfterMinutes: 10, handoffSlaMinutes: 30,
   answerValidMinutes: 240, retentionDays: 730, fallbackOwnerMembershipId: null,
 }
@@ -116,6 +116,24 @@ describe('the fallback owner', () => {
  * These are timers on messages to real people, and every one of them is a
  * slipped keystroke away from something nobody wants.
  */
+describe('the website', () => {
+  it('is saved when it is a real https address', async () => {
+    await save({ websiteUrl: 'https://example.com/fleet' })
+    expect((await getOperatorSettings(run, OP))!.websiteUrl).toBe('https://example.com/fleet')
+  })
+
+  /** A customer sent somewhere the operator did not mean, from their number. */
+  it('refuses anything that is not https', () => {
+    expect(checkSettings({ ...valid, websiteUrl: 'http://example.com' }))
+      .toEqual([{ field: 'websiteUrl', message: expect.stringContaining('https://') }])
+    expect(checkSettings({ ...valid, websiteUrl: 'example.com' })).toHaveLength(1)
+  })
+
+  it('accepts having none', () => {
+    expect(checkSettings({ ...valid, websiteUrl: null })).toEqual([])
+  })
+})
+
 describe('what will not be saved', () => {
   it('refuses a follow-up that chases somebody in the same second', () => {
     expect(checkSettings({ ...valid, followUpAfterMinutes: 0 }))

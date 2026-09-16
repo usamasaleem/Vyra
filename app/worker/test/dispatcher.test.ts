@@ -18,7 +18,8 @@ let run: QueryRunner
 
 const baseIntent = (overrides: Partial<SendIntent> = {}): SendIntent => ({
   messageId: 'm1', operatorId: OPERATOR, conversationId: CONVERSATION,
-  body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text', replyButtons: null, replyList: null, replyImageUrl: null, quotesProviderId: null,
+  body: 'Our Ferrari 296 is available Friday to Sunday.', kind: 'text', replyButtons: null, replyList: null, replyImageUrl: null, replyLink: null,
+  quotesProviderId: null,
   sentByMembershipId: null, revisionAtSend: 0, conversationRevision: 0,
   handlerMode: 'ai', ownerMembershipId: null, lastCustomerMessageAt: new Date(NOW.getTime() - 60_000),
   recipient: '971500000001', optedOutAt: null, phoneNumberId: '111',
@@ -196,7 +197,7 @@ describe('dispatching against the database', () => {
     expect(await stateOf(id)).toMatchObject({ delivery_state: 'accepted', provider_id: 'wamid.REAL' })
     expect(client.sendText).toHaveBeenCalledWith({
       to: '971500000001', body: 'Here are two options.', buttons: null, list: null, imageUrl: null,
-      quotesProviderId: null,
+      link: null, quotesProviderId: null,
     })
   })
 
@@ -219,7 +220,7 @@ describe('dispatching against the database', () => {
 
     expect(client.sendText).toHaveBeenCalledWith({
       to: '971500000001', body: '20th to 23rd September — that right?', buttons, list: null, imageUrl: null,
-      quotesProviderId: null,
+      link: null, quotesProviderId: null,
     })
   })
 

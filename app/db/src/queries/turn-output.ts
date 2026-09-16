@@ -109,6 +109,12 @@ export async function acceptTurnOutput(
      * caption and has nothing to be about.
      */
     quotesMessageId?: string | null
+    /**
+     * A labelled link for the customer who wants more than a conversation can
+     * hold. Only on the reply itself; a follow-up photograph has nothing to
+     * link to.
+     */
+    replyLink?: { label: string; url: string } | null
   },
 ): Promise<TurnAcceptance> {
   return transact(async (tx) => {
@@ -203,6 +209,7 @@ export async function acceptTurnOutput(
       replyList: input.replyList ?? null,
       replyImageUrl: input.replyImageUrl ?? null,
       quotesMessageId: input.quotesMessageId ?? null,
+      replyLink: input.replyLink ?? null,
       conversationId: input.conversationId,
       operatorId: input.operatorId,
       body: input.body,

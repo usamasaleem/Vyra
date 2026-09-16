@@ -74,6 +74,18 @@ export type SendTextInput = {
    * dropped rather than allowed to fail a send: a reply that arrives without
    * its quote is a smaller loss than one that does not arrive.
    */
+  /**
+   * A labelled link, sent as WhatsApp's cta_url button.
+   *
+   * Loses to a list and to buttons, and wins over an image. A message asking
+   * somebody to choose between three cars should not also offer to take them
+   * out of the app, and a reply pointing at the whole range has no single car
+   * to photograph.
+   *
+   * Tested: this does not open a panel over the chat. It launches the phone's
+   * default browser as a separate app, so it is an exit and is used like one.
+   */
+  link?: { label: string; url: string } | null
   quotesProviderId?: string | null
   /**
    * A published Flow to open, with the data its first screen needs.
@@ -175,7 +187,7 @@ export function createWhatsAppClient(config: {
       }
     },
 
-    async sendText({ to, body, buttons, list, imageUrl, quotesProviderId, flow }) {
+    async sendText({ to, body, buttons, list, imageUrl, link, quotesProviderId, flow }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
 
       /**
@@ -209,9 +221,14 @@ export function createWhatsAppClient(config: {
        * wins: a tap moves the conversation forward, a photograph only makes it
        * nicer to look at.
        */
+      const useLink =
+        !useFlow && !useList && !useButtons
+        && link !== undefined && link !== null
+        && link.url.startsWith('https://') && body.length <= 1024
+
       const useImage =
         imageUrl !== undefined && imageUrl !== null && imageUrl.startsWith('https://')
-        && body.length <= 1024 && !useList && !useButtons && !useFlow
+        && body.length <= 1024 && !useList && !useButtons && !useFlow && !useLink
 
       /**
        * Only a wamid is worth sending. Meta's ids are prefixed, and a value
@@ -247,6 +264,22 @@ export function createWhatsAppClient(config: {
                   ...(flow.draft === true ? { mode: 'draft' } : {}),
                   flow_action_payload: { screen: flow.screen, data: flow.data },
                 },
+              },
+            },
+          }
+        : useLink
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            ...quote,
+            type: 'interactive',
+            interactive: {
+              type: 'cta_url',
+              body: { text: body },
+              action: {
+                name: 'cta_url',
+                parameters: { display_text: link.label.slice(0, 20), url: link.url },
               },
             },
           }

@@ -245,6 +245,16 @@ export const messages = pgTable(
     } | null>(),
 
     /**
+     * A labelled link to send with this reply, as WhatsApp's cta_url button.
+     *
+     * A button rather than a URL in the text: a raw address in a sales message
+     * reads as spam, and the model pasting one is how an internal link reaches
+     * a customer. Stored with the message like the buttons and the list beside
+     * it, so what was offered survives a retry and is readable in the inbox.
+     */
+    replyLink: jsonb().$type<{ label: string; url: string } | null>(),
+
+    /**
      * The earlier message this one quotes, shown in a contextual bubble above
      * it — Meta calls them contextual replies.
      *

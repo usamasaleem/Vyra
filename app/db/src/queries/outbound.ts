@@ -20,11 +20,11 @@ intent as (
   insert into messages (
     operator_id, conversation_id, direction, kind, body,
     delivery_state, idempotency_key, revision_at_send, sent_by_membership_id,
-    reply_buttons, reply_list, reply_image_url, quotes_message_id
+    reply_buttons, reply_list, reply_image_url, quotes_message_id, reply_link
   )
   select v.operator_id, v.id, 'outbound', 'text', $3, 'pending', $4,
          case when $5::uuid is null then v.revision else null end, $5::uuid,
-         $6::jsonb, $7::jsonb, $8, $11::uuid
+         $6::jsonb, $7::jsonb, $8, $11::uuid, $12::jsonb
   from conversation v
   on conflict do nothing
   returning id, operator_id, conversation_id
@@ -92,6 +92,8 @@ export async function queueOutboundText(
      * bubble above the reply, and tapping it jumps there.
      */
     quotesMessageId?: string | null
+    /** A labelled link, sent as a cta_url button. */
+    replyLink?: { label: string; url: string } | null
   },
 ): Promise<QueuedOutbound> {
   const rows = await run(QUEUE_OUTBOUND_SQL, [
@@ -112,6 +114,9 @@ export async function queueOutboundText(
       ? null
       : JSON.stringify(input.alsoSend),
     input.quotesMessageId ?? null,
+    input.replyLink === undefined || input.replyLink === null
+      ? null
+      : JSON.stringify(input.replyLink),
   ])
   const row = rows[0]
   const messageId = (row?.['message_id'] as string) ?? null

@@ -24,6 +24,22 @@ export const operators = pgTable('operators', {
    */
   timezone: text().notNull().default('Asia/Dubai'),
 
+  /**
+   * Where the whole fleet can be seen, for the customer a conversation cannot
+   * hold.
+   *
+   * A hundred and twenty cars fit in no WhatsApp message: ten rows in a list,
+   * forty as many as the model is handed to read. Somebody who says "just show
+   * me everything" has asked for something only a web page has.
+   *
+   * Used sparingly, and that is the whole design. A link is not a slightly
+   * worse message — it is an exit, tested: the CTA button opens the phone's
+   * default browser as a separate app, and the photographs, the prices and the
+   * half-answered question all go behind an app switch. It is offered once
+   * they have asked for it, never as our shortcut out of a hard conversation.
+   */
+  websiteUrl: text(),
+
   /** Opening hours, for honest out-of-hours replies rather than invented ones. */
   serviceHours: jsonb().$type<ServiceHours | null>(),
 

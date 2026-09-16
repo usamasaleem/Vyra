@@ -7,6 +7,7 @@ import { saveSettings, type SettingsState } from './actions'
 type Settings = {
   name: string
   timezone: string
+  websiteUrl: string | null
   aiResumesAfterMinutes: number | null
   followUpAfterMinutes: number
   handoffSlaMinutes: number
@@ -70,6 +71,19 @@ export function SettingsForm({
 
         <Field name="name" label="Name" hint="What your team sees. Customers never see it." problem={problem('name')}>
           <input className="input" id="name" name="name" defaultValue={settings.name} disabled={readOnly} />
+        </Field>
+
+        <Field
+          name="websiteUrl"
+          label="Website (optional)"
+          hint="Where your whole fleet can be seen. Offered only to a customer who asks to see everything rather than be asked questions — tapping it leaves WhatsApp for their browser, so it costs the conversation and is worth it only when they asked for it."
+          problem={problem('websiteUrl')}
+        >
+          <input
+            className="input" id="websiteUrl" name="websiteUrl" type="url"
+            placeholder="https://your-site.com/fleet"
+            defaultValue={settings.websiteUrl ?? ''} disabled={readOnly}
+          />
         </Field>
 
         <Field
