@@ -220,3 +220,68 @@ export async function ensureEnquiry(
   )
   return (rows[0]?.['id'] as string) ?? null
 }
+
+/**
+ * The stage an enquiry has plainly reached, from what is on file.
+ *
+ * Derived rather than decided. Nothing in this system ever advanced
+ * sales_stage: the only code that wrote it was the manual won/lost close-out,
+ * so a conversation ninety-four messages deep with a named car, confirmed
+ * dates, a calculated quote and an escalated discount was still sitting at
+ * 'new'. Which made the qualification rate on the reports page structurally
+ * zero, and the inbox's stage filter unable to filter anything.
+ *
+ * A judgement would have been the wrong shape for it. Whether an enquiry is
+ * qualified is not an opinion — section 3 lists the fields, and either they
+ * are recorded or they are not.
+ *
+ * Only ever forward. 'won' and 'lost' are somebody's decision and nothing here
+ * may talk them out of it; a customer who changes their mind after being
+ * marked lost is a person reopening a lead, not a row to quietly rewrite.
+ */
+const STAGE_ORDER = [
+  'new', 'qualifying', 'qualified', 'options_sent', 'quote_sent',
+] as const
+
+export type DerivedStage = (typeof STAGE_ORDER)[number]
+
+export function stageFromEvidence(input: {
+  fields: ReadonlyArray<{ field: string }>
+  /** A quote has been calculated and sent to the customer. */
+  quoteSent: boolean
+  /** The agent has named specific cars to them. */
+  optionsSent: boolean
+}): DerivedStage {
+  if (input.quoteSent) return 'quote_sent'
+
+  const has = (name: string) => input.fields.some((f) => f.field === name)
+  const qualified = REQUIRED_FOR_QUALIFICATION.every((f) => has(f))
+
+  if (qualified) return 'qualified'
+  if (input.optionsSent) return 'options_sent'
+  // Anything at all on file means somebody is being qualified rather than new.
+  return input.fields.length > 0 ? 'qualifying' : 'new'
+}
+
+/**
+ * Move the conversation to the stage its own evidence supports.
+ *
+ * Forwards only, and never out of a stage a person chose. The comparison is on
+ * the listed order, so a stage outside it — won, lost — matches nothing and
+ * the update does not apply.
+ */
+export async function advanceStage(
+  run: QueryRunner,
+  input: { operatorId: string; conversationId: string; stage: DerivedStage },
+): Promise<{ moved: boolean; from: string | null }> {
+  const rows = await run(
+    `update conversations v set sales_stage = $3::sales_stage, updated_at = now()
+     from (select array[${STAGE_ORDER.map((s) => `'${s}'`).join(',')}] as order) o
+     where v.id = $1 and v.operator_id = $2
+       and array_position(o.order, v.sales_stage::text) is not null
+       and array_position(o.order, $3) > array_position(o.order, v.sales_stage::text)
+     returning (select sales_stage::text from conversations where id = $1) as from_stage`,
+    [input.conversationId, input.operatorId, input.stage],
+  )
+  return { moved: rows.length > 0, from: (rows[0]?.['from_stage'] as string) ?? null }
+}

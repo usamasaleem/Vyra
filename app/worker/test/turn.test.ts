@@ -1170,3 +1170,94 @@ describe('a car named only in the reply', () => {
     expect(await imagesSent()).toEqual([])
   })
 })
+
+/**
+ * What the turn writes down without being asked.
+ *
+ * Five days into a ninety-four message conversation the enquiry still said
+ * "Lamborghini Huracán Tecnica, 16 September to 5 October" — recorded in a
+ * two-minute burst on the first evening and never touched again, while the
+ * customer had since asked for a Cullinan. Seven of forty-seven turns recorded
+ * anything at all, and prepare_quote prices from these fields.
+ */
+describe('what a turn remembers about the enquiry', () => {
+  const addCars = async () => {
+    for (const [i, [make, model]] of ([
+      ['Lamborghini', 'Huracán'], ['Rolls-Royce', 'Cullinan'],
+    ] as const).entries()) {
+      await run(
+        `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                               chassis_number, provenance, confirmed_by)
+         values ($1,$2,$3,2023,'Black','exotic','P'||$4,'V'||$4,'operator_confirmed','Owner')`,
+        [OP, make, model, i],
+      )
+    }
+  }
+
+  const asking = async (body: string) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  const vehicleOnFile = async () =>
+    (await run(
+      `select value from field_evidence where field = 'vehicle' and superseded_at is null`, [],
+    ))[0]?.['value'] ?? null
+
+  it('records the car it just talked about, without being asked', async () => {
+    await addCars()
+    const ctx = await asking('the lambo')
+
+    await turn([{ toolCalls: [], reply: 'The Lamborghini Huracán — a lovely thing.' }], 'send', ctx)
+
+    expect(await vehicleOnFile()).toBe('Lamborghini Huracán')
+  })
+
+  /**
+   * The failure this exists for: a customer who moves from one car to another
+   * and an enquiry that still names the first.
+   */
+  it('supersedes the car when the conversation moves on', async () => {
+    await addCars()
+    await turn(
+      [{ toolCalls: [], reply: 'The Lamborghini Huracán — a lovely thing.' }],
+      'send', await asking('the lambo'),
+    )
+    await turn(
+      [{ toolCalls: [], reply: 'The Rolls-Royce Cullinan it is.' }],
+      'send', await asking('cullinan please'),
+    )
+
+    expect(await vehicleOnFile()).toBe('Rolls-Royce Cullinan')
+    // Superseded rather than overwritten: what they said first is still there.
+    const history = await run(`select value from field_evidence where field = 'vehicle'`, [])
+    expect(history).toHaveLength(2)
+  })
+
+  /** A reply about no car in particular establishes nothing. */
+  it('records nothing when the turn was not about one car', async () => {
+    await addCars()
+    const ctx = await asking('what is the deposit?')
+
+    await turn([{ toolCalls: [], reply: 'Let me check that for you.' }], 'send', ctx)
+
+    expect(await vehicleOnFile()).toBeNull()
+  })
+
+  /** Every conversation sat at 'new' however far it had got. */
+  it('moves the conversation off new', async () => {
+    await addCars()
+    const ctx = await asking('the lambo')
+
+    await turn([{ toolCalls: [], reply: 'The Lamborghini Huracán — a lovely thing.' }], 'send', ctx)
+
+    const [conversation] = await run(
+      `select sales_stage::text as stage from conversations where id = $1`, [CONV],
+    )
+    expect(conversation!['stage']).not.toBe('new')
+  })
+})

@@ -31,6 +31,10 @@ import {
   acceptTurnOutput,
   ensureEnquiry,
   recordAgentRun,
+  recordFields,
+  getEnquiryFields,
+  advanceStage,
+  stageFromEvidence,
   findVehicleImages,
   loadMessagesBeforeWindow,
   photosSentIn,
@@ -836,6 +840,82 @@ const FLEET_CARDS = 6
    * `customer_asked` instead of a discount at high priority. A rule that only
    * applies when the model did nothing is not a rule, it is a fallback.
    */
+  /**
+   * What this turn established about the enquiry, written down whether or not
+   * the model remembered to.
+   *
+   * Five days into a ninety-four message conversation the enquiry still said
+   * "Lamborghini Huracán Tecnica, 16 September to 5 October, 20 days" —
+   * recorded in a two-minute burst on the first evening and never touched
+   * again, while the customer had since asked for a Cullinan and said there
+   * were five of them. Seven turns out of forty-seven recorded anything at
+   * all.
+   *
+   * That matters because prepare_quote prices from these fields. A quote asked
+   * for today would have been a Huracán for twenty days, for somebody who
+   * wanted an SUV for five people.
+   *
+   * So the car the turn was demonstrably about is recorded here, in code, and
+   * the tool stays for everything a conversation says that a turn cannot
+   * observe — a budget, a preference, who the rental is for. Same division as
+   * the discount rule and the photographs: the model's memory is a courtesy
+   * and the write is the guarantee.
+   *
+   * `recordFields` supersedes rather than overwrites, so a customer who moves
+   * from the Huracán to the Cullinan leaves both rows and a correction that
+   * can be read back.
+   */
+  if (subject !== null) {
+    const named = [subject.make, subject.model].join(' ')
+    await recordFields(deps.transact, {
+      operatorId: context.operator.id,
+      enquiryId,
+      observations: [{
+        field: 'vehicle',
+        value: named,
+        sourceMessageId: context.message.id,
+        verificationState: 'system_verified',
+      }],
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'enquiry_fields.autorecord_failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      return []
+    })
+  }
+
+  /**
+   * And the stage the enquiry has plainly reached.
+   *
+   * Nothing advanced it before: the only code that wrote sales_stage was the
+   * manual won/lost close-out, so every conversation sat at 'new' however far
+   * it had got — which made the qualification rate on the reports page
+   * structurally zero.
+   */
+  const onFile = await getEnquiryFields(deps.run, context.operator.id, enquiryId)
+    .catch(() => [])
+
+  await advanceStage(deps.run, {
+    operatorId: context.operator.id,
+    conversationId: context.conversation.id,
+    stage: stageFromEvidence({
+      fields: onFile,
+      quoteSent: end.toolResults.some(
+        (r) => r.name === 'prepare_quote' && r.result.status === 'ok',
+      ),
+      optionsSent: fleet.length > 0,
+    }),
+  }).catch((error: unknown) => {
+    console.error(JSON.stringify({
+      event: 'sales_stage.advance_failed',
+      conversationId: context.conversation.id,
+      error: error instanceof Error ? error.message : String(error),
+    }))
+    return { moved: false, from: null }
+  })
+
   const discount = detectDiscountRequest(context.message.body)
   if (discount !== null) {
     await raiseHandoff(deps.run, {

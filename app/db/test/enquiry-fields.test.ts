@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  ensureEnquiry, getEnquiryFields, getFieldHistory, missingFields, recordFields,
+  advanceStage, ensureEnquiry, getEnquiryFields, getFieldHistory, missingFields,
+  recordFields, stageFromEvidence,
 } from '../src/queries/enquiry-fields.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
@@ -184,5 +185,78 @@ describe('isolation', () => {
   it('does not return another operator fields', async () => {
     await recordFields(transact, { operatorId: OP, enquiryId, observations: [{ field: 'vehicle', value: 'Ferrari' }] })
     expect(await getEnquiryFields(run, RIVAL, enquiryId)).toEqual([])
+  })
+})
+
+/**
+ * The stage an enquiry has plainly reached.
+ *
+ * Nothing advanced it before. The only code that wrote sales_stage was the
+ * manual won/lost close-out, so a conversation ninety-four messages deep with
+ * a named car, confirmed dates, a calculated quote and an escalated discount
+ * was still sitting at 'new' — which made the qualification rate on the
+ * reports page structurally zero.
+ */
+describe('stageFromEvidence', () => {
+  const fields = (...names: string[]) => names.map((field) => ({ field }))
+
+  it('is new with nothing on file', () => {
+    expect(stageFromEvidence({ fields: [], quoteSent: false, optionsSent: false })).toBe('new')
+  })
+
+  it('is qualifying once anything has been established', () => {
+    expect(stageFromEvidence({ fields: fields('vehicle'), quoteSent: false, optionsSent: false }))
+      .toBe('qualifying')
+  })
+
+  /** Section 3 lists the fields. Either they are recorded or they are not. */
+  it('is qualified once the required fields are there', () => {
+    expect(stageFromEvidence({
+      fields: fields('vehicle', 'start_at', 'delivery_preference'),
+      quoteSent: false, optionsSent: false,
+    })).toBe('qualified')
+  })
+
+  it('is quote_sent once a quote has been prepared', () => {
+    expect(stageFromEvidence({ fields: fields('vehicle'), quoteSent: true, optionsSent: true }))
+      .toBe('quote_sent')
+  })
+})
+
+describe('advanceStage', () => {
+  const stageOf = async () =>
+    (await run(`select sales_stage::text as s from conversations where id = $1`, [CONV]))[0]!['s']
+
+  it('moves a conversation forward', async () => {
+    expect(await advanceStage(run, { operatorId: OP, conversationId: CONV, stage: 'qualified' }))
+      .toMatchObject({ moved: true })
+    expect(await stageOf()).toBe('qualified')
+  })
+
+  /** A later message that establishes less has not undone what was established. */
+  it('never moves it backwards', async () => {
+    await advanceStage(run, { operatorId: OP, conversationId: CONV, stage: 'quote_sent' })
+    await advanceStage(run, { operatorId: OP, conversationId: CONV, stage: 'qualifying' })
+
+    expect(await stageOf()).toBe('quote_sent')
+  })
+
+  /**
+   * Won and lost are somebody's decision. A customer who writes again after
+   * being marked lost is a person reopening a lead, not a row to rewrite.
+   */
+  it.each(['won', 'lost'])('leaves %s alone', async (decided) => {
+    await run(`update conversations set sales_stage = $2::sales_stage where id = $1`, [CONV, decided])
+
+    expect(await advanceStage(run, { operatorId: OP, conversationId: CONV, stage: 'quote_sent' }))
+      .toMatchObject({ moved: false })
+    expect(await stageOf()).toBe(decided)
+  })
+
+  it('leaves another operator conversation alone', async () => {
+    expect(await advanceStage(run, {
+      operatorId: '99999999-9999-9999-9999-999999999999',
+      conversationId: CONV, stage: 'qualified',
+    })).toMatchObject({ moved: false })
   })
 })
