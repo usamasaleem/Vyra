@@ -37,7 +37,19 @@ beforeEach(async () => {
     insert into auth.users (id, email) values
       ('10000000-0000-0000-0000-000000000001', 'sales@vyra.test'),
       ('10000000-0000-0000-0000-000000000002', 'manager@vyra.test');
+  `)
 
+  /**
+   * And now that there is one, re-run the migration that reads it.
+   *
+   * 0028 installs the email lookup conditionally, because PostgreSQL parses a
+   * SQL function's body at creation and naming auth.users where the schema does
+   * not exist fails every migration run. On the first pass above it took the
+   * empty branch; here it takes the real one, which is what production has.
+   */
+  await db.exec(readFileSync(join(migrationsDir, '0028_member_emails.sql'), 'utf8'))
+
+  await db.exec(`
     insert into operators (id, name) values ('${OPERATOR}', 'Vyra Pilot'), ('${RIVAL}', 'Rival');
     insert into whatsapp_accounts (id, operator_id, provider_account_id, phone_number_id)
     values ('33333333-3333-3333-3333-333333333333', '${OPERATOR}', 'waba', '111');
@@ -181,9 +193,30 @@ describe('priority', () => {
 })
 
 describe('listing colleagues', () => {
+  /**
+   * Emails come from a security-definer function that only answers for people
+   * who share an operator with the caller, so the caller has to be somebody.
+   * In the application that is the signed-in user; here it is said outright.
+   */
+  const asSignedIn = (userId: string) =>
+    run(`select set_config('app.current_user_id', $1, false)`, [userId])
+
   it('returns only this operator active members, with emails', async () => {
+    await asSignedIn('10000000-0000-0000-0000-000000000001')
+
     const members = await listMembers(run, OPERATOR)
     expect(members.map((m) => m.email).sort()).toEqual(['manager@vyra.test', 'sales@vyra.test'])
+  })
+
+  /**
+   * Nobody identified, no emails — and the rest of the row still comes back.
+   * That is the whole point of the left join: a missing email must not take
+   * the colleague with it.
+   */
+  it('still lists colleagues when nobody is identified, without their emails', async () => {
+    const members = await listMembers(run, OPERATOR)
+    expect(members).toHaveLength(2)
+    expect(members.map((m) => m.email)).toEqual([null, null])
   })
 
   it('excludes deactivated members', async () => {

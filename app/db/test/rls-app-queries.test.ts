@@ -12,6 +12,7 @@ import { listAvailability } from '../src/queries/availability.ts'
 import { getMetrics } from '../src/queries/metrics.ts'
 import { getAgentCosts } from '../src/queries/agent-runs.ts'
 import { getQueueWaits } from '../src/queries/queue-health.ts'
+import { listMembers, listNotes } from '../src/queries/collaboration.ts'
 import { addNote } from '../src/queries/collaboration.ts'
 import { setVehicleRate } from '../src/queries/quotes.ts'
 import { recordUnavailable } from '../src/queries/availability.ts'
@@ -124,6 +125,24 @@ describe('the pages work as the restricted role', () => {
     await expect(listRates(run(), OP_A)).resolves.toBeDefined()
     await expect(listKnowledge(run(), OP_A)).resolves.toEqual([])
     await expect(listAvailability(run(), OP_A)).resolves.toEqual([])
+  })
+
+  /**
+   * The conversation page, which is the one this whole test file existed to
+   * protect and did not. listMembers reads staff emails out of Supabase's auth
+   * schema, which vyra_app cannot see — so wiring the restricted role took that
+   * one page down and left every other page working, because the reassign
+   * dropdown is the only place in the application that asks who anybody is.
+   *
+   * PGlite has no auth schema, so this passes here whether the definer function
+   * exists or not. It is kept because the shape of the call is still worth
+   * asserting, and the comment is worth more: a query that reaches outside the
+   * public schema cannot be proven safe by this suite, and has to be checked
+   * against the real database.
+   */
+  it('reads the conversation page', async () => {
+    await expect(listNotes(run(), OP_A, CONV_A)).resolves.toEqual([])
+    await expect(listMembers(run(), OP_A)).resolves.toHaveLength(1)
   })
 
   it('reads the reports page', async () => {

@@ -61,15 +61,22 @@ export type Member = {
 /**
  * The people a conversation can be assigned to.
  *
- * Reads the email from Supabase's auth schema, which exists in production but
- * not in the test database, so the join is optional and a missing email is a
- * null rather than a missing row.
+ * The email comes from a security-definer function rather than from auth.users
+ * directly. The restricted role a request runs as has no access to the auth
+ * schema and must not be given any: "permission denied for schema auth" is the
+ * database being right, and it took the conversation page down when row-level
+ * security was wired, because the reassign dropdown is the only place in the
+ * application that asks who anybody is.
+ *
+ * Still a left join and still optional, for the original reason: the test
+ * database has no auth schema, so a missing email is a null rather than a
+ * missing row. That is also why nothing in the suite could have caught it.
  */
 export async function listMembers(run: QueryRunner, operatorId: string): Promise<Member[]> {
   const rows = await run(
-    `select m.id as membership_id, m.user_id, m.role::text as role,
-            (select u.email from auth.users u where u.id = m.user_id) as email
+    `select m.id as membership_id, m.user_id, m.role::text as role, e.email
      from memberships m
+     left join public.vyra_member_emails() e on e.user_id = m.user_id
      where m.operator_id = $1 and m.active
      order by role, membership_id`,
     [operatorId],
