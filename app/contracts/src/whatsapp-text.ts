@@ -90,3 +90,43 @@ export function relativeDay(at: Date, now: Date, timeZone: string): string {
   if (days < 14) return 'last week'
   return 'a while back'
 }
+
+/**
+ * Whether a customer has finished typing, as far as one message can tell.
+ *
+ * The collection window waits two seconds before every turn, because people do
+ * not type in paragraphs — "can you give me another car", "maybe a ferrari",
+ * "in yellow?" arrive across fifteen seconds and each one would otherwise
+ * start its own reply.
+ *
+ * It is right, and it is paid on every message including the ones nothing
+ * follows. Two seconds on a reply that already takes seven is most of a third
+ * of the wait, spent on a burst that usually does not come.
+ *
+ * A message that ends in a full stop or a question mark is a message somebody
+ * finished. A fragment — "hi", "lambo", "yellow?" — is somebody mid-thought,
+ * and those are exactly the bursts the window exists for. So the wait is short
+ * for the first and unchanged for the second.
+ *
+ * Deliberately crude, and the failure is cheap in both directions: guess wrong
+ * on a finished message and two fragments get two replies, which the revision
+ * check already handles; guess wrong on a fragment and somebody waits the full
+ * two seconds they would have waited anyway.
+ */
+export function looksFinished(body: string | null): boolean {
+  if (body === null) return false
+  const text = body.trim()
+  if (text === '') return false
+
+  // Ends the way somebody ends a thought. Anything after the punctuation that
+  // is not a letter or a number — a closing bracket, an emoji, a trailing
+  // space — is still part of the ending rather than a new thought.
+  if (/[.!?][^\p{L}\p{N}]*$/u.test(text)) return true
+
+  /**
+   * Or long enough that it is plainly a whole message. Twenty-five characters
+   * is about "do you have a lamborghini" — above it people punctuate or do not
+   * bother, and below it they are usually still going.
+   */
+  return text.length >= 25
+}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { asWhatsAppText, formatDateForMessage, relativeDay } from '../src/whatsapp-text.ts'
+import {
+  asWhatsAppText, formatDateForMessage, looksFinished, relativeDay,
+} from '../src/whatsapp-text.ts'
 
 describe('asWhatsAppText', () => {
   /** The v1 failure, verbatim: a customer saw the asterisks. */
@@ -90,5 +92,34 @@ describe('relativeDay', () => {
     const at = new Date('2026-09-15T21:00:00Z')
     expect(relativeDay(at, now, 'Asia/Dubai')).toBe('earlier today')
     expect(relativeDay(at, now, 'Europe/London')).toBe('yesterday')
+  })
+})
+
+describe('looksFinished', () => {
+  /** The bursts the collection window exists for: somebody mid-thought. */
+  it.each([
+    'hi',
+    'lambo',
+    'yellow',
+    'and maybe',
+    'ferrari',
+    '   ',
+  ])('reads %j as somebody still typing', (body) => {
+    expect(looksFinished(body)).toBe(false)
+  })
+
+  it.each([
+    'do you have a lamborghini?',
+    'I need a car for Thursday.',
+    'yellow?',
+    'How much is the Cullinan per day',
+    'Can I see it!',
+    'is it available? 🙏',
+  ])('reads %j as a finished message', (body) => {
+    expect(looksFinished(body)).toBe(true)
+  })
+
+  it('has no opinion about a message that is not there', () => {
+    expect(looksFinished(null)).toBe(false)
   })
 })

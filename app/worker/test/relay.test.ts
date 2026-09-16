@@ -173,9 +173,33 @@ describe('the graphile-worker publisher', () => {
     expect(jobKey).toBe('turn:conv-9')
     expect(delayed).toBe(true)
     expect(calls[0]!.text).toContain("interval '2 seconds'")
+    // Nothing said this message was finished, so it waits the full window.
+    expect((calls[0]!.params as unknown[])[5]).toBe(false)
     expect(JSON.parse(payload)).toMatchObject({
       conversation_id: 'conv-9', message_id: 'msg-1', operator_id: OPERATOR, outbox_id: 'outbox-1',
     })
+  })
+
+  /**
+   * Two seconds is right for a fragment and wasteful for a finished sentence.
+   * A reply takes four and a half seconds at best, so a flat two in front of
+   * it is a third of the wait, paid on every message and earned on the few a
+   * second message follows.
+   */
+  it('waits only a moment when the customer finished their sentence', async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = []
+    const capturing: QueryRunner = async (text, params) => { calls.push({ text, params }); return [] }
+
+    await publishToGraphileWorker(capturing, {
+      id: 'outbox-2', operator_id: OPERATOR, event_type: 'process_inbound_message',
+      aggregate_id: 'msg-2',
+      payload: { conversation_id: 'conv-9', message_id: 'msg-2', looks_finished: true },
+      attempts: 0,
+    })
+
+    expect((calls[0]!.params as unknown[])[5]).toBe(true)
+    // Both intervals are in the statement; which one applies is the parameter.
+    expect(calls[0]!.text).toContain("interval '400 milliseconds'")
   })
 
   /**

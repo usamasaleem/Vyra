@@ -6,6 +6,8 @@
  * exercises a different query than production is not a test of production.
  */
 
+import { looksFinished } from '@vyra/contracts'
+
 export type { QueryRunner } from '@vyra/db'
 import type { QueryRunner } from '@vyra/db'
 
@@ -107,7 +109,14 @@ message as (
 job as (
   insert into outbox (operator_id, event_type, aggregate_id, payload)
   select m.operator_id, 'process_inbound_message', m.id,
-         jsonb_build_object('message_id', m.id, 'conversation_id', m.conversation_id)
+         jsonb_build_object(
+           'message_id', m.id,
+           'conversation_id', m.conversation_id,
+           -- Whether this looked like a finished message, decided here because
+           -- this is where the body is. The relay uses it to choose how long to
+           -- wait for a second one, and has no text of its own to judge from.
+           'looks_finished', $11::boolean
+         )
   from message m
   returning id
 )
@@ -135,6 +144,12 @@ export async function storeInboundMessage(
     input.providerMessageId,
     input.body,
     input.media === null ? null : JSON.stringify(input.media),
+    /**
+     * Judged here rather than in the relay, which has the job but not the
+     * words. A message somebody finished waits a moment; a fragment waits the
+     * full window, because fragments are what the window is for.
+     */
+    looksFinished(input.body),
   ])
 
   const row = rows[0]

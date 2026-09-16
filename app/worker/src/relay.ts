@@ -158,7 +158,26 @@ export async function relayOnce(
  * turns in that burst, and it still covers the case this cannot: a message that
  * lands while a turn is already running.
  */
+/**
+ * Two seconds is right for a fragment and wasteful for a finished sentence.
+ *
+ * Measured: a reply takes 4.5 seconds when it needs no tool and 7.6 when it
+ * does, so a flat two seconds in front of that is a fifth to a third of the
+ * whole wait — paid on every message, and earned only on the ones a second
+ * message follows.
+ *
+ * So the window is short when the customer's message ended in a full stop or a
+ * question mark, and unchanged when it did not, because the ones that do not
+ * are exactly the bursts this exists for. The judgement is made at ingest,
+ * where the words are, and travels in the payload.
+ *
+ * Both failures are cheap. Guess wrong on a finished message and two arrive as
+ * two turns, which the revision check already handles and which cost a
+ * duplicate reply before this existed. Guess wrong on a fragment and somebody
+ * waits the two seconds they would have waited anyway.
+ */
 const COLLECTION_WINDOW = '2 seconds'
+const SHORT_WINDOW = '400 milliseconds'
 
 export const publishToGraphileWorker: Publisher = async (tx, row) => {
   const conversationId = row.payload['conversation_id']
@@ -179,7 +198,11 @@ export const publishToGraphileWorker: Publisher = async (tx, row) => {
        payload    => $2::json,
        queue_name => $3,
        job_key    => $4,
-       run_at     => case when $5 then now() + interval '${COLLECTION_WINDOW}' else now() end,
+       run_at     => case
+                       when not $5 then now()
+                       when $6 then now() + interval '${SHORT_WINDOW}'
+                       else now() + interval '${COLLECTION_WINDOW}'
+                     end,
        max_attempts => 5
      )`,
     [
@@ -188,6 +211,7 @@ export const publishToGraphileWorker: Publisher = async (tx, row) => {
       typeof conversationId === 'string' ? `conversation:${conversationId}` : null,
       jobKey,
       isInboundTurn,
+      row.payload['looks_finished'] === true,
     ],
   )
 }
