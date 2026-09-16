@@ -406,7 +406,22 @@ export async function runConversationTurn(
   }
 
   /**
-   * A photograph of the car, when the turn is about exactly one of them.
+   * Once by default, and again the moment they ask.
+   *
+   * Live, a customer said "Can you send me more images related to this car" and
+   * then "show me side profile", and got prose both times: the pictures had
+   * been sent once already and the rule suppressed them. A rule meant to stop
+   * repetition was refusing a direct request.
+   *
+   * Asked, they get what they have not seen — so a second request shows
+   * something new rather than the same shot. When they have seen everything,
+   * they get it again, because they asked and having nothing new is not a
+   * reason to answer a question about pictures with a paragraph.
+   */
+  const asked = asksToSeePhotos(context.message.body)
+
+  /**
+   * Which car the photographs would be of, when the turn is about exactly one.
    *
    * Exactly one, because a reply about three cars has no single picture, and
    * showing one of them silently favours it. Never alongside buttons or a list,
@@ -415,12 +430,33 @@ export async function runConversationTurn(
    *
    * Looked up from the database rather than taken from the tool result, so a
    * URL is never in front of the model and can never be pasted into a reply.
+   *
+   * Normally it is the car the tools just returned. The fallback exists because
+   * telling the model what this customer has already seen made it stop looking
+   * the car up: given "4 of the Huracán on 15 September" in its instructions it
+   * answers from that, in one round with no tool call — faster, and it left the
+   * picture path with nothing to work from, because knowing the car came only
+   * from a search this turn.
+   *
+   * So when they asked to see a car and exactly one has ever been shown in this
+   * conversation, that is the car. Exactly one for the same reason as above:
+   * two cars shown and "send me another angle" names neither, and picking the
+   * most recent would be a guess presented as an answer.
+   *
+   * Only when they asked. Without that this would start attaching photographs
+   * to replies about a car mentioned days ago.
    */
-  const images = fleet.length === 1 && offered.list === null && offered.buttons === null
+  const subject = fleet.length === 1
+    ? { make: fleet[0]!.make, model: fleet[0]!.model }
+    : asked && photosShown.length === 1
+    ? { make: photosShown[0]!.make, model: photosShown[0]!.model }
+    : null
+
+  const images = subject !== null && offered.list === null && offered.buttons === null
     ? await findVehicleImages(deps.run, {
         operatorId: context.operator.id,
-        make: fleet[0]!.make,
-        model: fleet[0]!.model,
+        make: subject.make,
+        model: subject.model,
       }).catch((error: unknown) => {
         /**
          * A picture is a nicety; the reply is the product.
@@ -462,21 +498,6 @@ const PHOTOS_PER_CAR = 6
         conversationId: context.conversation.id,
         operatorId: context.operator.id,
       })
-
-  /**
-   * Once by default, and again the moment they ask.
-   *
-   * Live, a customer said "Can you send me more images related to this car" and
-   * then "show me side profile", and got prose both times: the pictures had
-   * been sent once already and the rule suppressed them. A rule meant to stop
-   * repetition was refusing a direct request.
-   *
-   * Asked, they get what they have not seen — so a second request shows
-   * something new rather than the same shot. When they have seen everything,
-   * they get it again, because they asked and having nothing new is not a
-   * reason to answer a question about pictures with a paragraph.
-   */
-  const asked = asksToSeePhotos(context.message.body)
 
   /**
    * Enough photographs for the client to make an album, or one image holding

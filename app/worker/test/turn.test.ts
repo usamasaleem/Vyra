@@ -563,3 +563,109 @@ describe('no model configured', () => {
     expect(await run(`select id from audit_events`, [])).toHaveLength(0)
   })
 })
+
+/**
+ * The photographs, when the model answers without looking the car up.
+ *
+ * Which it started doing the moment it was told what this customer had already
+ * seen: given that fact in its instructions it replies in one round with no
+ * tool call. Faster, and it used to leave the picture path with nothing to
+ * work from, because the car was only ever known from a search this turn.
+ */
+describe('showing a car the model did not look up', () => {
+  const PHOTOS = [
+    'https://example.com/huracan-1.jpg',
+    'https://example.com/huracan-2.jpg',
+  ]
+
+  /** A message that already went out carrying one of the car's photographs. */
+  const shownAlready = async (url: string) => {
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
+                             reply_image_url, delivery_state)
+       values ($1, $2, 'outbound', 'text', '', $3, $4, 'accepted')`,
+      [OP, CONV, `wamid.${Math.random()}`, url],
+    )
+  }
+
+  const addHuracan = () =>
+    run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by, photo_urls)
+       values ($1,'Lamborghini','Huracán',2023,'Verde','exotic','D 1','VIN1',
+               'operator_confirmed','Owner',$2::jsonb)`,
+      [OP, JSON.stringify(PHOTOS)],
+    )
+
+  /** The customer's message is what `asksToSeePhotos` reads. */
+  const asking = async (body: string) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  it('sends the one they have not seen, with no search this turn', async () => {
+    await addHuracan()
+    await shownAlready(PHOTOS[0]!)
+    const ctx = await asking('can i see the lambo')
+
+    await turn([{ toolCalls: [], reply: 'Of course — here is another angle.' }], 'send', ctx)
+
+    const [sent] = await run(
+      `select reply_image_url from messages
+       where direction = 'outbound' and delivery_state = 'pending'
+       order by created_at desc limit 1`, [],
+    )
+    expect(sent!['reply_image_url']).toBe(PHOTOS[1])
+  })
+
+  /**
+   * Two cars shown and "send me another angle" names neither. Guessing the most
+   * recent would be a guess presented as an answer, so nothing is attached and
+   * the reply stands on its own.
+   */
+  it('attaches nothing when two cars have been shown', async () => {
+    await addHuracan()
+    await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by, photo_urls)
+       values ($1,'Ferrari','488',2022,'Rosso','exotic','D 2','VIN2',
+               'operator_confirmed','Owner',$2::jsonb)`,
+      [OP, JSON.stringify(['https://example.com/ferrari-1.jpg'])],
+    )
+    await shownAlready(PHOTOS[0]!)
+    await shownAlready('https://example.com/ferrari-1.jpg')
+    const ctx = await asking('show me another angle')
+
+    await turn([{ toolCalls: [], reply: 'Which one did you mean?' }], 'send', ctx)
+
+    const [sent] = await run(
+      `select reply_image_url from messages
+       where direction = 'outbound' and delivery_state = 'pending'
+       order by created_at desc limit 1`, [],
+    )
+    expect(sent!['reply_image_url']).toBeNull()
+  })
+
+  /**
+   * Without this the fallback would start decorating ordinary replies with
+   * photographs of a car mentioned days ago.
+   */
+  it('attaches nothing when they did not ask to see it', async () => {
+    await addHuracan()
+    await shownAlready(PHOTOS[0]!)
+    const ctx = await asking('what is the deposit?')
+
+    await turn([{ toolCalls: [], reply: 'Let me check the deposit and come back to you.' }], 'send', ctx)
+
+    const [sent] = await run(
+      `select reply_image_url from messages
+       where direction = 'outbound' and delivery_state = 'pending'
+       order by created_at desc limit 1`, [],
+    )
+    expect(sent!['reply_image_url']).toBeNull()
+  })
+})
