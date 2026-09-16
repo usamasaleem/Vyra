@@ -1,5 +1,5 @@
 import {
-  asksToSeePhotos, asWhatsAppText, buttonsFor, claimsPhotosAttached, detectDiscountRequest,
+  asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
   FULL_RANGE_LABEL, invitesACarChoice, mightNeedTheFleet, offersTheFullRange, usableWebsite,
   vehicleList,
 } from '@vyra/contracts'
@@ -511,8 +511,29 @@ export async function runConversationTurn(
    * Only when they asked. Without that this would start attaching photographs
    * to replies about a car mentioned days ago.
    */
+  /**
+   * Which car the reply is about, when the fleet came from the prefetch.
+   *
+   * The prefetch is unfiltered, so `fleet` is every car whenever no tool ran —
+   * and asking "is this exactly one car" of it is always no. Live, a customer
+   * typed "lambo", the agent replied "The green Lamborghini Huracán Tecnica —
+   * I sent you a few photos earlier", and nothing was attached, because three
+   * cars came back and none of them was "the" car.
+   *
+   * The reply knows. It named the car; this finds which one it named, and only
+   * accepts an unambiguous answer.
+   */
+  const namedInReply = searched !== undefined || end.reply === null
+    ? []
+    : fleet.filter((v) => {
+        const reply = end.reply as string
+        return reply.includes(v.model) || reply.includes(`${v.make} ${v.model}`)
+      })
+
   const subject = fleet.length === 1
     ? { make: fleet[0]!.make, model: fleet[0]!.model }
+    : namedInReply.length === 1
+    ? { make: namedInReply[0]!.make, model: namedInReply[0]!.model }
     // Only when the search found nothing at all. A search that came back with
     // three cars has told us the turn is not about one of them, and narrowing
     // to the single car this customer happens to have seen is worse than
@@ -617,7 +638,7 @@ const FLEET_CARDS = 6
    * broke a rule the instructions state plainly, and that is worth knowing
    * about however gracefully it is handled.
    */
-  const claimed = claimsPhotosAttached(end.reply)
+  const claimed = photosPromisedIn(end.reply)
   if (claimed) {
     console.error(JSON.stringify({
       event: 'photos.claimed_in_reply',

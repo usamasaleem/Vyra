@@ -1083,3 +1083,90 @@ describe('answering about several cars after a prefetch', () => {
     expect(images).toHaveLength(2)
   })
 })
+
+/**
+ * The exchange that found this: "lambo", then "can you send again", and no
+ * photographs either time.
+ *
+ * The prefetch is unfiltered, so the fleet is every car whenever no tool runs
+ * — and "is this exactly one car" is then always no. The reply knew which car
+ * it was about; nothing was reading it.
+ */
+describe('a car named only in the reply', () => {
+  const addCars = async () => {
+    for (const [i, [make, model, photos]] of ([
+      ['Rolls-Royce', 'Cullinan', null],
+      ['Lamborghini', 'Huracán', ['https://example.com/h1.jpg', 'https://example.com/h2.jpg']],
+      ['Ferrari', '488', null],
+    ] as const).entries()) {
+      await run(
+        `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                               chassis_number, provenance, confirmed_by, photo_urls)
+         values ($1,$2,$3,2023,'Black','exotic','P'||$4,'V'||$4,
+                 'operator_confirmed','Owner',$5::jsonb)`,
+        [OP, make, model, i, photos === null ? null : JSON.stringify(photos)],
+      )
+    }
+  }
+
+  const asking = async (body: string) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  const imagesSent = () =>
+    run(
+      `select reply_image_url from messages
+       where direction = 'outbound' and delivery_state = 'pending' and reply_image_url is not null`,
+      [],
+    )
+
+  it('sends the photographs of the car the reply named', async () => {
+    await addCars()
+    const ctx = await asking('lambo')
+
+    await turn([{ toolCalls: [], reply: 'The green Lamborghini Huracán Tecnica — here you go.' }], 'send', ctx)
+
+    expect(await imagesSent()).toHaveLength(2)
+  })
+
+  /**
+   * "Sure — I'll get the photos resent" went to a customer who had just asked
+   * for exactly that, and nothing followed it. Sending is something this turn
+   * can do now, so a reply that says it will is a reply that should have.
+   */
+  it('keeps a promise to send them again', async () => {
+    await addCars()
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
+                             reply_image_url, delivery_state)
+       values ($1, $2, 'outbound', 'text', '', $3, $4, 'accepted')`,
+      [OP, CONV, 'wamid.old', 'https://example.com/h1.jpg'],
+    )
+    const ctx = await asking('can you send again')
+
+    await turn(
+      [{ toolCalls: [], reply: 'Sure — I’ll get the Huracán photos resent, with a few angles.' }],
+      'send', ctx,
+    )
+
+    expect((await imagesSent()).length).toBeGreaterThan(0)
+  })
+
+  /** Two cars named is not one car named, and guessing is worse than asking. */
+  it('sends nothing when the reply names more than one', async () => {
+    await addCars()
+    const ctx = await asking('what have you got')
+
+    await turn(
+      [{ toolCalls: [], reply: 'The Cullinan, the Huracán and the 488 — which one?' }],
+      'send', ctx,
+    )
+
+    expect(await imagesSent()).toEqual([])
+  })
+})

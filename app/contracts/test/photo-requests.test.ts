@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asksToSeePhotos, claimsPhotosAttached } from '../src/photo-requests.ts'
+import { asksToSeePhotos, photosPromisedIn } from '../src/photo-requests.ts'
 
 describe('asksToSeePhotos', () => {
   /** Both taken from a live conversation where both got prose. */
@@ -56,7 +56,38 @@ describe('asksToSeePhotos', () => {
   })
 })
 
-describe('claimsPhotosAttached', () => {
+describe('photosPromisedIn', () => {
+  /**
+   * The future tense is the same debt. Live: "Sure — I'll get the green
+   * Huracán Tecnica photos resent, with a few different angles", to somebody
+   * who had just typed "can you send again". Nothing followed it.
+   */
+  it.each([
+    "Sure — I'll get the green Hurac\u00e1n Tecnica photos resent, with a few different angles.",
+    "I'll send you a few more pictures now.",
+    'Let me get some different angles over to you.',
+    'I will share some photos of it.',
+    'Happy to send those again.',
+    /**
+     * The phrasing the instructions ask for when a car has no photographs on
+     * file, and it belongs here rather than in the list below. If the car has
+     * some, this sends them; if it has none there is nothing to send and the
+     * sentence is a genuine promise for a person to keep. Reading it as a
+     * promise is right in both cases.
+     */
+    'I will get some photos of that one for you.',
+  ])('reads %j as owing photographs', (reply) => {
+    expect(photosPromisedIn(reply)).toBe(true)
+  })
+
+  /** Offering is not promising, and must not send anything on its own. */
+  it.each([
+    'Would you like to see some pictures?',
+    'I can send you photos if you like.',
+  ])('reads %j as an offer rather than a promise', (reply) => {
+    expect(photosPromisedIn(reply)).toBe(false)
+  })
+
   /** The first is verbatim from the reply that attached nothing. */
   it.each([
     "Of course \u2014 the Lamborghini Hurac\u00e1n Tecnica in Verde green. I\u2019ve attached the photos here.",
@@ -66,7 +97,7 @@ describe('claimsPhotosAttached', () => {
     'Have a look at these pictures.',
     "Here's a few images for you.",
   ])('reads %j as claiming an attachment', (reply) => {
-    expect(claimsPhotosAttached(reply)).toBe(true)
+    expect(photosPromisedIn(reply)).toBe(true)
   })
 
   /**
@@ -76,18 +107,17 @@ describe('claimsPhotosAttached', () => {
   it.each([
     'I can send you photos if you like.',
     'Would you like to see some pictures?',
-    'I will get some photos of that one for you.',
     'The Hurac\u00e1n is AED 5,500 per day.',
   ])('reads %j as not claiming one', (reply) => {
-    expect(claimsPhotosAttached(reply)).toBe(false)
+    expect(photosPromisedIn(reply)).toBe(false)
   })
 
   it('reads a typographic apostrophe the same as a plain one', () => {
-    expect(claimsPhotosAttached('I\u2019ve attached the photos here.')).toBe(true)
-    expect(claimsPhotosAttached("I've attached the photos here.")).toBe(true)
+    expect(photosPromisedIn('I\u2019ve attached the photos here.')).toBe(true)
+    expect(photosPromisedIn("I've attached the photos here.")).toBe(true)
   })
 
   it('finds nothing in an empty reply', () => {
-    expect(claimsPhotosAttached(null)).toBe(false)
+    expect(photosPromisedIn(null)).toBe(false)
   })
 })

@@ -75,12 +75,30 @@ export function asksToSeePhotos(text: string | null): boolean {
  * way to make it true is to send the photographs.
  */
 const CLAIMS_ATTACHED: RegExp[] = [
+  /**
+   * A promise to send them, which is the same debt in the future tense.
+   *
+   * Live: "Sure — I'll get the green Huracán Tecnica photos resent, with a few
+   * different angles", to a customer who had just typed "can you send again".
+   * Nothing followed it. Sending is something this turn can do now, so a reply
+   * that says it will is a reply that should have.
+   */
+  /\b(?:i'?ll|i will|let me|going to|gonna)\b[^.?!]{0,30}\b(?:send|get|share|resend|forward)\b[^.?!]{0,40}\b(?:photo|photos|picture|pictures|image|images|pic|pics|angle|angles|shot|shots|them|these)\b/i,
+  /\b(?:resend|resent|send (?:them |those )?(?:again|over|across))\b/i,
   /\b(?:attached|attaching|sending|sent|here are|here's|here is)\b[^.?!]{0,40}\b(?:photo|photos|picture|pictures|image|images|pic|pics|shot|shots)\b/i,
   /\b(?:photo|photos|picture|pictures|image|images|pic|pics)\b[^.?!]{0,30}\b(?:attached|below|here|coming through)\b/i,
   /\b(?:have a look|take a look)\b[^.?!]{0,25}\b(?:photo|photos|picture|pictures|image|images|pic|pics|below|these)\b/i,
 ]
 
-export function claimsPhotosAttached(reply: string | null): boolean {
+/**
+ * Whether the reply has put us in debt for photographs — by saying they are
+ * attached, or by promising to send them.
+ *
+ * Renamed from claimsPhotosAttached when the future tense was added, because
+ * the old name stopped describing half of what it catches. Both are the same
+ * failure: a sentence about photographs that no photographs follow.
+ */
+export function photosPromisedIn(reply: string | null): boolean {
   if (reply === null || reply.trim() === '') return false
   const flat = reply.replace(/[\u2018\u2019]/g, "'")
   return CLAIMS_ATTACHED.some((p) => p.test(flat))

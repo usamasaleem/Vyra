@@ -15,6 +15,10 @@ describe('mightNeedTheFleet', () => {
     'i need a good car',
     'sporty',
     'can i see the lambio',
+    // Asking for more of what they were already sent. This matched nothing,
+    // so nothing downstream knew which car the promise was about.
+    'can you send again',
+    'another angle please',
   ])('looks the fleet up in advance for %j', (body) => {
     expect(mightNeedTheFleet(body)).toBe(true)
   })

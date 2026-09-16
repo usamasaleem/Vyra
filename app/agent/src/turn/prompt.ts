@@ -126,7 +126,7 @@ import { renderExamples } from './examples.js'
  *
  * The forbidding is kept and given a reason, because "never mention it" reads
  * as style until you know what it protects. But a rule the model can break is
- * not the fix, and the fix is not more prompt: `claimsPhotosAttached` now
+ * not the fix, and the fix is not more prompt: `photosPromisedIn` now
  * detects the claim and the turn honours it by sending the photographs.
  *
  * What belongs here is the missing fact. A model that knows four pictures of

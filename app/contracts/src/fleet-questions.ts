@@ -33,6 +33,13 @@ const ABOUT_THE_FLEET: RegExp[] = [
   // Being shown one.
   /\b(?:show|see|pictures?|photos?|images?)\b/i,
   /**
+   * Asking for more of what they were already sent. "can you send again" was
+   * about a car and matched nothing here, so the fleet was never looked up,
+   * so nothing downstream knew which car — and the agent promised to resend
+   * photographs it then did not send.
+   */
+  /\b(?:send|resend|again|angle|angles)\b/i,
+  /**
    * Referring to the fleet without naming it, which is most of how people do
    * it once the conversation has started. Every one of these was a real
    * message the first version of this rule missed.
