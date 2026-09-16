@@ -121,12 +121,35 @@ function searchPatterns(query: string | null): string[] | null {
   return words.map((w) => `%${w}%`)
 }
 
+/**
+ * What a customer said about the kind of car and what they will pay.
+ *
+ * Separate from the free-text query because they are different sorts of thing:
+ * the text is a guess at a name and these are facts the customer stated. A
+ * fleet of a hundred and twenty cannot be listed, read by a model, or put in a
+ * WhatsApp list — it has to be narrowed, and this is what narrows it.
+ */
+export type FleetFilters = {
+  category?: string | null
+  maxDayRateMinor?: number | null
+}
+
 export async function searchFleet(
   run: QueryRunner,
   operatorId: string,
   query: string | null,
+  filters: FleetFilters = {},
 ): Promise<FleetSearch> {
-  const rows = await run(SEARCH_SQL, [operatorId, searchPatterns(query)])
+  const rows = await run(
+    `select * from (${SEARCH_SQL}) matched
+     where ($3::text is null or matched.category::text = $3)
+       -- A car with no confirmed rate is not excluded by a budget. We do not
+       -- know what it costs, and dropping it would quietly hide cars from a
+       -- customer on the strength of a figure nobody has entered.
+       and ($4::bigint is null or matched.daily_rate_minor is null
+            or matched.daily_rate_minor <= $4)`,
+    [operatorId, searchPatterns(query), filters.category ?? null, filters.maxDayRateMinor ?? null],
+  )
   const [size] = await run(
     `select count(*)::int as n from vehicles
      where operator_id = $1 and active and provenance = 'operator_confirmed'`,

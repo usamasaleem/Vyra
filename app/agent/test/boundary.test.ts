@@ -173,7 +173,7 @@ describe('get_operator_policy', () => {
 describe('search_vehicles', () => {
   it('refuses a start date already in the past for the operator', async () => {
     const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: 'Ferrari', startDate: '2026-09-01', endDate: '2026-09-05',
+      vehicle: 'Ferrari', startDate: '2026-09-01', category: null, maxDayRateMinor: null, endDate: '2026-09-05',
     })
     expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
     expect((result as { detail: string }).detail).toContain('2026-09-14')
@@ -181,14 +181,14 @@ describe('search_vehicles', () => {
 
   it('refuses an end date before the start', async () => {
     const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: 'Ferrari', startDate: '2026-09-20', endDate: '2026-09-18',
+      vehicle: 'Ferrari', startDate: '2026-09-20', category: null, maxDayRateMinor: null, endDate: '2026-09-18',
     })
     expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
   })
 
   it('refuses a date that is well-formed but not real', async () => {
     const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: 'Ferrari', startDate: '2026-02-31', endDate: null,
+      vehicle: 'Ferrari', startDate: '2026-02-31', category: null, maxDayRateMinor: null, endDate: null,
     })
     expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
   })
@@ -200,7 +200,7 @@ describe('search_vehicles', () => {
    */
   it('refuses to answer with no verified inventory source, even when the request is perfect', async () => {
     const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: 'Ferrari 488', startDate: '2026-09-20', endDate: '2026-09-23',
+      vehicle: 'Ferrari 488', startDate: '2026-09-20', category: null, maxDayRateMinor: null, endDate: '2026-09-23',
     })
     expect(result).toMatchObject({ status: 'refused', reason: 'no_trusted_source' })
   })
@@ -227,7 +227,7 @@ describe('search_vehicles with a fleet', () => {
 
   const search = (vehicle: string | null) =>
     createToolBoundary(ctx).call('search_vehicles', {
-      vehicle, startDate: '2026-09-20', endDate: '2026-09-23',
+      vehicle, startDate: '2026-09-20', category: null, maxDayRateMinor: null, endDate: '2026-09-23',
     })
 
   const rate = (dailyMinor: number, vehicleMatch: string) =>
@@ -251,7 +251,7 @@ describe('search_vehicles with a fleet', () => {
   it('returns the fleet without dates, and refuses only the availability', async () => {
     await addVehicle()
     const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: 'Ferrari', startDate: null, endDate: null,
+      vehicle: 'Ferrari', startDate: null, category: null, maxDayRateMinor: null, endDate: null,
     })
 
     expect(result).toMatchObject({ status: 'ok' })
@@ -270,7 +270,7 @@ describe('search_vehicles with a fleet', () => {
     await rate(800_000, 'Cullinan')
 
     const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: null, startDate: null, endDate: null,
+      vehicle: null, startDate: null, category: null, maxDayRateMinor: null, endDate: null,
     })
     const { fleet } = (result as { data: { fleet: Array<{ model: string; dayRate: string | null }> } }).data
 
@@ -525,7 +525,7 @@ describe('search_vehicles with a fleet', () => {
 
       // The answer covers 20-23; this asks about 25.
       const later = await createToolBoundary(ctx).call('search_vehicles', {
-        vehicle: 'ferrari', startDate: '2026-09-25', endDate: '2026-09-26',
+        vehicle: 'ferrari', startDate: '2026-09-25', category: null, maxDayRateMinor: null, endDate: '2026-09-26',
       })
       expect((later as { data: { availability?: unknown } }).data.availability).toBeUndefined()
     })
@@ -534,7 +534,7 @@ describe('search_vehicles with a fleet', () => {
   it('still refuses a date in the past before it looks at the fleet', async () => {
     await addVehicle()
     const result = await createToolBoundary(ctx).call('search_vehicles', {
-      vehicle: 'ferrari', startDate: '2026-09-01', endDate: null,
+      vehicle: 'ferrari', startDate: '2026-09-01', category: null, maxDayRateMinor: null, endDate: null,
     })
     expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
   })
@@ -873,5 +873,91 @@ describe('infrastructure failure', () => {
     const boundary = createToolBoundary(broken)
     await expect(boundary.call('get_operator_policy', { topic: 'deposit' })).rejects.toThrow(/connection terminated/)
     expect(boundary.history).toHaveLength(1)
+  })
+})
+
+/**
+ * A fleet nobody can list.
+ *
+ * Ten cars is a WhatsApp list and forty is as many as the model is handed to
+ * read. An operator with a hundred and twenty has neither, and the answer is
+ * not a longer message — it is the question a salesperson asks first.
+ */
+describe('search_vehicles on a large fleet', () => {
+  const addCars = async (n: number, category: string, rateMinor: number | null) => {
+    for (let i = 0; i < n; i++) {
+      const [car] = await run(
+        `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                               chassis_number, provenance, confirmed_by)
+         values ($1,'Make','Model ' || $2,2023,'Black',$3::vehicle_category,'P'||$2,'V'||$2,
+                 'operator_confirmed','Owner') returning id`,
+        [OP, `${category}-${i}`, category],
+      )
+      if (rateMinor !== null) {
+        // provenance matters: the fleet search only joins a rate a person
+        // confirmed, so a placeholder one reads as no price at all.
+        await run(
+          `insert into vehicle_rates (operator_id, vehicle_id, currency, daily_rate_minor,
+                                      minimum_days, provenance, confirmed_by, confirmed_at)
+           values ($1, $2, 'AED', $3, 1, 'operator_confirmed', 'Owner', now())`,
+          [OP, car!['id'], rateMinor],
+        )
+      }
+    }
+  }
+
+  const search = (args: Record<string, unknown>) =>
+    createToolBoundary(ctx).call('search_vehicles', {
+      vehicle: null, category: null, maxDayRateMinor: null,
+      startDate: null, endDate: null, ...args,
+    })
+
+  it('narrows to one kind of car', async () => {
+    await addCars(3, 'suv', 400000)
+    await addCars(2, 'sports', 500000)
+
+    const result = await search({ category: 'sports' })
+    const { fleet } = (result as { data: { fleet: unknown[] } }).data
+    expect(fleet).toHaveLength(2)
+  })
+
+  it('narrows to what the customer said they would spend', async () => {
+    await addCars(2, 'suv', 400000)
+    await addCars(2, 'exotic', 900000)
+
+    const result = await search({ maxDayRateMinor: 500000 })
+    const { fleet } = (result as { data: { fleet: unknown[] } }).data
+    expect(fleet).toHaveLength(2)
+  })
+
+  /**
+   * A car nobody has priced is not excluded by a budget. We do not know what
+   * it costs, and dropping it would hide cars from a customer on the strength
+   * of a figure nobody entered.
+   */
+  it('keeps an unpriced car whatever the budget', async () => {
+    await addCars(1, 'suv', null)
+
+    const result = await search({ maxDayRateMinor: 100 })
+    const { fleet } = (result as { data: { fleet: unknown[] } }).data
+    expect(fleet).toHaveLength(1)
+  })
+
+  /** Show a few, say there are more, ask what would narrow it. */
+  it('shows the dearest ten and says how many it did not', async () => {
+    await addCars(14, 'luxury', 300000)
+
+    const result = await search({})
+    const data = (result as { data: { fleet: unknown[]; notShown?: number; guidance: string } }).data
+    expect(data.fleet).toHaveLength(10)
+    expect(data.notShown).toBe(4)
+    expect(data.guidance).toContain('4 more')
+  })
+
+  it('says nothing about more when everything fits', async () => {
+    await addCars(3, 'luxury', 300000)
+
+    const data = (await search({}) as { data: { notShown?: number } }).data
+    expect(data.notShown).toBeUndefined()
   })
 })

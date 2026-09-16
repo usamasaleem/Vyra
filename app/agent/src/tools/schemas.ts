@@ -28,6 +28,25 @@ export const searchVehiclesSchema = z.strictObject({
   /** Free text because customers say "a Lamborghini" and "something red and loud". */
   vehicle: z.string().min(1).nullable()
     .describe('Vehicle, model or class the customer asked for. Null returns the whole fleet, which is what a question about the range or the dearest car needs.'),
+  /**
+   * The two things a salesperson asks before showing anything, and the only
+   * way a large fleet can be shown at all.
+   *
+   * Ten cars is a WhatsApp list; forty is as many as the model is handed to
+   * read. An operator with a hundred and twenty has neither, and the answer is
+   * not a longer message — it is the question a person would ask first.
+   *
+   * Nullable and required, like everything else here. Tried optional first,
+   * which is the natural shape for a filter — absence and null mean the same
+   * thing — and it failed the boundary test: section 18.8 requires every
+   * property to be required, because that is what OpenAI's strict function
+   * calling means by strict. The rule is right and worth more than the
+   * convenience.
+   */
+  category: z.enum(['exotic', 'luxury', 'suv', 'sports', 'convertible', 'sedan']).nullable()
+    .describe('Narrow to one kind of car. Null for any. Use it when the customer says what sort of thing they want rather than naming a model.'),
+  maxDayRateMinor: z.number().int().positive().nullable()
+    .describe('Most they will pay per day, in the smallest currency unit — 300000 for AED 3,000. Null for any. Only from something the customer actually said about budget, never a guess.'),
   startDate: z.string().nullable()
     .describe('Rental start as YYYY-MM-DD in the operator timezone. Null if unknown — do not guess, and do not withhold the call because you lack it. Cars and rates come back either way; only availability needs a date.'),
   endDate: z.string().nullable()

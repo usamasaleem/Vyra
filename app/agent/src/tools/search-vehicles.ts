@@ -145,7 +145,11 @@ export async function searchVehicles(
     )
   }
 
-  const found = await searchFleet(ctx.run, ctx.operatorId, args.vehicle)
+  const filters = {
+    category: args.category ?? null,
+    maxDayRateMinor: args.maxDayRateMinor ?? null,
+  }
+  const found = await searchFleet(ctx.run, ctx.operatorId, args.vehicle, filters)
 
   if (found.fleetSize === 0) {
     return refuse(
@@ -163,7 +167,7 @@ export async function searchVehicles(
    * "is it free" needs one car and the catalogue is many.
    */
   const catalogue = found.fleetSize <= FLEET_SMALL_ENOUGH_TO_READ && args.vehicle !== null
-    ? await searchFleet(ctx.run, ctx.operatorId, null)
+    ? await searchFleet(ctx.run, ctx.operatorId, null, filters)
     : null
 
   /**
@@ -172,7 +176,25 @@ export async function searchVehicles(
    * result padded with every other car invites a reply that lists the fleet at
    * somebody who named one model.
    */
-  const visible = found.matches.length > 0 ? found.matches : (catalogue?.matches ?? [])
+  const matched = found.matches.length > 0 ? found.matches : (catalogue?.matches ?? [])
+
+  /**
+   * How many cars come back at once.
+   *
+   * A WhatsApp list holds ten rows, and a reply naming more than that is a
+   * wall nobody reads — so there is no point handing the model forty and
+   * hoping for restraint. Past this it gets the closest ones and is told how
+   * many it did not see, which is what a salesperson does: show a few, say
+   * there are more, ask what would narrow it.
+   *
+   * The dearest first, because "what have you got" in this business is usually
+   * asked by somebody who wants to see the Lamborghini.
+   */
+  const SHOWN_AT_MOST = 10
+  const visible = [...matched]
+    .sort((a, b) => (b.dailyRateMinor ?? -1) - (a.dailyRateMinor ?? -1))
+    .slice(0, SHOWN_AT_MOST)
+  const notShown = matched.length - visible.length
 
   const fleet = visible.map((v) => ({
     make: v.make,
@@ -190,9 +212,16 @@ export async function searchVehicles(
   if (found.matches.length === 0) {
     return ok({
       fleet,
+      fleetSize: found.fleetSize,
       guidance: catalogue === null
-        // Too many cars to list, so the words are all there is to go on.
-        ? 'No car in the fleet matches that description. Say so plainly and offer to check what else might suit — do not invent a car.'
+        /**
+         * Too many cars to hand over, so the words were all there was to go on
+         * — and the honest thing is to say how big the fleet is and ask the
+         * question a salesperson asks first. An operator with a hundred and
+         * twenty cars cannot have them listed, and a customer who says "show
+         * me your cars" has not told anybody anything yet.
+         */
+        ? `No car matched that out of ${found.fleetSize} in the fleet. Do not invent one and do not try to list them — say roughly how many there are and ask what sort of thing they are after, or what they want to spend a day. Then search again with category or maxDayRateMinor.`
         : 'The words they used did not match anything, but this is the operator\'s ENTIRE fleet — every car they have. Read it and decide for yourself whether one of these is what they meant: spelling and accents ("Huracan" is the Huracán), nicknames, a colour in another language ("the orange one" is the Arancio Borealis), or a description like "something loud". If one of them fits, answer about that car and use its exact make and model in any further tool call. Only say the operator does not have it once you have looked at this list and nothing here fits.',
     })
   }
@@ -212,8 +241,13 @@ export async function searchVehicles(
   if (args.startDate === null) {
     return ok({
       fleet,
+      fleetSize: found.fleetSize,
+      ...(notShown > 0 ? { notShown } : {}),
       guidance:
-        'These cars are in the fleet and you may describe them, including any dayRate shown — a named person at the operator set it. A car with dayRate null has no confirmed price: say that it needs checking rather than quoting another car\'s figure. You have NOT checked whether any of them is free, so do not say available, free or bookable. If the customer wants a total or a booking, ask which dates.',
+        'These cars are in the fleet and you may describe them, including any dayRate shown — a named person at the operator set it. A car with dayRate null has no confirmed price: say that it needs checking rather than quoting another car\'s figure. You have NOT checked whether any of them is free, so do not say available, free or bookable. If the customer wants a total or a booking, ask which dates.'
+        + (notShown > 0
+          ? ` These are the dearest ${fleet.length} of ${matched.length} that matched. Say there are ${notShown} more rather than listing these and stopping, and ask what would narrow it — a kind of car, or what they want to spend a day.`
+          : ''),
     })
   }
 

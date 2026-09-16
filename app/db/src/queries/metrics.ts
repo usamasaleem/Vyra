@@ -170,10 +170,30 @@ export async function getMetrics(
   }
 }
 
-/** Seconds as something a person reads at a glance. */
+/**
+ * Seconds as something a person reads at a glance.
+ *
+ * The handoff queue showed "2225 min overdue" and a tag reading "WAITING 2255
+ * MIN", which is a day and a half expressed as a number nobody can hold. The
+ * units here change as the quantity does, the way somebody would say it out
+ * loud: seconds for a latency, minutes for a wait, hours for an afternoon,
+ * days for the thing that has clearly gone wrong.
+ *
+ * Below an hour is untouched, because that is where the reporting measures
+ * live and a first-response time of "4 min" was already right.
+ */
 export function formatDuration(seconds: number | null): string {
   if (seconds === null) return '—'
   if (seconds < 90) return `${Math.round(seconds)}s`
   if (seconds < 5400) return `${Math.round(seconds / 60)} min`
-  return `${(seconds / 3600).toFixed(1)} h`
+
+  const hours = seconds / 3600
+  // One decimal while the fraction still means something; a whole number once
+  // it does not. "37.1 hours" is false precision about a customer waiting.
+  if (hours < 6) return `${hours.toFixed(1)} h`
+  if (hours < 48) return `${Math.round(hours)} hours`
+
+  const days = Math.floor(hours / 24)
+  const rest = Math.round(hours - days * 24)
+  return rest === 0 ? `${days} days` : `${days} days ${rest} h`
 }

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { SiteNav } from '../site-nav'
-import { getNavCounts, listOpenHandoffs } from '@vyra/db'
+import { formatDuration, getNavCounts, listOpenHandoffs } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { AcceptButton } from './accept-button'
@@ -27,11 +27,18 @@ const REASON_LABEL: Record<string, string> = {
   turn_failed: 'agent failed',
 }
 
+/**
+ * Through the shared formatter rather than as raw minutes.
+ *
+ * This read "2225 min overdue", which is a day and a half and does not look
+ * like one. A queue is read at a glance by somebody deciding what to pick up,
+ * and a number they have to divide is a number they skip.
+ */
 function due(minutes: number, escalated: boolean): { text: string; late: boolean } {
   if (escalated || minutes < 0) {
-    return { text: `${Math.abs(minutes)} min overdue`, late: true }
+    return { text: `${formatDuration(Math.abs(minutes) * 60)} overdue`, late: true }
   }
-  return { text: `${minutes} min left`, late: false }
+  return { text: `${formatDuration(minutes * 60)} left`, late: false }
 }
 
 export default async function HandoffsPage({
@@ -100,7 +107,7 @@ export default async function HandoffsPage({
                   <span className="tag">{REASON_LABEL[h.reason] ?? h.reason.replace(/_/g, ' ')}</span>
                   {h.priority !== 'normal' && <span className="tag">{h.priority}</span>}
                   {h.escalatedAt !== null && <span className="tag">escalated</span>}
-                  <span className="tag">waiting {h.waitingSinceMinutes} min</span>
+                  <span className="tag">waiting {formatDuration(h.waitingSinceMinutes * 60)}</span>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
