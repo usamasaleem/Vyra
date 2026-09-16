@@ -106,11 +106,38 @@ const SEARCH_SQL = `
         v.colour || ' ' || v.category::text || ' ' || v.year::text
       ) like all (array(select public.vyra_fold(unnest($2::text[]))))
     )
-  -- Dearest first, so "what is the most expensive car you have" is answered by
-  -- the order of the result rather than by the model comparing numbers.
-  -- Unpriced cars sort last: they cannot answer a price question at all.
-  order by r.daily_rate_minor desc nulls last, v.make, v.model
 `
+
+/**
+ * Which end of the price list the customer is asking about.
+ *
+ * The order used to be fixed at dearest-first, on the reasoning that "what is
+ * your most expensive car" should be answered by the result rather than by the
+ * model comparing numbers. True, and it quietly broke the opposite question
+ * the moment a fleet outgrew one page: with a hundred and twenty cars, "what
+ * is your cheapest?" returned the twenty dearest, and the cheapest car was not
+ * among them at all. The model could only answer from what it was handed, so
+ * it would have named the cheapest of the ten most expensive cars in the
+ * fleet and been wrong with complete confidence.
+ *
+ * Unpriced cars sort last either way. They cannot answer a price question in
+ * either direction, and putting them at the top of "cheapest" because null
+ * sorts low would be the same bug wearing a different hat.
+ */
+export type FleetOrder = 'dearest' | 'cheapest'
+
+/**
+ * Applied to the outer query, on the outer column names.
+ *
+ * Not inside the subquery: PostgreSQL does not promise that a subquery's
+ * ordering survives into the query that selects from it, and a LIMIT over an
+ * order that was only probably there is how "the cheapest car" becomes
+ * whichever row the planner felt like keeping.
+ */
+const ORDER_BY: Record<FleetOrder, string> = {
+  dearest: 'daily_rate_minor desc nulls last, make, model',
+  cheapest: 'daily_rate_minor asc nulls last, make, model',
+}
 
 /**
  * One page of them, and separately how many there are.
@@ -122,7 +149,6 @@ const SEARCH_SQL = `
  * more is worse than saying nothing.
  */
 const PAGE = 20
-const SEARCH_PAGE_SQL = `${SEARCH_SQL} limit ${PAGE}`
 
 /**
  * Words worth requiring. Short connectives are dropped because a model may
@@ -151,6 +177,14 @@ function searchPatterns(query: string | null): string[] | null {
 export type FleetFilters = {
   category?: string | null
   maxDayRateMinor?: number | null
+  /**
+   * Smallest number of seats that will do. A family of six is a hard
+   * constraint in a way that a colour is not, and the fleet table has known
+   * this about every car since it was built.
+   */
+  minSeats?: number | null
+  /** Which end of the price list they are asking about. Dearest by default. */
+  order?: FleetOrder
 }
 
 export async function searchFleet(
@@ -171,12 +205,20 @@ export async function searchFleet(
       -- know what it costs, and dropping it would quietly hide cars from a
       -- customer on the strength of a figure nobody has entered.
       and ($4::bigint is null or matched.daily_rate_minor is null
-           or matched.daily_rate_minor <= $4)`
+           or matched.daily_rate_minor <= $4)
+      -- Seats are the opposite case, and deliberately so. An unknown seat
+      -- count fails a seat requirement, because six people either fit or they
+      -- do not, and offering a car that might not hold them is the kind of
+      -- helpfulness that ends at the kerb with luggage on the pavement.
+      and ($5::int is null or matched.seats >= $5)`
 
   const args = [operatorId, searchPatterns(query), filters.category ?? null,
-                filters.maxDayRateMinor ?? null]
+                filters.maxDayRateMinor ?? null, filters.minSeats ?? null]
 
-  const rows = await run(`${narrow(SEARCH_PAGE_SQL)}`, args)
+  const rows = await run(
+    `${narrow(SEARCH_SQL)} order by ${ORDER_BY[filters.order ?? 'dearest']} limit ${PAGE}`,
+    args,
+  )
   const [matched] = await run(`select count(*)::int as n from (${narrow(SEARCH_SQL)}) counted`, args)
   const [size] = await run(
     `select count(*)::int as n from vehicles

@@ -213,7 +213,7 @@ describe('a promise the turn did not keep', () => {
       {
         toolCalls: [{
           id: 't1', name: 'search_vehicles',
-          arguments: { vehicle: 'Ferrari', startDate: '2026-10-01', category: null, maxDayRateMinor: null, endDate: '2026-10-03' },
+          arguments: { vehicle: 'Ferrari', startDate: '2026-10-01', category: null, maxDayRateMinor: null, minSeats: null, order: null, endDate: '2026-10-03' },
         }],
         reply: null,
       },
@@ -725,7 +725,7 @@ describe('a reply about several cars', () => {
     {
       toolCalls: [{
         id: 't1', name: 'search_vehicles',
-        arguments: { vehicle: null, startDate: null, category: null, maxDayRateMinor: null, endDate: null },
+        arguments: { vehicle: null, startDate: null, category: null, maxDayRateMinor: null, minSeats: null, order: null, endDate: null },
       }],
       reply: null,
     },

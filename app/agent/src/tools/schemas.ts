@@ -47,6 +47,10 @@ export const searchVehiclesSchema = z.strictObject({
     .describe('Narrow to one kind of car. Null for any. Use it when the customer says what sort of thing they want rather than naming a model.'),
   maxDayRateMinor: z.number().int().positive().nullable()
     .describe('Most they will pay per day, in the smallest currency unit — 300000 for AED 3,000. Null for any. Only from something the customer actually said about budget, never a guess.'),
+  minSeats: z.number().int().positive().nullable()
+    .describe('Fewest seats that will do, when the customer said how many people. Null for any. A car whose seat count nobody recorded is left out, because six people either fit or they do not.'),
+  order: z.enum(['dearest', 'cheapest']).nullable()
+    .describe('Which end of the price list to return. Use cheapest when they ask for the cheapest or say they want something affordable. Null means dearest, which is what "what do you have" wants. Only ten cars come back, so on a large fleet this decides whether the car they asked about is in the answer at all.'),
   startDate: z.string().nullable()
     .describe('Rental start as YYYY-MM-DD in the operator timezone. Null if unknown — do not guess, and do not withhold the call because you lack it. Cars and rates come back either way; only availability needs a date.'),
   endDate: z.string().nullable()

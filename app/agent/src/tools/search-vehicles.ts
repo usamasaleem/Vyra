@@ -148,7 +148,9 @@ export async function searchVehicles(
   const filters = {
     category: args.category ?? null,
     maxDayRateMinor: args.maxDayRateMinor ?? null,
-  }
+    minSeats: args.minSeats ?? null,
+    order: args.order ?? 'dearest',
+  } as const
   const found = await searchFleet(ctx.run, ctx.operatorId, args.vehicle, filters)
 
   if (found.fleetSize === 0) {
@@ -187,13 +189,13 @@ export async function searchVehicles(
    * many it did not see, which is what a salesperson does: show a few, say
    * there are more, ask what would narrow it.
    *
-   * The dearest first, because "what have you got" in this business is usually
-   * asked by somebody who wants to see the Lamborghini.
+   * Already in the order that was asked for. Re-sorting here is what made
+   * "what is your cheapest car" return the dearest ten of a hundred and twenty
+   * — the query had been asked for the right end of the list and this threw
+   * the answer away.
    */
   const SHOWN_AT_MOST = 10
-  const visible = [...matched]
-    .sort((a, b) => (b.dailyRateMinor ?? -1) - (a.dailyRateMinor ?? -1))
-    .slice(0, SHOWN_AT_MOST)
+  const visible = matched.slice(0, SHOWN_AT_MOST)
   /**
    * Against how many matched, not how many came back. The query returns one
    * page, so `matched.length` tops out at twenty however large the fleet is —
@@ -253,7 +255,7 @@ export async function searchVehicles(
       guidance:
         'These cars are in the fleet and you may describe them, including any dayRate shown — a named person at the operator set it. A car with dayRate null has no confirmed price: say that it needs checking rather than quoting another car\'s figure. You have NOT checked whether any of them is free, so do not say available, free or bookable. If the customer wants a total or a booking, ask which dates.'
         + (notShown > 0
-          ? ` These are the dearest ${fleet.length} of ${matchedCount} that matched. Say there are ${notShown} more rather than listing these and stopping, and ask what would narrow it — a kind of car, or what they want to spend a day.`
+          ? ` These are ${fleet.length} of ${matchedCount} that matched, ${filters.order === 'cheapest' ? 'cheapest' : 'dearest'} first. Say there are ${notShown} more rather than listing these and stopping, and ask what would narrow it — a kind of car, or what they want to spend a day.`
           : ''),
     })
   }
