@@ -647,8 +647,19 @@ export async function runConversationTurn(
         return reply.includes(v.model) || reply.includes(`${v.make} ${v.model}`)
       })
 
+  /**
+   * The car they just picked, in their own words.
+   *
+   * Ahead of the reply, because "Rolls-Royce Cullinan, please." is the customer
+   * naming a car and the reply mentioning one is an inference about it. Both
+   * usually agree; when they do not, theirs is the one that counts.
+   */
+  const chosen = carChosenIn(context.message.body, fleet)
+
   const subject = fleet.length === 1
     ? { make: fleet[0]!.make, model: fleet[0]!.model }
+    : chosen !== null
+    ? { make: chosen.make, model: chosen.model }
     : namedInReply.length === 1
     ? { make: namedInReply[0]!.make, model: namedInReply[0]!.model }
     // Only when the search found nothing at all. A search that came back with
@@ -801,8 +812,27 @@ const FLEET_CARDS = 6
    * not need to point at older ones — and only when they asked. An unprompted
    * quote of a week-old message is a bot demonstrating that it has a memory.
    */
-  const quoting = showing.length === 0 && asked && photosShown.length > 0
-    ? photosShown[0]!.lastMessageId
+  /**
+   * The message that carried this car's photographs — not the last car's.
+   *
+   * photosShown is ordered most-recent-first, and quoting `[0]` quotes whatever
+   * car was shown last. Shown the Lamborghini and then the Cullinan, "can I see
+   * the lambo again" would have pointed at the Rolls-Royce.
+   */
+  const shownBefore = subject === null
+    ? photosShown[0]
+    : photosShown.find((v) => v.make === subject.make && v.model === subject.model)
+
+  /**
+   * Picking a car counts as asking, when they have already seen it.
+   *
+   * The gate was `asked` alone, on the reasoning that an unprompted quote of a
+   * week-old message is a bot demonstrating it has a memory. True of a car
+   * nobody mentioned; not true of the one they just chose off the list, where
+   * the photographs are the thing they are about to look for.
+   */
+  const quoting = showing.length === 0 && (asked || chosen !== null) && shownBefore !== undefined
+    ? shownBefore.lastMessageId
     : null
 
   /**

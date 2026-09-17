@@ -724,6 +724,70 @@ describe('showing a car the model did not look up', () => {
       expect(sent!['reply_image_url']).toBe(FERRARI[0])
     })
 
+    /**
+     * "or mentioned if already sent" — the other half.
+     *
+     * Picking a car they have already been shown sends nothing, correctly. What
+     * it should not do is leave them scrolling: the reply quotes the message
+     * that carried those photographs, so tapping it jumps there.
+     */
+    it('points at the photographs when they pick a car they have seen', async () => {
+      await addHuracan()
+      const [shown] = await run(
+        `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
+                               reply_image_url, delivery_state)
+         values ($1, $2, 'outbound', 'text', '', $3, $4, 'accepted') returning id`,
+        [OP, CONV, `wamid.${Math.random()}`, PHOTOS[0]],
+      )
+      await run(
+        `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
+                               reply_image_url, delivery_state)
+         values ($1, $2, 'outbound', 'text', '', $3, $4, 'accepted')`,
+        [OP, CONV, `wamid.${Math.random()}`, PHOTOS[1]],
+      )
+      const ctx = await asking('the lambo please')
+
+      await turn([{ toolCalls: [], reply: 'The Huracán Tecnica it is.' }], 'send', ctx)
+
+      const [sent] = await run(
+        `select reply_image_url, quotes_message_id from messages
+         where direction = 'outbound' and delivery_state = 'pending'
+         order by created_at desc limit 1`, [],
+      )
+      expect(sent!['reply_image_url']).toBeNull()
+      // The second message is the one that carried the most recent photograph.
+      expect(sent!['quotes_message_id']).not.toBeNull()
+      expect(sent!['quotes_message_id']).not.toBe(shown!['id'])
+    })
+
+    /**
+     * Shown the Lamborghini and then the Ferrari, "the lambo please" used to
+     * quote the Ferrari — photosShown is most-recent-first and the code took
+     * `[0]` regardless of which car the turn was about.
+     */
+    it('points at this car\u2019s photographs, not the last car\u2019s', async () => {
+      await addHuracan()
+      await addFerrari()
+      await shownAlready(PHOTOS[0]!)
+      await shownAlready(PHOTOS[1]!)
+      const [ferrariMessage] = await run(
+        `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
+                               reply_image_url, delivery_state)
+         values ($1, $2, 'outbound', 'text', '', $3, $4, 'accepted') returning id`,
+        [OP, CONV, `wamid.${Math.random()}`, FERRARI[0]],
+      )
+      const ctx = await asking('the lambo please')
+
+      await turn([{ toolCalls: [], reply: 'The Huracán Tecnica it is.' }], 'send', ctx)
+
+      const [sent] = await run(
+        `select quotes_message_id from messages
+         where direction = 'outbound' and delivery_state = 'pending'
+         order by created_at desc limit 1`, [],
+      )
+      expect(sent!['quotes_message_id']).not.toBe(ferrariMessage!['id'])
+    })
+
     /** Restraint intact: the same car twice unasked is what a bot does. */
     it('does not show the same car again unasked', async () => {
       await addHuracan()
