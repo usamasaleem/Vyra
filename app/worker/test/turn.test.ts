@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
 import { loadConversationContext, type ConversationContext } from '../src/context.ts'
-import { handleNonTextMessage, runConversationTurn } from '../src/turn.ts'
+import { handleNonTextMessage, handleUrgentMessage, runConversationTurn } from '../src/turn.ts'
 import { ensureEnquiry, recordFields } from '../../db/src/queries/enquiry-fields.ts'
 import type { QueryRunner, Transactor } from '../../db/src/runner.ts'
 
@@ -475,6 +475,102 @@ describe('a turn that fails', () => {
       { toolCalls: [], reply: "I'll confirm the deposit and come back to you." },
     ])
     expect(result).toMatchObject({ outcome: 'queued' })
+  })
+})
+
+/**
+ * Section 15's rule, finally attached to something.
+ *
+ * Holding the turn is only half of it. A customer who has just crashed the car
+ * and hears nothing is worse off than one who got a sales reply, so the
+ * acknowledgement matters as much as the stop.
+ */
+describe('a message a rule stopped before the model', () => {
+  async function urgent(body: string): Promise<ConversationContext> {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  const URGENT = { code: 'accident' as const, matched: 'accident', why: 'Possible accident, injury or safety issue' }
+
+  it('answers rather than going quiet, and points at 999 first', async () => {
+    const ctx = await urgent('I have had an accident in the Huracán')
+    const result = await handleUrgentMessage({ run, transact, destination: 'send' }, ctx, URGENT)
+    expect(result).toMatchObject({ outcome: 'needs_a_person', reason: 'safety_or_accident' })
+
+    const [message] = await run(
+      `select body, delivery_state::text as state from messages
+       where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(message!['body']).toContain('999')
+    expect(message).toMatchObject({ state: 'pending' })
+  })
+
+  it('raises an urgent task, not an ordinary one', async () => {
+    const ctx = await urgent('I have had an accident')
+    await handleUrgentMessage({ run, transact, destination: 'send' }, ctx, URGENT)
+
+    const [handoff] = await run(
+      `select reason::text as reason, priority::text as priority, summary from handoffs
+       where conversation_id = $1`, [CONV],
+    )
+    expect(handoff).toMatchObject({ reason: 'safety_or_accident', priority: 'urgent' })
+    // The customer's own words, so a salesperson can see why it stopped.
+    expect(handoff!['summary']).toContain('accident')
+  })
+
+  it('takes the conversation away from the agent', async () => {
+    const ctx = await urgent('the car broke down')
+    await handleUrgentMessage({ run, transact, destination: 'send' }, ctx, URGENT)
+    const [conversation] = await run(
+      `select handler_mode::text as mode from conversations where id = $1`, [CONV],
+    )
+    expect(conversation).toMatchObject({ mode: 'human' })
+  })
+
+  /** A dispute is not an accident, and must not be told to call the police. */
+  it('says something different for a payment dispute', async () => {
+    const ctx = await urgent('you charged me twice')
+    await handleUrgentMessage({ run, transact, destination: 'send' }, ctx, {
+      code: 'payment_dispute', matched: 'charged me twice', why: 'Payment, refund or fraud dispute',
+    })
+
+    const [message] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(message!['body']).not.toContain('999')
+    expect(message!['body']).toContain('colleague')
+  })
+
+  /**
+   * It concedes nothing. The commercial and legal position belongs to a
+   * person, and a machine giving it away in the first thirty seconds is its
+   * own kind of harm.
+   */
+  it('does not apologise on the operator\u2019s behalf', async () => {
+    const ctx = await urgent('I am speaking to my lawyer')
+    await handleUrgentMessage({ run, transact, destination: 'send' }, ctx, {
+      code: 'complaint', matched: 'lawyer', why: 'Complaint or legal escalation',
+    })
+
+    const [message] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(message!['body']).not.toMatch(/\b(?:sorry|apologi[sz]e|our fault|we were wrong)\b/i)
+  })
+
+  it('acknowledges once, however many times the job is retried', async () => {
+    const ctx = await urgent('I have had an accident')
+    await handleUrgentMessage({ run, transact, destination: 'send' }, ctx, URGENT)
+    await handleUrgentMessage({ run, transact, destination: 'send' }, ctx, URGENT)
+    const messages = await run(
+      `select id from messages where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    expect(messages).toHaveLength(1)
   })
 })
 
@@ -1642,7 +1738,10 @@ describe('chasing what the enquiry still needs', () => {
     /** A memory is a nicety. A reply is not. */
     it('still replies when the recall fails', async () => {
       await remember([{ field: 'vehicle', value: 'Ferrari 488' }])
-      await run(`drop table if exists field_evidence cascade`, [])
+      // Precisely the recall path: `original_wording` is read by
+      // getEnquiryFields and by nothing ensureEnquiry needs, so the enquiry is
+      // still found and only the memory is lost.
+      await run(`alter table field_evidence drop column original_wording`, [])
 
       const system = await systemFor()
       expect(system).not.toContain('This enquiry already has')

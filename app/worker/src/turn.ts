@@ -1,6 +1,6 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  carChosenIn, FULL_RANGE_LABEL, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
+  carChosenIn, FULL_RANGE_LABEL, type StopCode, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
   usableWebsite,
   vehicleList,
 } from '@vyra/contracts'
@@ -80,7 +80,10 @@ export type TurnResult =
   | { outcome: 'drafted'; noteId: string | null }
   | { outcome: 'rejected'; reason: string }
   | { outcome: 'failed'; kind: string; detail: string }
-  | { outcome: 'needs_a_person'; reason: 'non_text_message' }
+  | {
+      outcome: 'needs_a_person'
+      reason: 'non_text_message' | 'safety_or_accident' | 'payment_or_dispute'
+    }
   | { outcome: 'skipped'; reason: 'no_model_configured' | 'no_enquiry' | 'no_message_body' }
 
 /**
@@ -169,6 +172,92 @@ export async function handleNonTextMessage(
   })
 
   return { outcome: 'needs_a_person', reason: 'non_text_message' }
+}
+
+/**
+ * What a customer hears when a rule decided a person must handle this.
+ *
+ * Written per code rather than one sentence, because the three are not the
+ * same event. Somebody reporting a crash needs to hear that help is coming,
+ * not that their message has been filed.
+ *
+ * None of them apologise on the operator's behalf or concede anything: the
+ * commercial and legal position belongs to a person, and a machine conceding
+ * it in the first thirty seconds is its own kind of harm.
+ */
+const URGENT_ACKNOWLEDGEMENT: Record<StopCode, string> = {
+  accident: "I'm getting a colleague onto this right now. If anyone is hurt or the car is unsafe, "
+    + 'call the emergency services first on 999 — they matter more than this conversation.',
+  payment_dispute: "Thanks for telling me — I'm passing this to a colleague who can look at the "
+    + 'account properly. They will come back to you.',
+  complaint: "Thank you for raising it — I'm passing this to a colleague who can look into it "
+    + 'properly. They will come back to you.',
+  human: 'Putting you through to a colleague now.',
+  discount: 'Let me get a colleague to look at that for you.',
+}
+
+/**
+ * Which queue this lands in.
+ *
+ * Not a priority: PRIORITY_FOR in handoff-queue.ts derives that from the
+ * reason, and both of these are already 'urgent' there.
+ */
+const URGENT_HANDOFF_REASON: Record<StopCode, 'safety_or_accident' | 'payment_or_dispute'> = {
+  accident: 'safety_or_accident',
+  payment_dispute: 'payment_or_dispute',
+  complaint: 'payment_or_dispute',
+  human: 'payment_or_dispute',
+  discount: 'payment_or_dispute',
+}
+
+/**
+ * A message a rule stopped before the model ever saw it.
+ *
+ * Deliberately the same shape as handleNonTextMessage: acknowledge honestly,
+ * raise a real task, and let the one acknowledgement through at the
+ * post-handoff revision. Silence after "I've had an accident" would be the
+ * worst thing this system could do, and holding the turn without this would
+ * produce exactly that.
+ *
+ * `urgent` priority rather than the default. The queue already sorts by it,
+ * and this is what it is for.
+ */
+export async function handleUrgentMessage(
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  context: ConversationContext,
+  urgent: { code: StopCode; matched: string; why: string },
+): Promise<TurnResult> {
+  const summary = `${urgent.why} — the customer said "${urgent.matched}". `
+    + 'Stopped before the agent replied; read the message and take this yourself.'
+
+  await requestHandoff(deps.run, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    reason: summary,
+  })
+
+  await raiseHandoff(deps.run, {
+    operatorId: context.operator.id,
+    conversationId: context.conversation.id,
+    reason: URGENT_HANDOFF_REASON[urgent.code],
+    summary,
+    // Priority is not passed: PRIORITY_FOR in handoff-queue.ts already maps
+    // both of these to 'urgent', and it is deliberately the one place that
+    // judgement is made.
+    triggerMessageId: context.message.id,
+  })
+
+  await acceptTurnOutput(deps.transact, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    revisionAtTurnStart: context.conversation.revision,
+    body: URGENT_ACKNOWLEDGEMENT[urgent.code],
+    idempotencyKey: `urgent:${context.message.id}`,
+    destination: deps.destination,
+    ownHandoff: true,
+  })
+
+  return { outcome: 'needs_a_person', reason: URGENT_HANDOFF_REASON[urgent.code] }
 }
 
 export type TurnDependencies = {
@@ -478,6 +567,8 @@ export async function runConversationTurn(
       ...(stillNeeded.length === 0 ? {} : { stillNeeded: stillNeeded.slice(0, 1) }),
       ...(known.length === 0 ? {} : { known }),
       ...(noPhotosOf.length === 0 ? {} : { noPhotosOf }),
+      // Loaded on every turn since this worker was written and never passed on.
+      ...(context.contact.displayName == null ? {} : { customerName: context.contact.displayName }),
     })
     end = {
       reply: outcome.reply,

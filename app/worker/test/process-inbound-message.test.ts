@@ -127,6 +127,72 @@ describe('deciding what happens next', () => {
   })
 
   /**
+   * Section 15's rule, which for a year ran nowhere.
+   *
+   * intents.ts was written, reviewed and imported by its own test and nothing
+   * else — so a customer reporting a crash got a sales agent. The bias is
+   * deliberately toward stopping: a false stop costs a salesperson a glance.
+   */
+  it.each([
+    "I've had an accident with the Lamborghini",
+    'the car broke down on Sheikh Zayed Road',
+    'someone hit the car while it was parked',
+    'my friend is injured, we are at the hospital',
+    'the car has been stolen',
+  ])('stops before the model for %j', async (body) => {
+    await run(`update messages set body = $2 where id = $1`, [messageId, body])
+    const handling = decideHandling(await contextFor(), ENABLED)
+    expect(handling).toMatchObject({ action: 'hold', reason: 'urgent_needs_a_person' })
+    expect(handling.action === 'hold' && handling.urgent?.code).toBe('accident')
+  })
+
+  it.each([
+    ['I want a refund', 'payment_dispute'],
+    ['you charged me twice', 'payment_dispute'],
+    ['this is a scam', 'payment_dispute'],
+    ['I am speaking to my lawyer', 'complaint'],
+    ['I want to make a complaint', 'complaint'],
+  ])('stops before the model for %j', async (body, code) => {
+    await run(`update messages set body = $2 where id = $1`, [messageId, body])
+    const handling = decideHandling(await contextFor(), ENABLED)
+    expect(handling.action === 'hold' && handling.urgent?.code).toBe(code)
+  })
+
+  /**
+   * "accident" must not fire on "accidentally" — a real message that would
+   * otherwise route an ordinary correction to urgent support.
+   */
+  it.each([
+    'I accidentally picked the wrong date',
+    'can you do a better price?',
+    'how much is the Ferrari for three days?',
+    'is the Cullinan available next weekend?',
+  ])('lets %j through to the agent', async (body) => {
+    await run(`update messages set body = $2 where id = $1`, [messageId, body])
+    expect(decideHandling(await contextFor(), ENABLED))
+      .toEqual({ action: 'draft', reason: 'ready_for_ai_turn' })
+  })
+
+  /**
+   * A discount is caught after the reply instead, by detectDiscountRequest,
+   * which raises the handoff without silencing the agent. Stopping here would
+   * answer an ordinary sales question with nothing.
+   */
+  it('does not stop for a discount, which is handled after the reply', async () => {
+    await run(`update messages set body = 'any discount for a week?' where id = $1`, [messageId])
+    expect(decideHandling(await contextFor(), ENABLED))
+      .toEqual({ action: 'draft', reason: 'ready_for_ai_turn' })
+  })
+
+  /** Somebody who asked to be left alone is not made an exception of by shouting. */
+  it('keeps the opt-out ahead of the urgent rule', async () => {
+    await run(`update contacts set opted_out_at = now() where operator_id = $1`, [OPERATOR_A])
+    await run(`update messages set body = 'I have had an accident' where id = $1`, [messageId])
+    expect(decideHandling(await contextFor(), ENABLED))
+      .toEqual({ action: 'hold', reason: 'contact_opted_out' })
+  })
+
+  /**
    * The thumbs-up that cost a handoff.
    *
    * A reaction fell into `unsupported` and took the voice-note path: an apology

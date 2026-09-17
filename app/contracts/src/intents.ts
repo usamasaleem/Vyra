@@ -13,6 +13,31 @@
  * The bias is deliberately toward stopping. A false stop costs a salesperson a
  * glance at a conversation that turned out to be ordinary. A missed one means
  * an AI discussing rental extensions with someone who has just been in a crash.
+ *
+ * ---
+ *
+ * What actually runs, as of wiring this up. For a year this file was imported
+ * by nothing but its own test — the rule was written, reviewed and reachable
+ * from nowhere, which is the same as not having it.
+ *
+ * `urgent_support` now runs before the model, in processInboundMessage, beside
+ * detectOptOut. A match holds the turn and raises a handoff.
+ *
+ * The other two stop rules deliberately do NOT run here, because both are
+ * already handled better elsewhere and moving them would make the agent worse:
+ *
+ *   - `discount_request` is caught after the reply by detectDiscountRequest,
+ *     which raises the handoff without silencing the agent. See discount.ts:
+ *     "a match does not stop the agent replying. Acknowledging the ask and
+ *     collecting the context is useful work." Stopping on "cheaper" would
+ *     answer an ordinary sales question with silence.
+ *   - `human_request` is the model's own request_handoff call. The patterns
+ *     here are broad — `\bagent\b`, `\bhuman\b`, `\bmanager\b` — and a
+ *     pre-model stop on them would hand over conversations that merely used
+ *     the word.
+ *
+ * They stay in STOP_RULES because classifyIntent is about what a message is,
+ * not about what this particular caller does with it.
  */
 
 export const INTENTS = [
@@ -28,8 +53,18 @@ export const INTENTS = [
 ] as const
 export type Intent = (typeof INTENTS)[number]
 
+/**
+ * A stable name for the rule that fired.
+ *
+ * The `reason` beside it is a sentence for a person to read and will be
+ * reworded; this will not. A caller choosing a handoff reason branches on this.
+ */
+export type StopCode = 'accident' | 'payment_dispute' | 'complaint' | 'human' | 'discount'
+
 export type IntentDetection = {
   intent: Intent
+  /** Set on a rule match, absent on a hint. */
+  code?: StopCode
   /** True when automation must not continue without a person. */
   stopsAutomation: boolean
   /** How this was decided. Rules are final; hints can be overridden by a model. */
@@ -47,11 +82,13 @@ export type IntentDetection = {
  */
 const STOP_RULES: ReadonlyArray<{
   intent: Intent
+  code: StopCode
   reason: string
   patterns: RegExp[]
 }> = [
   {
     intent: 'urgent_support',
+    code: 'accident',
     reason: 'Possible accident, injury or safety issue',
     patterns: [
       /\baccident\b/, /\bcrashed?\b/, /\bcollision\b/, /\bhit (?:a|an|the|another)\b/,
@@ -62,6 +99,7 @@ const STOP_RULES: ReadonlyArray<{
   },
   {
     intent: 'urgent_support',
+    code: 'payment_dispute',
     reason: 'Payment, refund or fraud dispute',
     patterns: [
       /\brefund\b/, /\bchargeback\b/, /\bdispute\b/, /\bdisputing\b/,
@@ -75,6 +113,7 @@ const STOP_RULES: ReadonlyArray<{
   },
   {
     intent: 'urgent_support',
+    code: 'complaint',
     reason: 'Complaint or legal escalation',
     patterns: [
       /\bcomplaint\b/, /\bcomplain\b/, /\blawyer\b/, /\blegal action\b/,
@@ -84,6 +123,7 @@ const STOP_RULES: ReadonlyArray<{
   },
   {
     intent: 'human_request',
+    code: 'human',
     reason: 'The customer asked for a person',
     patterns: [
       /\b(?:speak|talk|chat) (?:to|with) (?:a |an |someone|somebody|a real |a human)/,
@@ -94,6 +134,7 @@ const STOP_RULES: ReadonlyArray<{
   },
   {
     intent: 'discount_request',
+    code: 'discount',
     reason: 'Discount or exception requested — needs human approval',
     patterns: [
       /\bdiscount\b/, /\bcheaper\b/, /\bbest price\b/, /\bbetter price\b/,
@@ -146,6 +187,7 @@ export function detectStopSignal(text: string): IntentDetection | null {
       if (match !== null) {
         return {
           intent: rule.intent,
+          code: rule.code,
           stopsAutomation: true,
           basis: 'rule',
           matched: match[0],

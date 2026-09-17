@@ -1,4 +1,4 @@
-import { detectOptOut } from '@vyra/contracts'
+import { detectOptOut, detectStopSignal, type StopCode } from '@vyra/contracts'
 import { cancelFollowUps, recordOptOut } from '@vyra/db'
 import { loadConversationContext, type ConversationContext } from '../context.js'
 import type { QueryRunner } from '../relay.js'
@@ -13,7 +13,7 @@ import type { QueryRunner } from '../relay.js'
 
 export type Handling =
   | { action: 'draft'; reason: 'ready_for_ai_turn' }
-  | { action: 'hold'; reason: HoldReason }
+  | { action: 'hold'; reason: HoldReason; urgent?: { code: StopCode; matched: string; why: string } }
 
 export type HoldReason =
   | 'system_kill_switch'
@@ -22,6 +22,7 @@ export type HoldReason =
   | 'contact_opted_out'
   | 'non_text_needs_a_person'
   | 'reaction_needs_no_reply'
+  | 'urgent_needs_a_person'
   | 'no_dispatcher_yet'
 
 /**
@@ -64,6 +65,37 @@ export function decideHandling(
   if (context.conversation.handlerMode === 'human') {
     return { action: 'hold', reason: 'human_owns_the_conversation' }
   }
+  /**
+   * Accidents, injuries, fraud disputes and legal complaints, decided by rule
+   * before any model call.
+   *
+   * Section 15 requires immediate escalation for these, and says it is a
+   * backend rule rather than a prompt instruction — because a model asked "is
+   * this an accident report?" will usually be right, and usually is the wrong
+   * standard for somebody who has just crashed a Lamborghini.
+   *
+   * The rule has existed since step 23 and ran nowhere: intents.ts was
+   * imported by its own test and nothing else. Written, reviewed, reachable
+   * from no code path, which is the same as not having it.
+   *
+   * Only `urgent_support` acts here. The other two stop rules are handled
+   * better elsewhere and moving them would make the agent worse — see the
+   * header of intents.ts for why.
+   *
+   * After the opt-out check, which outranks everything: somebody who asked to
+   * be left alone is not made an exception of by shouting.
+   */
+  if (context.message.kind === 'text' && context.message.body !== null) {
+    const stop = detectStopSignal(context.message.body)
+    if (stop !== null && stop.intent === 'urgent_support' && stop.code !== undefined) {
+      return {
+        action: 'hold',
+        reason: 'urgent_needs_a_person',
+        urgent: { code: stop.code, matched: stop.matched ?? '', why: stop.reason ?? '' },
+      }
+    }
+  }
+
   /**
    * A reaction is a real action and not a question. Stored, shown in the
    * transcript, and answered with nothing.

@@ -14,7 +14,7 @@ import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor }
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
 import { openaiModel, PROMPT_VERSION, type ModelAdapter } from '@vyra/agent'
-import { handleNonTextMessage, runConversationTurn } from './turn.js'
+import { handleNonTextMessage, handleUrgentMessage, runConversationTurn } from './turn.js'
 
 const env = parseServerEnv()
 const { sql } = createClient(env.DATABASE_URL, { max: 4 })
@@ -454,6 +454,31 @@ const runner: Runner = await runWorker({
        * person. Section 17 forbids treating it as though the customer said
        * nothing, which is what happened while this branch simply returned.
        */
+      /**
+       * A rule stopped this before the model saw it: an accident, a fraud
+       * dispute, a legal complaint.
+       *
+       * Before the non-text branch, and before the `action !== 'draft'` return
+       * below, because holding without this is silence — and silence after "I
+       * have had an accident" is the worst thing this system could produce.
+       */
+      if (handling.reason === 'urgent_needs_a_person' && handling.urgent !== undefined) {
+        const routed = await handleUrgentMessage(
+          { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
+          context,
+          handling.urgent,
+        )
+        log({
+          event: 'turn.completed',
+          jobId: helpers.job.id,
+          conversation: context.conversation.id,
+          stoppedBy: handling.urgent.code,
+          matched: handling.urgent.matched,
+          ...routed,
+        })
+        return
+      }
+
       if (handling.reason === 'non_text_needs_a_person') {
         const routed = await handleNonTextMessage(
           { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
