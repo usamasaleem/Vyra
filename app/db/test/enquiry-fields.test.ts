@@ -58,6 +58,68 @@ describe('creating the enquiry', () => {
   it('refuses another operator conversation', async () => {
     expect(await ensureEnquiry(run, RIVAL, CONV)).toBeNull()
   })
+
+  /**
+   * A conversation is unique per contact and reopens forever, so without this
+   * the enquiry opened on somebody's first ever message is still the live one
+   * a year later — and the prompt reads it back as "This enquiry already has:
+   * they want the Ferrari; it starts 19 September … do not ask for them
+   * again." Delivered in November that is a confident lie.
+   */
+  const dated = async (id: string, field: 'start_at' | 'end_at', value: string) =>
+    recordFields(transact, {
+      operatorId: OP, enquiryId: id, observations: [{ field, value }],
+    })
+
+  const iso = (daysFromNow: number) =>
+    new Date(Date.now() + daysFromNow * 86_400_000).toISOString().slice(0, 10)
+
+  it('starts a fresh one once the rental has been and gone', async () => {
+    await dated(enquiryId, 'start_at', iso(-30))
+    await dated(enquiryId, 'end_at', iso(-27))
+
+    const next = await ensureEnquiry(run, OP, CONV)
+    expect(next).not.toBe(enquiryId)
+    // The old one is kept exactly as it was — that is what makes a quote from
+    // September still explainable in November.
+    expect(await getEnquiryFields(run, OP, enquiryId)).toHaveLength(2)
+    expect(await getEnquiryFields(run, OP, next!)).toEqual([])
+  })
+
+  it('keeps a rental that has not finished yet', async () => {
+    await dated(enquiryId, 'start_at', iso(-2))
+    await dated(enquiryId, 'end_at', iso(5))
+    expect(await ensureEnquiry(run, OP, CONV)).toBe(enquiryId)
+  })
+
+  /** Booked far ahead is not stale, however long ago it was opened. */
+  it('keeps a rental that is still months away', async () => {
+    await dated(enquiryId, 'start_at', iso(120))
+    expect(await ensureEnquiry(run, OP, CONV)).toBe(enquiryId)
+  })
+
+  it('keeps an enquiry that has no dates on it yet', async () => {
+    await recordFields(transact, {
+      operatorId: OP, enquiryId, observations: [{ field: 'vehicle', value: 'Ferrari 488' }],
+    })
+    expect(await ensureEnquiry(run, OP, CONV)).toBe(enquiryId)
+  })
+
+  /** Newest, not oldest — which is what "the enquiry under discussion" means. */
+  it('returns the newest once there is more than one', async () => {
+    await dated(enquiryId, 'end_at', iso(-10))
+    const second = (await ensureEnquiry(run, OP, CONV))!
+    expect(second).not.toBe(enquiryId)
+    expect(await ensureEnquiry(run, OP, CONV)).toBe(second)
+  })
+
+  /** A date the extractor never resolved must not crash the cast. */
+  it('survives a value that is not a date', async () => {
+    await recordFields(transact, {
+      operatorId: OP, enquiryId, observations: [{ field: 'start_at', value: 'next weekend' }],
+    })
+    expect(await ensureEnquiry(run, OP, CONV)).toBe(enquiryId)
+  })
 })
 
 describe('recording what the customer said', () => {

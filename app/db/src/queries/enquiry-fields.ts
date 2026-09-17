@@ -198,24 +198,66 @@ export async function missingFields(
   return missing
 }
 
-/** Finds or creates the enquiry for a conversation. */
+/**
+ * The enquiry this conversation is about now, creating one if there is none.
+ *
+ * Two things were wrong here, and they only became harmful once the prompt
+ * started reading the enquiry back to the customer.
+ *
+ * It took `order by created_at limit 1` — the **oldest** enquiry, forever. The
+ * schema says the opposite is intended: "a customer can have several — a
+ * Lamborghini for the weekend and a chauffeur car for the airport run are two
+ * enquiries in one thread." Newest is what "the enquiry under discussion"
+ * means.
+ *
+ * And nothing ever started a second one, because the insert was guarded on
+ * there being none at all. A conversation is unique per contact and reopens
+ * forever, so the enquiry created on somebody's first ever message was still
+ * the live one a year later. Harmless while nothing read it; actively
+ * misleading now that systemPromptFor says "This enquiry already has: they
+ * want the Ferrari; it starts 19 September … do not ask for them again."
+ * Delivered in November, that is a confident lie about a rental that finished.
+ *
+ * So an enquiry whose dates have passed is spent, and the next message starts
+ * a fresh one. The test is deliberately the recorded dates rather than age or
+ * a stage column: an enquiry for next March is not stale in January however
+ * long ago it was opened, and `enquiries.stage` has never been written by
+ * anything. The old rows stay exactly as they are — that is what made the
+ * quote explainable in the first place.
+ *
+ * What this does not do: split "a Lamborghini for the weekend and a chauffeur
+ * car for the airport" into two live enquiries. That needs the model to say so
+ * and there is no tool for it, so a second concurrent rental still overwrites
+ * the first, as it always has.
+ */
 export async function ensureEnquiry(
   run: QueryRunner,
   operatorId: string,
   conversationId: string,
 ): Promise<string | null> {
   const rows = await run(
-    `with existing as (
-       select id from enquiries where conversation_id = $2 and operator_id = $1
-       order by created_at limit 1
+    `with live as (
+       select e.id from enquiries e
+       where e.conversation_id = $2 and e.operator_id = $1
+         and coalesce(
+               (select max(fe.value::date) from field_evidence fe
+                 where fe.enquiry_id = e.id and fe.superseded_at is null
+                   and fe.field in ('start_at', 'end_at')
+                   -- Guard the cast: the column is text and only a resolved
+                   -- date is safe to compare.
+                   and fe.value ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+               current_date
+             ) >= current_date
+       order by e.created_at desc
+       limit 1
      ),
      created as (
        insert into enquiries (operator_id, conversation_id)
        select v.operator_id, v.id from conversations v
-       where v.id = $2 and v.operator_id = $1 and not exists (select 1 from existing)
+       where v.id = $2 and v.operator_id = $1 and not exists (select 1 from live)
        returning id
      )
-     select coalesce((select id from existing), (select id from created)) as id`,
+     select coalesce((select id from live), (select id from created)) as id`,
     [operatorId, conversationId],
   )
   return (rows[0]?.['id'] as string) ?? null
