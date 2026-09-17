@@ -1,4 +1,6 @@
-import { civilDateIn, formatCivil, formatDateForMessage, relativeDay } from '@vyra/contracts'
+import {
+  civilDateIn, formatCivil, formatDateForMessage, relativeDay, usableName,
+} from '@vyra/contracts'
 import { renderExamples } from './examples.js'
 
 /**
@@ -205,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v16'
+export const PROMPT_VERSION = 'sales-v17'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -356,6 +358,19 @@ export function systemPromptFor(input: {
    */
   noPhotosOf?: readonly string[]
   /**
+   * What WhatsApp says this person is called.
+   *
+   * Their profile name — what they chose to be shown as, not a verified
+   * identity. The schema is explicit that it must never be used to match one:
+   * "A WhatsApp number is a contact handle, not a verified legal identity."
+   *
+   * It has been fetched on every turn since the worker was written, loaded
+   * into the context, and used by the inbox, the handoff packet and five
+   * queries. It was dropped at this boundary, so the agent has never once
+   * known who it was talking to.
+   */
+  customerName?: string | null
+  /**
    * The enquiry this turn is about.
    *
    * prepare_quote takes it as an argument and refuses anything else, so that a
@@ -493,7 +508,26 @@ export function systemPromptFor(input: {
       + `say when they are ready, and a question asked a third time is a form rather than a `
       + `person.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${remembered}${outstanding}
+  /**
+   * Use it once, the way a person does.
+   *
+   * Deliberately an instruction about restraint rather than a fact left lying
+   * about. A model handed a name uses it in every message, and a reply that
+   * opens "Hi Ahmed" four times running is the tell that nobody is there —
+   * the same failure as the acknowledgement openers v14 had to stop.
+   *
+   * Only a name a person would answer to. WhatsApp profile names are often a
+   * phone number, an emoji, a company, or blank.
+   */
+  const calling = usableName(input.customerName)
+  const named = calling === null
+    ? ''
+    : `\n\nThis customer's WhatsApp name is ${calling}. Use it when it lands naturally — `
+      + `greeting them, or picking the thread back up after a gap — and not otherwise. `
+      + `Every message is worse than none. It is what they chose to be shown as, not a `
+      + `verified name, so never treat it as proof of who they are.`
+
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${remembered}${outstanding}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

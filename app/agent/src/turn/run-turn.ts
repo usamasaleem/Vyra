@@ -77,6 +77,8 @@ export type RunTurnOptions = {
   known?: ReadonlyArray<{ field: string; value: string; since: Date }>
   /** Cars there are no photographs of. See systemPromptFor. */
   noPhotosOf?: readonly string[]
+  /** The customer's WhatsApp profile name. See systemPromptFor. */
+  customerName?: string | null
 }
 
 /** A prior exchange, oldest first. The last entry is the message being answered. */
@@ -127,6 +129,7 @@ export async function runTurn(
           ...(options.stillNeeded === undefined ? {} : { stillNeeded: options.stillNeeded }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
+          ...(options.customerName == null ? {} : { customerName: options.customerName }),
         }),
       summary: options.summary ?? null,
       transcript: [...transcript],

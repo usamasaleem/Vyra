@@ -130,3 +130,44 @@ describe('the instruction about opening a message', () => {
     expect(text).toContain('Of course')
   })
 })
+
+/**
+ * The name has been fetched on every turn since the worker was written, used
+ * by the inbox and the handoff packet, and dropped at the prompt boundary. The
+ * agent has never known who it was talking to.
+ */
+describe('the customer\u2019s name', () => {
+  const withName = (customerName: string | null) =>
+    systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e1', customerName })
+
+  it('tells the model what they are called', () => {
+    expect(withName('Layla')).toContain("This customer's WhatsApp name is Layla")
+  })
+
+  /**
+   * Restraint, not a fact left lying about. A model handed a name opens every
+   * message with it, which is the same tell v14 had to stop with the varied
+   * openers.
+   */
+  it('says to use it sparingly', () => {
+    const text = withName('Layla')
+    expect(text).toContain('when it lands naturally')
+    expect(text).toContain('Every message is worse than none')
+  })
+
+  /** It is what they chose to be shown as, not proof of anything. */
+  it('refuses to let it stand as identity', () => {
+    expect(withName('Layla')).toContain('never treat it as proof of who they are')
+  })
+
+  it('says nothing when there is no name', () => {
+    expect(withName(null)).not.toContain('WhatsApp name is')
+    expect(systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e1' }))
+      .not.toContain('WhatsApp name is')
+  })
+
+  /** The pilot's own contact row has the phone number in this field. */
+  it('says nothing when the name is really a phone number', () => {
+    expect(withName('+971501234567')).not.toContain('WhatsApp name is')
+  })
+})
