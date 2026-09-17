@@ -141,6 +141,21 @@ export type WhatsAppClient = {
    * here only once the system has decided to answer.
    */
   showTyping(input: { messageId: string }): Promise<void>
+  /**
+   * Two blue ticks, and no promise of a reply.
+   *
+   * The pairing above is right when an answer is coming and wrong when one is
+   * not. A voice note, a message to a conversation a salesperson owns, an
+   * accident routed to a person — all of these returned before showTyping was
+   * reached, so the customer's message was never marked read at all. They saw
+   * one grey tick and a silence, which says "this did not arrive" when the
+   * truth is "this arrived and a person has it".
+   *
+   * Meta asks that a typing indicator only be shown when a reply is actually
+   * coming. It asks nothing of the kind about a read receipt, which is a
+   * statement of fact.
+   */
+  markRead(input: { messageId: string }): Promise<void>
 }
 
 /** 4xx that will never succeed on retry; anything else is worth retrying. */
@@ -158,33 +173,45 @@ export function createWhatsAppClient(config: {
   const doFetch = config.fetchImpl ?? fetch
   const timeoutMs = config.timeoutMs ?? 15_000
 
+  /**
+   * One endpoint, two promises. `typing` is the difference between "we have
+   * this" and "we have this and an answer is coming", and Meta asks that the
+   * second only be claimed when it is true.
+   *
+   * Swallowed on purpose, and the only place in this client that does. A
+   * courtesy that fails is a courtesy that fails; letting it throw would retry
+   * the job and send the customer a second reply, trading a missing tick for a
+   * duplicate message.
+   */
+  const receipt = async (messageId: string, typing: boolean): Promise<void> => {
+    const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
+    try {
+      await doFetch(url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${config.accessToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          status: 'read',
+          message_id: messageId,
+          ...(typing ? { typing_indicator: { type: 'text' } } : {}),
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    } catch {
+      // See above.
+    }
+  }
+
   return {
     async showTyping({ messageId }) {
-      const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
-      try {
-        await doFetch(url, {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${config.accessToken}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            status: 'read',
-            message_id: messageId,
-            typing_indicator: { type: 'text' },
-          }),
-          signal: AbortSignal.timeout(timeoutMs),
-        })
-      } catch {
-        /**
-         * Swallowed on purpose, and the only place in this client that does.
-         *
-         * A courtesy that fails is a courtesy that fails. Letting it throw
-         * would retry the job and send the customer a second reply, which
-         * trades a missing typing indicator for a duplicate message.
-         */
-      }
+      await receipt(messageId, true)
+    },
+
+    async markRead({ messageId }) {
+      await receipt(messageId, false)
     },
 
     async sendText({ to, body, buttons, list, imageUrl, link, quotesProviderId, flow }) {

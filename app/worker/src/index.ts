@@ -451,6 +451,29 @@ const runner: Runner = await runWorker({
       })
 
       /**
+       * Two blue ticks, whatever happens next.
+       *
+       * The typing indicator further down is sent only once the system has
+       * decided to reply, which is right — Meta asks that it not be shown
+       * otherwise. But it was the *only* receipt, so every path that holds
+       * left the customer's message on one grey tick: a voice note, a
+       * conversation a salesperson owns, an accident routed to a person, an
+       * opted-out contact. One tick reads as "this did not arrive" when the
+       * truth is "this arrived and a person has it".
+       *
+       * So the receipt is sent here, before any branch, and the indicator
+       * stays where it is. A read receipt is a statement of fact; a typing
+       * indicator is a promise.
+       *
+       * Not awaited, for the same reason the indicator is not: a courtesy must
+       * not delay the thing it is apologising for. A reaction is the one thing
+       * skipped — marking a thumbs-up read is a receipt for a receipt.
+       */
+      if (context.message.providerId !== null && handling.reason !== 'reaction_needs_no_reply') {
+        void whatsapp.markRead({ messageId: context.message.providerId })
+      }
+
+      /**
        * A voice note or photo: acknowledged honestly and put in front of a
        * person. Section 17 forbids treating it as though the customer said
        * nothing, which is what happened while this branch simply returned.

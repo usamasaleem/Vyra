@@ -446,3 +446,51 @@ describe('sending a link', () => {
     expect(calls[0]).toMatchObject({ type: 'text' })
   })
 })
+
+/**
+ * A read receipt is a statement of fact; a typing indicator is a promise.
+ *
+ * They used to be one call, so every path that held — a voice note, a
+ * conversation a salesperson owns, an accident routed to a person — left the
+ * customer's message on a single grey tick. One tick reads as "this did not
+ * arrive" when the truth is "this arrived and a person has it".
+ */
+describe('receipts', () => {
+  it('shows typing when a reply is actually coming', async () => {
+    const { client, calls } = clientCapturing()
+    await client.showTyping({ messageId: 'wamid.IN' })
+
+    expect(calls[0]).toEqual({
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: 'wamid.IN',
+      typing_indicator: { type: 'text' },
+    })
+  })
+
+  /** Meta asks that the indicator only appear when an answer is coming. */
+  it('marks read without promising one when it is not', async () => {
+    const { client, calls } = clientCapturing()
+    await client.markRead({ messageId: 'wamid.IN' })
+
+    expect(calls[0]).toEqual({
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: 'wamid.IN',
+    })
+    expect(calls[0]).not.toHaveProperty('typing_indicator')
+  })
+
+  /**
+   * A courtesy that fails is a courtesy that fails. Throwing would retry the
+   * job and send the customer a second reply, trading a missing tick for a
+   * duplicate message.
+   */
+  it.each(['showTyping', 'markRead'] as const)('swallows a failure in %s', async (method) => {
+    const failing = vi.fn(async () => { throw new Error('graph is down') }) as unknown as typeof fetch
+    const client = createWhatsAppClient({
+      apiVersion: 'v26.0', phoneNumberId: '111', accessToken: 'token', fetchImpl: failing,
+    })
+    await expect(client[method]({ messageId: 'wamid.IN' })).resolves.toBeUndefined()
+  })
+})
