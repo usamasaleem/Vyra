@@ -26,6 +26,19 @@ import type { ModelAdapter, ModelRequest, ModelResponse, ModelToolCall } from '.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 /**
+ * How quickly OpenAI promises to start the work.
+ *
+ * `fast` was Priority Processing until 30 July 2026 and both names still work.
+ * It is a queue, not a different model: same weights, same output, less time
+ * waiting for capacity.
+ *
+ * Left unset by default so a request takes the account's own default rather
+ * than this file deciding. Whether to pay for `fast` is a measurement, and the
+ * answer belongs beside the setting in env.ts.
+ */
+export type ServiceTier = 'auto' | 'default' | 'flex' | 'fast' | 'priority'
+
+/**
  * How long one model call may take before it is abandoned.
  *
  * There was no limit, and a customer paid ten and a half minutes for it. The
@@ -67,10 +80,23 @@ export function openaiModel(options: {
   baseUrl?: string
   /** Overridable so a test can prove the timeout without waiting a minute. */
   timeoutMs?: number
+  /** Omitted rather than defaulted: the account's own default is the honest one. */
+  serviceTier?: ServiceTier
 }): ModelAdapter {
   const baseUrl = options.baseUrl ?? 'https://api.openai.com'
   const timeoutMs = options.timeoutMs ?? CALL_TIMEOUT_MS
-  const identity = options.effort === undefined ? options.model : `${options.model}:${options.effort}`
+  /**
+   * The identity a run is recorded under.
+   *
+   * The tier belongs in it: agent_runs.model_id is how "was this slow before
+   * we changed anything" gets answered months later, and two rows that differ
+   * only in what we paid would otherwise be indistinguishable.
+   */
+  const identity = [
+    options.model,
+    ...(options.effort === undefined ? [] : [options.effort]),
+    ...(options.serviceTier === undefined ? [] : [options.serviceTier]),
+  ].join(':')
 
   return {
     label: options.label ?? identity,
@@ -106,6 +132,7 @@ export function openaiModel(options: {
            * where a salesperson reads it and where the audit trail lives.
            */
           store: false,
+          ...(options.serviceTier === undefined ? {} : { service_tier: options.serviceTier }),
           ...(options.effort === undefined ? {} : { reasoning: { effort: options.effort } }),
           tools: request.tools.map((tool) => ({
             type: 'function',

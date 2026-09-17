@@ -49,3 +49,51 @@ describe('a model call that never comes back', () => {
     expect(Date.now() - began).toBeLessThan(3000)
   })
 })
+
+/**
+ * Fast mode is a queue, not a model. It must reach the wire as a service tier
+ * and must not quietly become the default for anyone who did not ask for it.
+ */
+describe('the service tier', () => {
+  const bodyOf = async (tier?: 'fast') => {
+    let sent: Record<string, unknown> | undefined
+    const original = globalThis.fetch
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({ output: [], usage: {} }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+    try {
+      const model = openaiModel({
+        apiKey: 'k', model: 'gpt-5.6-luna', effort: 'low',
+        ...(tier === undefined ? {} : { serviceTier: tier }),
+      })
+      await model.complete({ system: 's', tools: [], transcript: [] })
+      return { body: sent!, modelId: model.modelId }
+    } finally {
+      globalThis.fetch = original
+    }
+  }
+
+  it('sends the tier when one is asked for', async () => {
+    const { body } = await bodyOf('fast')
+    expect(body['service_tier']).toBe('fast')
+  })
+
+  /** Unset means the account's own default, not a choice made in this file. */
+  it('sends nothing at all when none is asked for', async () => {
+    const { body } = await bodyOf()
+    expect(body).not.toHaveProperty('service_tier')
+  })
+
+  /**
+   * agent_runs.model_id is how "was it slow before we changed anything" gets
+   * answered in three months. Two rows differing only in what we paid would
+   * otherwise be indistinguishable.
+   */
+  it('records the tier in the model id', async () => {
+    expect((await bodyOf('fast')).modelId).toBe('gpt-5.6-luna:low:fast')
+    expect((await bodyOf()).modelId).toBe('gpt-5.6-luna:low')
+  })
+})

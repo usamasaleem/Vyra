@@ -47,6 +47,7 @@ const model: ModelAdapter | null =
         apiKey: env.OPENAI_API_KEY,
         model: env.AI_MODEL,
         effort: env.AI_REASONING_EFFORT,
+        serviceTier: env.AI_SERVICE_TIER,
       })
 
 /**

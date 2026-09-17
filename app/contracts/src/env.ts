@@ -102,6 +102,49 @@ export const serverEnvSchema = z.object({
     .default('low'),
 
   /**
+   * Fast mode, measured on 17 September 2026 and kept — but not for the reason
+   * it is sold on.
+   *
+   * It is a queue rather than a different model: same weights, same reply, less
+   * time waiting for capacity. The advertised figure is up to 2.5x. On this
+   * product's prompt it is not, and the first run said 1.53x, the second 1.05x,
+   * the third 1.49x — which is the trap, because one run of a noisy quantity
+   * would have shipped a number that was mostly weather.
+   *
+   * Six real pilot messages, three runs, 96 samples a tier, standard first each
+   * round so a warming cache could not flatter it:
+   *
+   *              standard        fast
+   *   run 1        5.2s          3.4s
+   *   run 2        3.8s          3.6s
+   *   run 3        5.2s          3.5s
+   *
+   * Fast mode does not make a reply quicker. It makes it *predictable*: 3.4,
+   * 3.6, 3.5 against standard's 5.2, 3.8, 5.2. Standard is sometimes just as
+   * quick and sometimes half again slower, and which one a customer gets is
+   * decided by OpenAI's load at that second. The p90 moves with it — 8.7s to
+   * 7.1s on the largest run. For a sales chat where somebody is watching the
+   * typing indicator, the variance is the product problem, not the median.
+   *
+   * Cost is not the trade it looks like. gpt-5.6-luna is $0.20/$1.20 per
+   * million in/out, Fast mode $0.40/$1.80, and with a long prompt and a
+   * two-line reply that is 1.88x on $0.0007 a reply — sixty cents a month at
+   * the pilot's volume, about $15 for one busy operator. Against a rental that
+   * bills in thousands, the honest framing is that this is free.
+   *
+   * Tool selection is unchanged, which it must be: both tiers varied their tool
+   * choices run to run and neither varied systematically. A tier that changed
+   * what the model decided would be a different model, and the measurement
+   * would mean nothing.
+   *
+   * Re-measure with `npx tsx app/evals/src/cli/latency.ts 8` before changing
+   * it, and do not trust a single run.
+   */
+  AI_SERVICE_TIER: z
+    .enum(['auto', 'default', 'flex', 'fast', 'priority'])
+    .default('fast'),
+
+  /**
    * Whether an accepted reply is sent, or written as an internal note for a
    * person to read and send themselves.
    *
