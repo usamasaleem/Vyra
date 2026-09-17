@@ -126,9 +126,61 @@ describe('deciding what happens next', () => {
       .toEqual({ action: 'hold', reason: 'non_text_needs_a_person' })
   })
 
+  /**
+   * The thumbs-up that cost a handoff.
+   *
+   * A reaction fell into `unsupported` and took the voice-note path: an apology
+   * for not being able to read it, and a handoff. The handoff moved the
+   * conversation into human hands, so the real question fifty minutes later
+   * waited six minutes for an answer.
+   */
+  it('answers a reaction with nothing, and does not hand it to a person', async () => {
+    await run(`update messages set kind = 'reaction', body = null where id = $1`, [messageId])
+    expect(decideHandling(await contextFor(), ENABLED))
+      .toEqual({ action: 'hold', reason: 'reaction_needs_no_reply' })
+  })
+
   it('holds because no dispatcher exists yet', async () => {
     expect(decideHandling(await contextFor(), { ...ENABLED, dispatcherAvailable: false }))
       .toEqual({ action: 'hold', reason: 'no_dispatcher_yet' })
+  })
+})
+
+/**
+ * A reaction is not an answer.
+ *
+ * Cancelling the chase on one would end it rather than pause it: the turn is
+ * what schedules the next follow-up, and a reaction never reaches the turn. The
+ * customer would react once and never hear from us again.
+ */
+describe('a reaction and the follow-up chase', () => {
+  it('leaves a scheduled chase alone', async () => {
+    await run(
+      `insert into follow_ups (operator_id, conversation_id, attempt, due_at, state, reason)
+       values ($1, (select conversation_id from messages where id = $2), 1,
+               now() + interval '1 hour', 'scheduled', 'awaiting_customer')`,
+      [OPERATOR_A, messageId],
+    )
+    await run(`update messages set kind = 'reaction', body = null where id = $1`, [messageId])
+
+    await processInboundMessage(run, { message_id: messageId, operator_id: OPERATOR_A }, ENABLED)
+
+    const [chase] = await run(`select state::text as state from follow_ups`, [])
+    expect(chase!['state']).toBe('scheduled')
+  })
+
+  it('still cancels the chase when they actually reply', async () => {
+    await run(
+      `insert into follow_ups (operator_id, conversation_id, attempt, due_at, state, reason)
+       values ($1, (select conversation_id from messages where id = $2), 1,
+               now() + interval '1 hour', 'scheduled', 'awaiting_customer')`,
+      [OPERATOR_A, messageId],
+    )
+
+    await processInboundMessage(run, { message_id: messageId, operator_id: OPERATOR_A }, ENABLED)
+
+    const [chase] = await run(`select state::text as state from follow_ups`, [])
+    expect(chase!['state']).toBe('cancelled')
   })
 })
 

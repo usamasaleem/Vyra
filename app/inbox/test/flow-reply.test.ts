@@ -55,3 +55,34 @@ describe('a Flow reply', () => {
     expect(parsed.success).toBe(true)
   })
 })
+
+/**
+ * A reaction, which is a real customer action and not a question.
+ *
+ * It used to fall through to `unsupported`, which is the bucket for "we do not
+ * know what this is" — and the path built for that bucket apologises and hands
+ * the conversation to a person. A thumbs-up cost a handoff and six minutes of
+ * silence, because the handoff stopped the agent answering the question that
+ * came after it.
+ */
+describe('a reaction', () => {
+  const reaction = {
+    from: '971500000001',
+    id: 'wamid.REACT',
+    timestamp: '1758000000',
+    type: 'reaction' as const,
+  }
+
+  it('is named rather than called unsupported', () => {
+    expect(toInboundKind(reaction)).toBe('reaction')
+  })
+
+  it('carries no body, because there is nothing to answer', () => {
+    expect(toMessageBody(reaction)).toBeNull()
+  })
+
+  /** Anything genuinely unrecognised still lands in the honest bucket. */
+  it('does not swallow a type we really do not know', () => {
+    expect(toInboundKind({ ...reaction, type: 'order' as never })).toBe('unsupported')
+  })
+})

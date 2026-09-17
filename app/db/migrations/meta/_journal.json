@@ -253,6 +253,13 @@
       "when": 1789599487677,
       "tag": "0035_condemned_domino",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789647049841,
+      "tag": "0036_big_stark_industries",
+      "breakpoints": true
     }
   ]
 }

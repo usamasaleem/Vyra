@@ -59,6 +59,17 @@ export const messageKind = pgEnum('message_kind', [
   'interactive',
   'template',
   'system',
+  /**
+   * A thumbs-up on a message, which is a real customer action and not a
+   * question.
+   *
+   * It used to land in `unsupported`, and the non-text path did what it does
+   * for a voice note: apologised for not being able to read it and raised a
+   * handoff. That took the conversation out of the agent's hands, so when the
+   * customer asked a real question fifty minutes later nobody answered for six
+   * minutes. A reaction cost a handoff and a silence.
+   */
+  'reaction',
   'unsupported',
 ])
 

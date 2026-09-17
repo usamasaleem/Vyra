@@ -95,6 +95,14 @@ const KNOWN_KINDS = new Set([
   'interactive',
   'template',
   'system',
+  /**
+   * Named rather than left to fall through to `unsupported`.
+   *
+   * We know exactly what a reaction is. Calling it unsupported sent it down the
+   * path built for a voice note — apologise, hand to a person — and a thumbs-up
+   * cost a handoff and six minutes of silence.
+   */
+  'reaction',
 ])
 
 /**

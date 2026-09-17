@@ -21,6 +21,7 @@ export type HoldReason =
   | 'human_owns_the_conversation'
   | 'contact_opted_out'
   | 'non_text_needs_a_person'
+  | 'reaction_needs_no_reply'
   | 'no_dispatcher_yet'
 
 /**
@@ -62,6 +63,21 @@ export function decideHandling(
   // active. One handler at a time, always.
   if (context.conversation.handlerMode === 'human') {
     return { action: 'hold', reason: 'human_owns_the_conversation' }
+  }
+  /**
+   * A reaction is a real action and not a question. Stored, shown in the
+   * transcript, and answered with nothing.
+   *
+   * Before this it fell into `unsupported` and took the voice-note path: an
+   * apology for not being able to read it, and a handoff. The handoff is the
+   * part that hurt — it moved the conversation into human hands, so the real
+   * question fifty minutes later went unanswered for six minutes. A thumbs-up
+   * cost a handoff and a silence.
+   *
+   * Ahead of the non-text check, which would otherwise catch it first.
+   */
+  if (context.message.kind === 'reaction') {
+    return { action: 'hold', reason: 'reaction_needs_no_reply' }
   }
   // A voice note or photo is stored and acknowledged, never silently dropped,
   // and never treated as though the customer said nothing. Until the AI can
@@ -117,12 +133,19 @@ export async function processInboundMessage(
    * Section 11: reopen a lead when the customer replies. A scheduled chase that
    * survives a reply is the message that arrives an hour after the customer
    * already answered, asking whether they are still interested.
+   *
+   * Not for a reaction. A thumbs-up is not an answer, and cancelling here would
+   * be the end of the chase rather than a pause in it: the turn is what
+   * schedules the next one, and a reaction is held before the turn runs. The
+   * customer would react once and never hear from us again.
    */
-  await cancelFollowUps(run, {
-    operatorId: context.operator.id,
-    conversationId: context.conversation.id,
-    reason: 'customer_replied',
-  })
+  if (context.message.kind !== 'reaction') {
+    await cancelFollowUps(run, {
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+      reason: 'customer_replied',
+    })
+  }
 
   /**
    * Opt-out is checked here, before anything else looks at the message, and
