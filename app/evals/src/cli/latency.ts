@@ -1,5 +1,5 @@
 import { createEvalWorld, EVAL_NOW } from '../harness/world.js'
-import { mightNeedTheFleet } from '@vyra/contracts'
+import { mightNeedAvailability, mightNeedTheFleet } from '@vyra/contracts'
 import { openaiModel, runTurn, searchVehicles, type ServiceTier } from '@vyra/agent'
 
 /**
@@ -51,6 +51,8 @@ if (key === undefined || key === '') {
 const model = process.env['AI_MODEL'] ?? 'gpt-5.6-luna'
 const effort = (process.env['AI_REASONING_EFFORT'] ?? 'low') as 'low'
 const rounds = Number(process.argv[2] ?? 3)
+/** WITHHOLD=0 measures the other side of the change in the same build. */
+const withholding = process.env['WITHHOLD'] !== '0'
 
 /** Standard first each round, so a warming cache cannot flatter Fast mode. */
 const TIERS: Array<ServiceTier | undefined> = [undefined, 'fast']
@@ -115,6 +117,11 @@ for (let round = 1; round <= rounds; round++) {
         })), {
           summary: null,
           ...(prefetched === undefined ? {} : { fleetOnHand: JSON.stringify(prefetched) }),
+          // As the worker does it: the fleet is in the prompt, so the lookup
+          // is withheld unless availability could be the question.
+          ...(withholding && prefetched !== undefined && !mightNeedAvailability(latest)
+            ? { withoutTools: ['search_vehicles'] as const }
+            : {}),
         })
         samples.push({
           tier: tier ?? 'standard',
@@ -146,16 +153,18 @@ const stat = (values: number[]) => {
 
 console.log(`${model}:${effort} · ${rounds} rounds · prompt ${EVAL_NOW.toISOString().slice(0, 10)}`)
 console.log()
-console.log('case'.padEnd(12), 'standard'.padStart(10), 'fast'.padStart(10), 'change'.padStart(10))
+console.log(`withholding search_vehicles: ${withholding ? 'yes' : 'no'}`)
+console.log('case'.padEnd(12), 'standard'.padStart(10), 'fast'.padStart(10), '2-round'.padStart(10))
 for (const message of MESSAGES) {
   const std = stat(samples.filter((s) => s.caseId === message.id && s.tier === 'standard').map((s) => s.ms))
   const fast = stat(samples.filter((s) => s.caseId === message.id && s.tier === 'fast').map((s) => s.ms))
-  const change = std.p50 === 0 ? '—' : `${(std.p50 / (fast.p50 || 1)).toFixed(2)}x`
+  const twoRound = samples.filter((s) => s.caseId === message.id && s.rounds > 1).length
+  const total = samples.filter((s) => s.caseId === message.id).length
   console.log(
     message.id.padEnd(12),
     `${(std.p50 / 1000).toFixed(1)}s`.padStart(10),
     `${(fast.p50 / 1000).toFixed(1)}s`.padStart(10),
-    change.padStart(10),
+    `${twoRound}/${total}`.padStart(10),
   )
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mightNeedTheFleet } from '../src/fleet-questions.ts'
+import { mightNeedAvailability, mightNeedTheFleet } from '../src/fleet-questions.ts'
 
 describe('mightNeedTheFleet', () => {
   /** Every one of these is a real message from the pilot transcripts. */
@@ -42,5 +42,43 @@ describe('mightNeedTheFleet', () => {
   it('has no opinion about an empty message', () => {
     expect(mightNeedTheFleet(null)).toBe(false)
     expect(mightNeedTheFleet('   ')).toBe(false)
+  })
+})
+
+/**
+ * The prefetch gives the model every car and every rate, so availability is
+ * the only thing search_vehicles still knows that the prompt does not. This
+ * decides whether to leave that door open when the rest of the tool is
+ * withheld.
+ */
+describe('mightNeedAvailability', () => {
+  it.each([
+    'is the ferrari available on the 20th?',
+    'do you have it free next weekend',
+    '19th to 21st please',
+    'from 2026-09-20',
+    'can I book it',
+    'I will take it',
+    'is it still open for saturday',
+    'how many days can I have it',
+  ])('keeps the lookup for %j', (body) => {
+    expect(mightNeedAvailability(body)).toBe(true)
+  })
+
+  /** Nothing here needs a calendar, so nothing here needs the tool. */
+  it.each([
+    'show me your cars',
+    'Ferrari 488, please.',
+    'is the huracan loud',
+    'what colours do you have',
+    'which one is fastest',
+    'can i see the lambo',
+  ])('lets the lookup go for %j', (body) => {
+    expect(mightNeedAvailability(body)).toBe(false)
+  })
+
+  it('says no to nothing at all', () => {
+    expect(mightNeedAvailability(null)).toBe(false)
+    expect(mightNeedAvailability('   ')).toBe(false)
   })
 })

@@ -1026,3 +1026,53 @@ describe('search_vehicles on a large fleet', () => {
     expect(data.notShown).toBeUndefined()
   })
 })
+
+/**
+ * The prefetch hands the model every car and every rate, and the model called
+ * search_vehicles anyway on nineteen of the pilot's twenty-four two-round
+ * turns — one of them for "Ferrari 488, please." Two rewordings measured
+ * identically, so it is withheld rather than discouraged.
+ *
+ * Measured per case, same build, same session: "show me your cars" went from 4
+ * of 12 turns taking a second round to 0 of 12, and picking a car off the list
+ * from 12 of 12 to 9 of 12.
+ */
+describe('a tool withheld because its answer is already in the prompt', () => {
+  const withheld = () => createToolBoundary(ctx, { without: ['search_vehicles'] })
+
+  it('is not offered to the model', () => {
+    const names = withheld().definitions.map((d) => d.name)
+    expect(names).not.toContain('search_vehicles')
+    expect(names).toContain('prepare_quote')
+    expect(names).toHaveLength(TOOL_NAMES.length - 1)
+  })
+
+  /**
+   * Withheld from the list is not the guarantee. Section 18.8's promise is
+   * that there is no path to an implementation except through `call`, so a
+   * name the model produces regardless has to be refused in the same place.
+   */
+  it('is refused even when the model names it anyway', async () => {
+    const result = await withheld().call('search_vehicles', {
+      vehicle: null, category: null, maxDayRateMinor: null,
+      minSeats: null, order: null, startDate: null, endDate: null,
+    })
+    expect(result.status).toBe('refused')
+    if (result.status !== 'refused') return
+    expect(result.reason).toBe('nothing_to_do')
+    // Telling it the answer is in front of it is what stops a second attempt.
+    expect(result.detail).toContain('already in your instructions')
+  })
+
+  it('leaves every other tool working', async () => {
+    const result = await withheld().call('get_operator_policy', { topic: 'deposit' })
+    expect(result.status).toBe('refused')
+    if (result.status !== 'refused') return
+    // Refused for having no published answer, which is the ordinary path.
+    expect(result.reason).toBe('no_approved_answer')
+  })
+
+  it('withholds nothing when nothing is asked for', () => {
+    expect(createToolBoundary(ctx).definitions).toHaveLength(TOOL_NAMES.length)
+  })
+})

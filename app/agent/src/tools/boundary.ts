@@ -64,6 +64,16 @@ export type BoundaryOptions = {
   deadline?: Date
   /** Injectable so the budget is testable without waiting. */
   clock?: () => number
+  /**
+   * Tools this turn does not get, because their answer is already in the
+   * prompt.
+   *
+   * Withheld from the list *and* refused by `call`, for the reason this whole
+   * file exists: a name the model produces anyway must not reach an
+   * implementation. Section 18.8's guarantee is that there is no seventh path,
+   * and a sixth that is sometimes closed has to be closed in the same place.
+   */
+  without?: readonly ToolName[]
 }
 
 export type ToolBoundary = {
@@ -78,6 +88,7 @@ export type ToolBoundary = {
 export function createToolBoundary(ctx: ToolContext, options: BoundaryOptions = {}): ToolBoundary {
   const maxCalls = options.maxCalls ?? 8
   const clock = options.clock ?? (() => Date.now())
+  const withheld = new Set<string>(options.without ?? [])
   const deadline = options.deadline ?? null
   const history: ToolCallRecord[] = []
 
@@ -103,6 +114,19 @@ export function createToolBoundary(ctx: ToolContext, options: BoundaryOptions = 
     }
     if (deadline !== null && started > deadline.getTime()) {
       return record(refuse('budget_exhausted', 'This turn ran out of time.'))
+    }
+
+    if (withheld.has(name)) {
+      /**
+       * Not 'unknown_tool': it exists, it was simply not on offer this turn,
+       * and telling the model the answer is already in front of it is what
+       * stops it trying a second time with the same call.
+       */
+      return record(refuse(
+        'nothing_to_do',
+        `${name} is not available this turn because its answer is already in your instructions. `
+        + 'Read what you were given and reply.',
+      ))
     }
 
     if (!isToolName(name)) {
@@ -136,7 +160,7 @@ export function createToolBoundary(ctx: ToolContext, options: BoundaryOptions = 
   }
 
   return {
-    definitions: toolDefinitions(),
+    definitions: toolDefinitions().filter((tool) => !withheld.has(tool.name)),
     call,
     get history() {
       return history

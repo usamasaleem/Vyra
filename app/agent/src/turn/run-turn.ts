@@ -1,6 +1,7 @@
 import { createToolBoundary, type ToolCallRecord } from '../tools/boundary.js'
 import type { ToolContext } from '../tools/context.js'
 import type { ToolResult } from '../tools/result.js'
+import type { ToolName } from '../tools/schemas.js'
 import type { ModelAdapter, ModelResponse, TranscriptEntry } from './model.js'
 import { systemPromptFor } from './prompt.js'
 
@@ -79,6 +80,8 @@ export type RunTurnOptions = {
   noPhotosOf?: readonly string[]
   /** The customer's WhatsApp profile name. See systemPromptFor. */
   customerName?: string | null
+  /** Tools to withhold this turn because their answer is already in the prompt. */
+  withoutTools?: readonly ToolName[]
 }
 
 /** A prior exchange, oldest first. The last entry is the message being answered. */
@@ -100,7 +103,10 @@ export async function runTurn(
   options: RunTurnOptions = {},
 ): Promise<TurnOutcome> {
   const maxRounds = options.maxRounds ?? 4
-  const boundary = createToolBoundary(ctx, { maxCalls: options.maxToolCalls ?? 8 })
+  const boundary = createToolBoundary(ctx, {
+    maxCalls: options.maxToolCalls ?? 8,
+    ...(options.withoutTools === undefined ? {} : { without: options.withoutTools }),
+  })
   const transcript: TranscriptEntry[] = messages.map((message) =>
     message.from === 'customer'
       ? { from: 'customer' as const, text: message.text }

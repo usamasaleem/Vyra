@@ -1,6 +1,6 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  carChosenIn, FULL_RANGE_LABEL, type StopCode, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
+  carChosenIn, FULL_RANGE_LABEL, type StopCode, mightNeedAvailability, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
   usableWebsite,
   vehicleList,
 } from '@vyra/contracts'
@@ -566,6 +566,30 @@ export async function runConversationTurn(
       ...(fleetOnHand === undefined ? {} : { fleetOnHand }),
       ...(stillNeeded.length === 0 ? {} : { stillNeeded: stillNeeded.slice(0, 1) }),
       ...(known.length === 0 ? {} : { known }),
+      /**
+       * The fleet is already in the prompt, so do not offer to look it up.
+       *
+       * Asking nicely did not work. The instruction said there was no need to
+       * call search_vehicles when the answer was already given, and across the
+       * pilot the model called it on nineteen of the twenty-four two-round
+       * turns where the fleet was sitting in its context — one of them for
+       * "Ferrari 488, please." A rewrite measured identically: 22 of 36 turns
+       * took a second round either way.
+       *
+       * So it is withheld rather than discouraged, which is the same move as
+       * every other guarantee in this system: the code decides, the prompt is
+       * a courtesy. A round is a whole model call, about three and a half
+       * seconds of somebody watching a typing indicator.
+       *
+       * Availability is the exception and stays open, because it is the only
+       * thing the tool knows that the prompt does not. The gate is deliberately
+       * generous: a false positive costs a round that would have happened
+       * anyway, a false negative answers "is it free on the 20th" from a
+       * prompt that cannot know.
+       */
+      ...(prefetched !== undefined && !mightNeedAvailability(context.message.body)
+        ? { withoutTools: ['search_vehicles'] as const }
+        : {}),
       ...(noPhotosOf.length === 0 ? {} : { noPhotosOf }),
       // Loaded on every turn since this worker was written and never passed on.
       ...(context.contact.displayName == null ? {} : { customerName: context.contact.displayName }),
