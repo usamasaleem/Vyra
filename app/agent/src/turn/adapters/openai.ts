@@ -25,6 +25,29 @@ import type { ModelAdapter, ModelRequest, ModelResponse, ModelToolCall } from '.
  */
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
+/**
+ * How long one model call may take before it is abandoned.
+ *
+ * There was no limit, and a customer paid ten and a half minutes for it. The
+ * turn began at 00:09:44, the request never came back, and the task function
+ * never returned — so the job stayed locked, and because jobs are serialised
+ * per conversation every later message queued behind it. The customer sent "?"
+ * twice into the silence. The process was not dead: the relay kept logging
+ * throughout, which is why nothing noticed.
+ *
+ * It ended when a deploy killed the process seven minutes later and the
+ * abandoned-lock reaper released the job three minutes after that. Two
+ * safety nets built for a dying worker, catching a worker that was perfectly
+ * healthy and waiting on a socket.
+ *
+ * Sixty seconds is far longer than any real call. Measured: a turn is 4.5
+ * seconds at one round and 13.1 at three, and the slowest single call ever
+ * recorded here was 19.4 seconds. Past a minute the request is not slow, it is
+ * gone — and a turn that fails is a handoff with a person's name on it, which
+ * is worth vastly more to the customer than a tenth message of silence.
+ */
+const CALL_TIMEOUT_MS = 60_000
+
 export function openaiModel(options: {
   apiKey: string
   model: string
@@ -42,16 +65,26 @@ export function openaiModel(options: {
   effort?: ReasoningEffort
   label?: string
   baseUrl?: string
+  /** Overridable so a test can prove the timeout without waiting a minute. */
+  timeoutMs?: number
 }): ModelAdapter {
   const baseUrl = options.baseUrl ?? 'https://api.openai.com'
+  const timeoutMs = options.timeoutMs ?? CALL_TIMEOUT_MS
   const identity = options.effort === undefined ? options.model : `${options.model}:${options.effort}`
 
   return {
     label: options.label ?? identity,
     modelId: identity,
     complete: async (request: ModelRequest): Promise<ModelResponse> => {
-      const response = await fetch(`${baseUrl}/v1/responses`, {
-        method: 'POST',
+      let response: Response
+      try {
+        response = await fetch(`${baseUrl}/v1/responses`, {
+          /**
+           * The whole call, not just the connection. A response that starts and
+           * then stalls is the case that actually happened.
+           */
+          signal: AbortSignal.timeout(timeoutMs),
+          method: 'POST',
         headers: {
           authorization: `Bearer ${options.apiKey}`,
           'content-type': 'application/json',
@@ -83,7 +116,18 @@ export function openaiModel(options: {
           })),
           input: toInput(request),
         }),
-      })
+        })
+      } catch (error: unknown) {
+        /**
+         * Named, so the agent_runs row says which failure this was.
+         *
+         * A timeout and a refused connection are the same shape to the caller
+         * and different problems to whoever reads the log at 3am.
+         */
+        throw error instanceof Error && error.name === 'TimeoutError'
+          ? new Error(`openai timed out after ${timeoutMs / 1000}s`)
+          : error
+      }
 
       if (!response.ok) {
         throw new Error(`openai ${response.status}: ${(await response.text()).slice(0, 400)}`)
