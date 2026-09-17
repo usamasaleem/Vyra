@@ -185,6 +185,24 @@ export async function getFieldHistory(
   }))
 }
 
+/**
+ * The order somebody actually asks them in.
+ *
+ * REQUIRED_FOR_QUALIFICATION is section 3's list and is not an order — it says
+ * which facts make an enquiry real, not which to ask for first. Built from it
+ * directly, with `end_at` appended because it is the one alternative, the
+ * sequence came out as car, start, delivery, end: "when does it start", then
+ * "delivered or collected", then "and how long for". Nobody sells a car that
+ * way, and the model did not either — told the enquiry needed a delivery
+ * preference, it asked for the return date instead, which was the right
+ * question and the wrong instruction.
+ *
+ * Dates together, then the thing that depends on them.
+ */
+const ASK_ORDER: readonly EnquiryField[] = [
+  'vehicle', 'start_at', 'end_at', 'delivery_preference',
+]
+
 /** What is still missing before this enquiry could be called qualified. */
 export async function missingFields(
   run: QueryRunner,
@@ -192,10 +210,11 @@ export async function missingFields(
   enquiryId: string,
 ): Promise<EnquiryField[]> {
   const present = new Set((await getEnquiryFields(run, operatorId, enquiryId)).map((f) => f.field))
-  const missing = REQUIRED_FOR_QUALIFICATION.filter((f) => !present.has(f))
-  // An end date or a duration satisfies the same requirement.
-  if (!present.has('end_at') && !present.has('duration')) missing.push('end_at')
-  return missing
+  return ASK_ORDER.filter((field) =>
+    // An end date or a duration satisfies the same requirement.
+    field === 'end_at'
+      ? !present.has('end_at') && !present.has('duration')
+      : !present.has(field))
 }
 
 /**

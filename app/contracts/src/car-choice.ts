@@ -127,7 +127,9 @@ const READY = [
   /\b(?:i|we)(?:'|’)?(?:d| would)? ?(?:want|like|wanna) (?:to )?(?:book|take|reserve|have) (?:it|this|that|the)\b/i,
   /\b(?:i|we)(?:(?:'|’)?ll| will) take (?:it|this|that|the)\b/i,
   /\b(?:let(?:'|’)?s|lets) (?:do|book|go with) (?:it|this|that|the)\b/i,
-  /\b(?:book|reserve) (?:it|this|that)\b/i,
+  // "Book for me" was the live message that matched nothing here.
+  /\b(?:book|reserve) (?:it|this|that|for me|me in|us in)\b/i,
+  /\b(?:please |pls )?(?:book|reserve) me\b/i,
   /\bgo ahead\b/i,
   /\b(?:confirm|confirmed) (?:it|this|the booking)\b/i,
 ]

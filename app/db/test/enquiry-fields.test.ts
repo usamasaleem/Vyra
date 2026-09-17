@@ -400,3 +400,47 @@ describe('outstandingQuestions', () => {
     expect(await outstanding()).toContain('start_at')
   })
 })
+
+/**
+ * Section 3's list says which facts make an enquiry real. It does not say which
+ * to ask for first, and using it as an order produced car, start, delivery,
+ * end: "when does it start", "delivered or collected", "and how long for".
+ *
+ * Live, told the enquiry needed a delivery preference, the model asked for the
+ * return date instead — the right question and the wrong instruction.
+ */
+describe('the order the questions come in', () => {
+  const missing = async () => missingFields(run, OP, enquiryId)
+
+  const know = (field: string, value: string) =>
+    recordFields(transact, {
+      operatorId: OP, enquiryId,
+      observations: [{ field, value }] as Parameters<typeof recordFields>[1]['observations'],
+    })
+
+  it('asks for the car, then the dates, then delivery', async () => {
+    expect(await missing()).toEqual(['vehicle', 'start_at', 'end_at', 'delivery_preference'])
+  })
+
+  it('wants how long before it wants delivered or collected', async () => {
+    await know('vehicle', 'Ferrari 488')
+    await know('start_at', '2026-09-18')
+    expect(await missing()).toEqual(['end_at', 'delivery_preference'])
+  })
+
+  /** A duration answers the same question as an end date. */
+  it('stops asking when they said how many days instead', async () => {
+    await know('vehicle', 'Ferrari 488')
+    await know('start_at', '2026-09-18')
+    await know('duration', '2 days')
+    expect(await missing()).toEqual(['delivery_preference'])
+  })
+
+  it('has nothing left once the enquiry is whole', async () => {
+    for (const [field, value] of [
+      ['vehicle', 'Ferrari 488'], ['start_at', '2026-09-18'],
+      ['end_at', '2026-09-20'], ['delivery_preference', 'delivery'],
+    ]) await know(field!, value!)
+    expect(await missing()).toEqual([])
+  })
+})

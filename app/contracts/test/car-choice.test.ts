@@ -89,6 +89,10 @@ describe('wantsToBook', () => {
     'book it',
     'go ahead',
     'confirm the booking',
+    // The live message that matched nothing.
+    'Book for me',
+    'book me in',
+    'please book me',
   ])('hears %j', (message) => {
     expect(wantsToBook(message)).toBe(true)
   })
