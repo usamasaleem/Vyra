@@ -33,6 +33,8 @@ export type TurnRejection =
   /** They asked not to be messaged. */
   | 'contact_opted_out'
   | 'conversation_gone'
+  /** They said something else before this turn even started. */
+  | 'overtaken'
 
 /**
  * Where an accepted reply goes.
@@ -67,6 +69,23 @@ export async function acceptTurnOutput(
      * silently becomes a no-op that looks like it is working.
      */
     revisionAtTurnStart: number
+    /**
+     * The inbound message this reply answers.
+     *
+     * The revision check catches a message that arrives *during* a turn. It
+     * cannot catch one that arrived just *before* it: a customer wrote "Hy"
+     * and then "I want a car" a second and a half later, the second message
+     * bumped the revision before either turn had begun, both turns therefore
+     * started at the same revision, and both were accepted. The customer got
+     * the fleet list twice, seven seconds apart.
+     *
+     * Passing this closes it — a turn whose message is no longer the newest
+     * thing the customer has said is answering a question they have already
+     * moved past. Optional, because the acknowledgement paths deliberately
+     * answer an older message: a voice note routed to a person still deserves
+     * its reply even if three more messages arrived behind it.
+     */
+    answeringMessageId?: string
     body: string
     /** Stable per logical reply, e.g. `turn:<message_id>`. */
     idempotencyKey: string
@@ -159,6 +178,31 @@ export async function acceptTurnOutput(
       : [input.revisionAtTurnStart]
     if (!expected.includes(revisionNow)) {
       return { accepted: false, reason: 'superseded', revisionNow } as const
+    }
+
+    /**
+     * And the message it is answering is still the newest one.
+     *
+     * The revision above moves when a message arrives, so it catches anything
+     * that lands mid-turn. It cannot catch a message that landed before the
+     * turn started — both turns then begin at the same number and both look
+     * current. That is the shape of the duplicate the pilot produced, and it
+     * is what this reads instead: not how many times the conversation has
+     * changed, but whether this particular question is still the live one.
+     */
+    if (input.answeringMessageId !== undefined) {
+      const newer = await tx(
+        `select 1 from messages m
+         where m.conversation_id = $1 and m.operator_id = $2 and m.direction = 'inbound'
+           and m.created_at > (
+             select created_at from messages where id = $3 and operator_id = $2
+           )
+         limit 1`,
+        [input.conversationId, input.operatorId, input.answeringMessageId],
+      )
+      if (newer.length > 0) {
+        return { accepted: false, reason: 'overtaken', revisionNow } as const
+      }
     }
 
     if (input.destination === 'draft') {

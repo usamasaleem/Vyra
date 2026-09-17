@@ -75,6 +75,88 @@ describe('accepting a turn', () => {
   })
 })
 
+/**
+ * The duplicate the pilot produced, and the one case the revision check cannot
+ * see.
+ *
+ * A stranger opened a conversation with "Hy", then "I want a car" a second and
+ * a half later. The second message bumped the revision before either turn had
+ * started, so both turns began at the same number, both looked current, and
+ * the customer got the fleet list twice seven seconds apart.
+ *
+ * The revision answers "has the conversation changed since I began". This
+ * answers the question that was actually being asked: "is this still the live
+ * question".
+ */
+describe('a turn overtaken before it began', () => {
+  const say = async (body: string) => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return rows[0]!['id'] as string
+  }
+
+  const answering = (messageId: string, revisionAtTurnStart: number) =>
+    acceptTurnOutput(transact, {
+      conversationId: CONV, operatorId: OP, revisionAtTurnStart,
+      answeringMessageId: messageId,
+      body: 'Nice — we have three cars.',
+      idempotencyKey: `turn:${messageId}`,
+      destination: 'send',
+    })
+
+  it('discards the answer to a question they have already moved past', async () => {
+    const first = await say('Hy')
+    await say('I want a car')
+
+    // Both turns start at the same revision, which is exactly why the revision
+    // check cannot separate them.
+    expect(await answering(first, 0)).toMatchObject({ accepted: false, reason: 'overtaken' })
+  })
+
+  it('accepts the answer to the newest message', async () => {
+    await say('Hy')
+    const second = await say('I want a car')
+    expect(await answering(second, 0)).toMatchObject({ accepted: true })
+  })
+
+  it('accepts when nothing has come in behind it', async () => {
+    const only = await say('Hy')
+    expect(await answering(only, 0)).toMatchObject({ accepted: true })
+  })
+
+  /**
+   * An outbound message in between is not the customer saying something else.
+   */
+  it('is not tripped by its own earlier reply', async () => {
+    const first = await say('Hy')
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'outbound', 'text', 'One moment', $3)`,
+      [OP, CONV, `wamid.${Math.random()}`],
+    )
+    expect(await answering(first, 0)).toMatchObject({ accepted: true })
+  })
+
+  /**
+   * The acknowledgement paths answer an older message on purpose — a voice note
+   * routed to a person still deserves its reply even with three messages behind
+   * it — so they do not pass the id at all.
+   */
+  it('leaves a turn that does not name its message alone', async () => {
+    await say('Hy')
+    await say('I want a car')
+    const result = await acceptTurnOutput(transact, {
+      conversationId: CONV, operatorId: OP, revisionAtTurnStart: 0,
+      body: "Thanks — I can't read that kind of message.",
+      idempotencyKey: 'non-text:x', destination: 'send', ownHandoff: true,
+    })
+    expect(result).toMatchObject({ accepted: true })
+  })
+})
+
 describe('rejecting a turn', () => {
   /**
    * The case this whole mechanism exists for. The model was told Friday, and

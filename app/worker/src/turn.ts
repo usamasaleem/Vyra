@@ -1071,6 +1071,9 @@ const PHOTOS_PER_CAR = 6
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
     revisionAtTurnStart,
+    // Only the ordinary turn passes this. The acknowledgement paths answer an
+    // older message on purpose.
+    answeringMessageId: context.message.id,
     /**
      * Repaired on the way out, not argued about in the instructions.
      *
