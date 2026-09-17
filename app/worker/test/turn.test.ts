@@ -626,17 +626,17 @@ describe('showing a car the model did not look up', () => {
   /**
    * Two cars shown and "send me another angle" names neither.
    *
-   * This used to attach nothing, and the reasoning was that picking the most
-   * recent would be a guess presented as an answer. That is still true of
-   * picking one — but the fleet is known now even when no tool ran, so the
-   * available answer is no longer "one car or none". It is both, which is what
-   * a person does when asked an ambiguous question while holding the
-   * photographs: show them and ask which.
+   * This used to send both, on the reasoning that showing them and asking
+   * which is what a person does when handed an ambiguous question. That came
+   * from the same mechanism as the fleet line-up, and it does not survive the
+   * same objection: a customer who has seen six cars gets six photographs for
+   * a question they have not answered yet.
    *
-   * The reply asks which one either way; the pictures are what make that
-   * question answerable.
+   * So the reply asks which one and sends nothing, and the answer to that
+   * question is a selection — which sends that car's photographs, every angle
+   * of the one car they actually meant.
    */
-  it('shows both when two cars have been shown and neither was named', async () => {
+  it('sends nothing when two cars have been shown and neither was named', async () => {
     await addHuracan()
     await run(
       `insert into vehicles (operator_id, make, model, year, colour, category, plate,
@@ -651,19 +651,33 @@ describe('showing a car the model did not look up', () => {
 
     await turn([{ toolCalls: [], reply: 'Which one did you mean?' }], 'send', ctx)
 
+    const images = await run(
+      `select id from messages
+       where direction = 'outbound' and delivery_state = 'pending' and reply_image_url is not null`,
+      [],
+    )
+    expect(images).toEqual([])
+  })
+
+  /**
+   * And saying which is what makes the photographs findable again: the car has
+   * been part-seen, so the restraint rule holds the pictures and the reply
+   * points at the message that carried them instead.
+   */
+  it('points at that car\u2019s photographs once they say which', async () => {
+    await addHuracan()
+    await shownAlready(PHOTOS[0]!)
+    const ctx = await asking('the lambo')
+
+    await turn([{ toolCalls: [], reply: 'The Huracán Tecnica — sent those earlier.' }], 'send', ctx)
+
     const [sent] = await run(
-      `select reply_image_url from messages
+      `select reply_image_url, quotes_message_id from messages
        where direction = 'outbound' and delivery_state = 'pending'
        order by created_at desc limit 1`, [],
     )
-    const images = await run(
-      `select body from messages
-       where direction = 'outbound' and delivery_state = 'pending' and reply_image_url is not null
-       order by created_at`, [],
-    )
-    // Dearest first, which is the order the search returns and the order the
-    // reply names them in.
-    expect(images.map((m) => m['body'])).toEqual(['Ferrari 488', 'Lamborghini Huracán'])
+    expect(sent!['reply_image_url']).toBeNull()
+    expect(sent!['quotes_message_id']).not.toBeNull()
   })
 
   /**
@@ -906,12 +920,15 @@ describe('a reply about several cars', () => {
     )
   }
 
-  /** What search_vehicles returns; the rows the list and the pictures come from. */
+  /** A turn that looked the fleet up, so the reply is about several cars. */
   const searched = (reply: string): ModelResponse[] => [
     {
       toolCalls: [{
         id: 't1', name: 'search_vehicles',
-        arguments: { vehicle: null, startDate: null, category: null, maxDayRateMinor: null, minSeats: null, order: null, endDate: null },
+        arguments: {
+          vehicle: null, startDate: null, category: null, maxDayRateMinor: null,
+          minSeats: null, order: null, endDate: null,
+        },
       }],
       reply: null,
     },
@@ -927,32 +944,16 @@ describe('a reply about several cars', () => {
     return (await loadConversationContext(run, rows[0]!['id'] as string))!
   }
 
-  const photosSent = async () =>
-    run(
-      `select body, reply_image_url from messages
-       where direction = 'outbound' and reply_image_url is not null
-       order by created_at`, [],
-    )
-
-  it('sends one photograph per car, captioned with its name', async () => {
-    await addCars()
-    const ctx = await asking('show me your cars')
-
-    await turn(searched('We have two that would suit — which one takes your fancy?'), 'send', ctx)
-
-    const sent = await photosSent()
-    expect(sent.map((m) => [m['body'], m['reply_image_url']])).toEqual([
-      ['Ferrari 488', FERRARI],
-      ['Lamborghini Huracán Tecnica', HURACAN],
-    ])
-  })
-
   /**
-   * A message carries an image or an interactive and never both, so the reply
-   * goes first with its taps and the photographs follow. Losing the list to
-   * attach a picture to it would trade a tappable choice for a caption.
+   * There used to be a line-up here: one photograph per car, captioned, sent
+   * after the list. It was right for a fleet of three and wrong for a fleet of
+   * thirty — capped at six it still buries the question under six image
+   * bubbles, and the question is the thing that moves the sale along.
+   *
+   * The list is the browse. A photograph is the detail view, and it arrives
+   * when somebody picks a car.
    */
-  it('keeps the tappable list on the reply and sends the pictures after it', async () => {
+  it('sends the list and no photographs', async () => {
     await addCars()
     const ctx = await asking('show me your cars')
 
@@ -962,56 +963,27 @@ describe('a reply about several cars', () => {
       `select reply_list, reply_image_url from messages
        where direction = 'outbound' and reply_list is not null`, [],
     )
-    expect(reply!['reply_image_url']).toBeNull()
     expect(reply!['reply_list']).not.toBeNull()
+    expect(reply!['reply_image_url']).toBeNull()
+
+    const images = await run(
+      `select id from messages where direction = 'outbound' and reply_image_url is not null`, [],
+    )
+    expect(images).toEqual([])
   })
 
-  /**
-   * The caption is the car and nothing else. A rate or an availability under a
-   * photograph reads as a claim, and neither is one this turn can make.
-   */
-  it('puts nothing but the name under the photograph', async () => {
+  it('sends that car\u2019s photographs once they pick one', async () => {
     await addCars()
-    // A confirmed rate exists for one of them, and still must not appear: a
-    // caption is read as a claim, and a price under a picture is a price
-    // quoted without the dates that decide it.
-    const [car] = await run(`select id from vehicles where make = 'Ferrari'`, [])
-    await run(
-      `insert into vehicle_rates (operator_id, vehicle_id, currency, daily_rate_minor,
-                                  confirmed_by, confirmed_at)
-       values ($1, $2, 'AED', 350000, 'Sara', now())`,
-      [OP, car!['id']],
-    )
-    const ctx = await asking('show me your cars')
+    const ctx = await asking('Ferrari 488, please.')
 
-    await turn(searched('Two that would suit — which one takes your fancy?'), 'send', ctx)
+    await turn([{ toolCalls: [], reply: 'The Ferrari 488 — a fine choice.' }], 'send', ctx)
 
-    const captions = (await photosSent()).map((m) => String(m['body']))
-    expect(captions).toEqual(['Ferrari 488', 'Lamborghini Huracán Tecnica'])
-    for (const caption of captions) {
-      expect(caption).not.toMatch(/AED|3,500|available|per day/i)
-    }
-  })
-
-  /** Once. A line-up repeated at every question is the bot this is not. */
-  it('does not send the line-up again once they have seen it', async () => {
-    await addCars()
-    await run(
-      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
-                             reply_image_url, delivery_state)
-       values ($1, $2, 'outbound', 'text', 'Lamborghini Huracán Tecnica', $3, $4, 'accepted')`,
-      [OP, CONV, 'wamid.old', HURACAN],
-    )
-    const ctx = await asking('what else do you have?')
-
-    await turn(searched('We also have a Ferrari 488 — interested?'), 'send', ctx)
-
-    const pending = await run(
+    const [sent] = await run(
       `select reply_image_url from messages
-       where direction = 'outbound' and delivery_state = 'pending' and reply_image_url is not null`,
-      [],
+       where direction = 'outbound' and delivery_state = 'pending'
+       order by created_at desc limit 1`, [],
     )
-    expect(pending).toEqual([])
+    expect(sent!['reply_image_url']).toBe(FERRARI)
   })
 })
 
@@ -1242,8 +1214,17 @@ describe('answering about several cars after a prefetch', () => {
     expect(images).toEqual([])
   })
 
-  it('shows the line-up once a second car has photographs', async () => {
-    await addCars(2)
+  /**
+   * The line-up is gone. Six image bubbles under one question is a fleet of
+   * three being shown off; for the operator with thirty cars it is the reply
+   * burying the question.
+   *
+   * The list is the browse and a photograph is the detail view — the pictures
+   * arrive when somebody picks a car, which is when they have shown they want
+   * to look.
+   */
+  it('sends no photographs with the list, however many cars have them', async () => {
+    await addCars(3)
     const ctx = await asking('show me your cars')
 
     await turn([{ toolCalls: [], reply: 'Three of them — which one takes your fancy?' }], 'send', ctx)
@@ -1251,7 +1232,23 @@ describe('answering about several cars after a prefetch', () => {
     const images = await run(
       `select id from messages where direction = 'outbound' and reply_image_url is not null`, [],
     )
-    expect(images).toHaveLength(2)
+    expect(images).toEqual([])
+  })
+
+  it('sends that car\u2019s photographs when they pick one off the list', async () => {
+    await addCars(3)
+    const ctx = await asking('Ferrari 488, please.')
+
+    await turn(
+      [{ toolCalls: [], reply: 'The Ferrari 488 — a fine choice.' }], 'send', ctx,
+    )
+
+    const [sent] = await run(
+      `select reply_image_url from messages
+       where direction = 'outbound' and delivery_state = 'pending'
+       order by created_at desc limit 1`, [],
+    )
+    expect(sent!['reply_image_url']).toBe('https://example.com/2.jpg')
   })
 })
 
