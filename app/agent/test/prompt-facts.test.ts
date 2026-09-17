@@ -61,6 +61,22 @@ describe('what it is told about photographs it has sent', () => {
   it('says nothing at all when nothing has been sent', () => {
     expect(prompt([])).not.toContain('already sent this customer')
   })
+
+  /**
+   * Asked twice to see the Lamborghini again, the replies were "I'll resend
+   * them with different angles" and "I'll arrange some different angles for
+   * you". No photograph followed either, nothing recorded the promise, and
+   * there was nothing to arrange: the operator has four pictures of that car.
+   */
+  it('forbids offering angles that do not exist', () => {
+    const text = prompt([huracan])
+    expect(text).toContain('all there is')
+    expect(text).toContain('never offer to find, arrange or resend different ones')
+  })
+
+  it('says nothing about sourcing photographs when none have been sent', () => {
+    expect(prompt([])).not.toContain('never offer to find, arrange or resend')
+  })
 })
 
 /**

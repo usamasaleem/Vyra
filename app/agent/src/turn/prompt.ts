@@ -1,4 +1,4 @@
-import { civilDateIn, formatCivil, relativeDay } from '@vyra/contracts'
+import { civilDateIn, formatCivil, formatDateForMessage, relativeDay } from '@vyra/contracts'
 import { renderExamples } from './examples.js'
 
 /**
@@ -205,7 +205,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v15'
+export const PROMPT_VERSION = 'sales-v16'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -279,6 +279,22 @@ ${renderExamples()}`
  * The weekday is included because customers say "this weekend" and "Friday",
  * and a date without a day name cannot resolve either.
  */
+/**
+ * A stored date, said the way a person says it.
+ *
+ * Values arrive as YYYY-MM-DD because that is what the tool records, and a
+ * model handed 2026-09-19 will eventually hand it back — which is how an ISO
+ * date ended up in a quote message reading like a receipt rather than a
+ * sentence. Midday UTC so the civil day survives any operator timezone either
+ * side of the line; anything that is not a date is passed through untouched,
+ * since `duration` is "2 days" and `budget` is not a date at all.
+ */
+function readDate(value: string, timeZone: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const at = new Date(`${value}T12:00:00Z`)
+  return Number.isNaN(at.getTime()) ? value : formatDateForMessage(at, timeZone)
+}
+
 export function systemPromptFor(input: {
   now: Date
   timezone: string
@@ -311,6 +327,22 @@ export function systemPromptFor(input: {
    * how long ago, are facts about the conversation rather than instructions.
    */
   stillNeeded?: ReadonlyArray<{ field: string; timesAsked: number }>
+  /**
+   * What the enquiry already knows, which is the other half of stillNeeded.
+   *
+   * v15 told the model what was missing and nothing told it what was not. The
+   * line above promises "you will be told these things when they are known",
+   * and that promise was kept for the date, the fleet and the photographs and
+   * broken for the enquiry itself — so a customer who had given dates the night
+   * before was told "I don't have the dates showing on my side", and said so.
+   *
+   * Carries when each was said, because a value from yesterday is worth
+   * confirming and a value from this morning is not. The alternative — a bare
+   * list of facts — produces a model that asserts a stale date as confidently
+   * as a fresh one, which is a different way of being wrong about the same
+   * thing.
+   */
+  known?: ReadonlyArray<{ field: string; value: string; since: Date }>
   /**
    * The enquiry this turn is about.
    *
@@ -349,6 +381,22 @@ export function systemPromptFor(input: {
     : `\n\nYou have already sent this customer photographs of ${shown.join(', and ')}. `
       + `Say so the way a person would — "sent you a few this morning" — rather than `
       + `talking as though they have seen nothing. Never a count and never a date.`
+      /**
+       * The promise that has no keeper.
+       *
+       * Asked twice to see the Lamborghini again, the replies were "I'll resend
+       * them with different angles" and "I'll arrange some different angles for
+       * you". Neither was recorded as work, neither could have been done, and
+       * no photograph followed either one: the operator has four pictures of
+       * that car and there is no other angle to arrange.
+       *
+       * Which photographs go out is decided in code and they are attached to
+       * this reply already. So there is nothing for the model to promise, and
+       * the only useful instruction is not to.
+       */
+      + ` The operator's photographs of a car are all there is — there are no other `
+      + `angles to fetch and no more to source. Whatever is being sent is attached to `
+      + `this reply already, so never offer to find, arrange or resend different ones.`
 
   const onHand = input.fleetOnHand === undefined
     ? ''
@@ -367,6 +415,53 @@ export function systemPromptFor(input: {
     delivery_preference: 'whether they want it delivered or will collect it',
   }
 
+  /**
+   * What is on file, in the words a person would use.
+   *
+   * Dates are rendered rather than passed through: the stored value is
+   * 2026-09-19 and a model handed that will eventually say it back, which is
+   * the ISO date that went out in a quote message and read like a receipt.
+   */
+  const ON_FILE: Record<string, (value: string) => string> = {
+    vehicle: (v) => `they want the ${v}`,
+    start_at: (v) => `it starts ${readDate(v, input.timezone)}`,
+    end_at: (v) => `it ends ${readDate(v, input.timezone)}`,
+    duration: (v) => `it runs ${v}`,
+    delivery_preference: (v) => `they want ${v}`,
+    location: (v) => `the location is ${v}`,
+    residency: (v) => `they are ${v}`,
+    driver_age: (v) => `the driver is ${v}`,
+    budget: (v) => `their budget is ${v}`,
+    special_requirements: (v) => `they asked for ${v}`,
+  }
+
+  const told = (input.known ?? []).map((k) => ({
+    said: (ON_FILE[k.field] ?? ((v: string) => `${k.field} is ${v}`))(k.value),
+    when: relativeDay(k.since, input.now, input.timezone),
+  }))
+
+  /**
+   * One "they said so" when they all agree.
+   *
+   * Four facts from the same conversation carry the same clause four times,
+   * and a prompt that repeats a phrase is a reply that repeats it — that is
+   * exactly how "7 photos on the 15th" got said three times in six minutes,
+   * from an instruction that had it once.
+   */
+  const days = new Set(told.map((t) => t.when))
+  const onFile = days.size === 1 && told.length > 1
+    ? [`${told.map((t) => t.said).join('; ')} — they said so ${[...days][0]!}`]
+    : told.map((t) => `${t.said} (they said so ${t.when})`)
+
+  const remembered = onFile.length === 0
+    ? ''
+    : `\n\nThis enquiry already has: ${onFile.join('; ')}. You know these — do not ask for them `
+      + `again, and do not say you have no record of them. Anything from before today, confirm `
+      + `rather than assume: "still the 19th?" is a salesperson checking, where stating it back `
+      + `as settled is a system that has not noticed time passed. If they give you a different `
+      + `answer, that is the new one — record it and use it, without arguing about what they `
+      + `said before.`
+
   const needed = (input.stillNeeded ?? [])
     .map((n) => NEEDS[n.field] ?? n.field)
 
@@ -378,7 +473,7 @@ export function systemPromptFor(input: {
       + `say when they are ready, and a question asked a third time is a form rather than a `
       + `person.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${onHand}${outstanding}
+  return `${SYSTEM_PROMPT}${alreadySeen}${onHand}${remembered}${outstanding}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

@@ -33,6 +33,7 @@ import {
   ensureEnquiry,
   recordAgentRun,
   recordFields,
+  ENQUIRY_FIELDS,
   getEnquiryFields,
   outstandingQuestions,
   recordAsked,
@@ -379,6 +380,42 @@ export async function runConversationTurn(
      * A nicety like the rest of the facts here: a failure costs a question
      * that does not get asked, never the reply.
      */
+    /**
+     * What this enquiry already knows.
+     *
+     * The mirror of stillNeeded, and the half that was missing. getEnquiryFields
+     * has existed since step 21; the turn read it after the model had already
+     * replied, to decide what to record — never before, to decide what to say.
+     * So a customer who had given dates the night before was told "I don't have
+     * the dates showing on my side", and told us so in the next message.
+     *
+     * A nicety like the rest of the facts here: if it fails the reply still
+     * goes, one memory poorer.
+     */
+    const known = await getEnquiryFields(deps.run, context.operator.id, enquiryId)
+      /**
+       * In the order a person would say them, not alphabetically.
+       *
+       * getEnquiryFields orders by field name, which puts delivery before the
+       * car and reads like a form being read out. ENQUIRY_FIELDS is already in
+       * the order an enquiry is built up.
+       */
+      .then((fields) => [...fields]
+        .sort((a, b) => ENQUIRY_FIELDS.indexOf(a.field) - ENQUIRY_FIELDS.indexOf(b.field))
+        .map((f) => ({
+          field: f.field as string,
+          value: f.value,
+          since: f.extractedAt,
+        })))
+      .catch((error: unknown) => {
+        console.error(JSON.stringify({
+          event: 'enquiry_fields.recall_failed',
+          conversationId: context.conversation.id,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+        return []
+      })
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -416,6 +453,7 @@ export async function runConversationTurn(
       photosShown,
       ...(fleetOnHand === undefined ? {} : { fleetOnHand }),
       ...(stillNeeded.length === 0 ? {} : { stillNeeded: stillNeeded.slice(0, 1) }),
+      ...(known.length === 0 ? {} : { known }),
     })
     end = {
       reply: outcome.reply,

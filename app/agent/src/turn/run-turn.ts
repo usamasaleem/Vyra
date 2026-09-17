@@ -73,6 +73,8 @@ export type RunTurnOptions = {
   fleetOnHand?: string
   /** What the enquiry still needs and may be asked about. See systemPromptFor. */
   stillNeeded?: ReadonlyArray<{ field: string; timesAsked: number }>
+  /** What the enquiry already knows. See systemPromptFor. */
+  known?: ReadonlyArray<{ field: string; value: string; since: Date }>
 }
 
 /** A prior exchange, oldest first. The last entry is the message being answered. */
@@ -121,6 +123,7 @@ export async function runTurn(
           ...(options.photosShown === undefined ? {} : { photosShown: options.photosShown }),
           ...(options.fleetOnHand === undefined ? {} : { fleetOnHand: options.fleetOnHand }),
           ...(options.stillNeeded === undefined ? {} : { stillNeeded: options.stillNeeded }),
+          ...(options.known === undefined ? {} : { known: options.known }),
         }),
       summary: options.summary ?? null,
       transcript: [...transcript],

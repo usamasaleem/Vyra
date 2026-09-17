@@ -1371,4 +1371,119 @@ describe('chasing what the enquiry still needs', () => {
 
     expect(await systemFor()).not.toContain('This enquiry still needs')
   })
+
+  /**
+   * The other half.
+   *
+   * v15 told the model what was missing. Nothing told it what was not, and the
+   * customer noticed before we did: "don't you already know the dayes", with
+   * the dates sitting in field_evidence from the night before.
+   */
+  describe('and what it already knows', () => {
+    const remember = async (observations: Array<{ field: string; value: string }>) => {
+      const enquiryId = (await ensureEnquiry(run, OP, CONV))!
+      await recordFields(transact, {
+        operatorId: OP,
+        enquiryId,
+        observations: observations as Parameters<typeof recordFields>[1]['observations'],
+      })
+      return enquiryId
+    }
+
+    it('says nothing when the enquiry knows nothing', async () => {
+      expect(await systemFor()).not.toContain('This enquiry already has')
+    })
+
+    it('hands back what the customer has already said', async () => {
+      await remember([{ field: 'vehicle', value: 'Lamborghini Huracán Tecnica' }])
+
+      const system = await systemFor()
+      expect(system).toContain('This enquiry already has')
+      expect(system).toContain('they want the Lamborghini Huracán Tecnica')
+    })
+
+    /**
+     * The exact sentence that went out live, as a test.
+     */
+    it('leaves no room for "I have no record of the dates"', async () => {
+      await remember([
+        { field: 'start_at', value: '2026-09-19' },
+        { field: 'duration', value: '2 days' },
+      ])
+
+      const system = await systemFor()
+      expect(system).toContain('do not say you have no record of them')
+      expect(system).toContain('do not ask for them again')
+    })
+
+    /**
+     * A stored date is 2026-09-19, and a model handed that says it back. That
+     * is how an ISO date ended up in a quote reading like a receipt.
+     */
+    it('renders a date the way a person says it', async () => {
+      await remember([{ field: 'start_at', value: '2026-09-19' }])
+
+      const system = await systemFor()
+      expect(system).toContain('19 September')
+      expect(system).not.toContain('2026-09-19')
+    })
+
+    it('passes through a value that is not a date', async () => {
+      await remember([{ field: 'duration', value: '2 days' }])
+      expect(await systemFor()).toContain('it runs 2 days')
+    })
+
+    /**
+     * A value from yesterday is worth confirming; one from this morning is not.
+     * Without the when, a stale date is asserted as confidently as a fresh one.
+     */
+    it('says when each was said', async () => {
+      await remember([{ field: 'vehicle', value: 'Ferrari 488' }])
+      expect(await systemFor()).toMatch(/they said so (earlier today|yesterday|on \w+)/)
+    })
+
+    /**
+     * Four facts from one conversation carried the clause four times. A prompt
+     * that repeats a phrase is a reply that repeats it — which is how "7 photos
+     * on the 15th" went out three times in six minutes from one instruction.
+     */
+    it('says it once when everything was said the same day', async () => {
+      await remember([
+        { field: 'vehicle', value: 'Ferrari 488' },
+        { field: 'start_at', value: '2026-09-25' },
+        { field: 'delivery_preference', value: 'delivery' },
+      ])
+
+      const system = await systemFor()
+      expect(system.split('they said so').length - 1).toBe(1)
+      // In the order an enquiry is built up, not alphabetically — which would
+      // put delivery before the car and read like a form being read out.
+      expect(system).toContain(
+        'they want the Ferrari 488; it starts Friday 25 September; they want delivery',
+      )
+    })
+
+    it('forgets a value the customer replaced', async () => {
+      await remember([{ field: 'vehicle', value: 'Ferrari 488' }])
+      await remember([{ field: 'vehicle', value: 'Rolls-Royce Cullinan' }])
+
+      const system = await systemFor()
+      expect(system).toContain('they want the Rolls-Royce Cullinan')
+      expect(system).not.toContain('they want the Ferrari 488')
+    })
+
+    /** A memory is a nicety. A reply is not. */
+    it('still replies when the recall fails', async () => {
+      await remember([{ field: 'vehicle', value: 'Ferrari 488' }])
+      await run(`drop table if exists field_evidence cascade`, [])
+
+      const system = await systemFor()
+      expect(system).not.toContain('This enquiry already has')
+      const [last] = await run(
+        `select body from messages where conversation_id = $1 and direction = 'outbound'
+         order by created_at desc limit 1`, [CONV],
+      )
+      expect(last!['body']).toBe('Noted.')
+    })
+  })
 })
