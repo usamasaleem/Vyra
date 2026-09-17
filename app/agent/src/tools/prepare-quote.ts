@@ -119,6 +119,10 @@ export async function prepareQuote(
     vehicleId: vehicleRows[0]!['id'] as string,
     startDate: value('start_at'),
     endDate: value('end_at'),
+    // Checked against the dates, not used instead of them. A start date that
+    // moved leaves the old end date and duration behind it, and the two then
+    // disagree about a price.
+    duration: value('duration'),
   })
 
   if (!result.ok) {

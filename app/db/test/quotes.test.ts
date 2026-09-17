@@ -60,9 +60,10 @@ beforeEach(async () => {
   vehicleId = v!['id'] as string
 })
 
-const quote = (start = '2026-09-20', end = '2026-09-23') =>
+const quote = (start = '2026-09-20', end = '2026-09-23', duration?: string) =>
   calculateDraftQuote(run, {
     operatorId: OP, conversationId: CONV, enquiryId: null, vehicleId, startDate: start, endDate: end,
+    ...(duration === undefined ? {} : { duration }),
   })
 
 describe('the calculation', () => {
@@ -113,6 +114,62 @@ describe('the calculation', () => {
     await setRate({ minimumDays: 7 })
     expect(await quote('2026-09-20', '2026-09-22')).toMatchObject({
       ok: false, refusal: { reason: 'below_minimum_days' },
+    })
+  })
+
+  /**
+   * The live failure: a customer with a 19th-to-21st rental on file said "20th"
+   * and then "2". The new start date superseded the old one; end_at and
+   * duration did not, because nothing had changed about them — they were facts
+   * about a rental that no longer existed. 20th plus a stale 21st is one day,
+   * and the customer was quoted AED 5,000 for half of what they had asked for,
+   * with "2 days" sitting live on the same enquiry saying otherwise.
+   */
+  describe('when the dates and the duration disagree', () => {
+    it('refuses rather than pricing one of them', async () => {
+      await setRate({ daily: 500000 })
+      expect(await quote('2026-09-20', '2026-09-21', '2 days')).toMatchObject({
+        ok: false, refusal: { reason: 'dates_disagree' },
+      })
+    })
+
+    /** The model has to be able to turn it into the question a person would ask. */
+    it('says what disagrees with what', async () => {
+      await setRate({ daily: 500000 })
+      const result = await quote('2026-09-20', '2026-09-21', '2 days')
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.refusal.detail).toContain('1 day')
+      expect(result.refusal.detail).toContain('2 days')
+    })
+
+    it('prices normally when they agree', async () => {
+      await setRate({ daily: 500000 })
+      expect(await quote('2026-09-20', '2026-09-22', '2 days')).toMatchObject({ ok: true })
+    })
+
+    it('is unbothered by an enquiry with no duration on file', async () => {
+      await setRate({ daily: 500000 })
+      expect(await quote('2026-09-20', '2026-09-22')).toMatchObject({ ok: true })
+    })
+
+    /**
+     * Weeks and months need a calendar rather than a multiplication, and a
+     * wrong guess here would block a correct quote rather than catch a wrong
+     * one. So anything that is not a plain count of days is not checked.
+     */
+    it.each(['a week', '2 weeks', 'one month', 'the weekend', ''])(
+      'does not try to read %j', async (duration) => {
+        await setRate({ daily: 500000 })
+        expect(await quote('2026-09-20', '2026-09-22', duration)).toMatchObject({ ok: true })
+      },
+    )
+
+    it('reads nights as days, which is how people say it', async () => {
+      await setRate({ daily: 500000 })
+      expect(await quote('2026-09-20', '2026-09-21', '2 nights')).toMatchObject({
+        ok: false, refusal: { reason: 'dates_disagree' },
+      })
     })
   })
 })

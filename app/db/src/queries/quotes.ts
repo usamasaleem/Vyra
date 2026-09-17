@@ -35,12 +35,28 @@ export type DraftQuote = {
 export type QuoteRefusal =
   | { reason: 'no_confirmed_rate'; detail: string }
   | { reason: 'below_minimum_days'; detail: string }
+  | { reason: 'dates_disagree'; detail: string }
   | { reason: 'no_dates'; detail: string }
   | { reason: 'no_vehicle'; detail: string }
 
 export type QuoteResult =
   | { ok: true; quote: DraftQuote }
   | { ok: false; refusal: QuoteRefusal }
+
+/**
+ * "2 days" as a number, or null when it is not a plain count of days.
+ *
+ * Deliberately narrow. Weeks and months are real things a customer says and
+ * turning them into days needs a calendar, not a multiplication — and a wrong
+ * guess here would block a correct quote rather than catch a wrong one.
+ */
+function readDuration(raw: string | null): number | null {
+  if (raw === null) return null
+  const match = /^\s*(\d{1,3})\s*(?:days?|nights?)\s*$/i.exec(raw)
+  if (match === null) return null
+  const days = Number(match[1])
+  return Number.isFinite(days) && days > 0 ? days : null
+}
 
 /**
  * How long a draft price is honoured.
@@ -60,6 +76,14 @@ export async function calculateDraftQuote(
     vehicleId: string | null
     startDate: string | null
     endDate: string | null
+    /**
+     * What the customer said the rental was, in their own words — "2 days".
+     *
+     * Checked against the dates rather than used instead of them. Passing it is
+     * optional so the callers that genuinely have no duration on file are
+     * unchanged.
+     */
+    duration?: string | null
   },
 ): Promise<QuoteResult> {
   if (input.vehicleId === null) {
@@ -79,6 +103,35 @@ export async function calculateDraftQuote(
         86_400_000,
     ),
   )
+
+  /**
+   * The dates and the duration must say the same thing, or neither is priced.
+   *
+   * Live: a customer with a 19th-to-21st rental on file said "20th" and then
+   * "2". The new start date superseded the old one; `end_at` and `duration`
+   * did not, because nothing had changed about them — they were simply facts
+   * about a rental that no longer existed. 20th plus a stale 21st is one day,
+   * and the customer was quoted AED 5,000 for half of what they asked for,
+   * with `duration: 2 days` sitting live on the same enquiry saying so.
+   *
+   * Recomputing the end from the duration would have produced the right answer
+   * here and is still the wrong rule: two recorded facts contradict each other
+   * and this cannot know which the customer meant. A price is the one thing
+   * this system will not guess at, so it refuses and says what disagrees —
+   * which the model turns into the question a salesperson would have asked.
+   */
+  const statedDays = readDuration(input.duration ?? null)
+  if (statedDays !== null && statedDays !== days) {
+    return {
+      ok: false,
+      refusal: {
+        reason: 'dates_disagree',
+        detail: `The dates on file run ${days} day${days === 1 ? '' : 's'} `
+          + `(${input.startDate} to ${input.endDate}), but the customer said `
+          + `${input.duration}. Ask them which is right and record it before pricing.`,
+      },
+    }
+  }
 
   const rateRows = await run(
     `select id, currency, daily_rate_minor, weekly_rate_minor, monthly_rate_minor,
