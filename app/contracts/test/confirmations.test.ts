@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor, invitesACarChoice, meaningOfButton, vehicleList,
+  BOOKING_CONFIRMATION, DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor,
+  invitesACarChoice, meaningOfButton, vehicleList,
 } from '../src/confirmations.ts'
 
 describe("Meta's limits", () => {
@@ -239,5 +240,34 @@ describe('a highlight on a list row', () => {
     for (const row of vehicleList(cars('Best seller'))!.rows) {
       expect(row.description!.length).toBeLessThanOrEqual(LIST_LIMITS.rowDescription)
     }
+  })
+})
+
+/**
+ * "Book it" has nowhere to go: request_booking_review is a stub that refuses,
+ * there is no bookings table, and booking_status is read in six places and
+ * written in none. A button saying "Book now" would drive somebody into that
+ * wall faster and more confidently than typing would.
+ */
+describe('the booking buttons', () => {
+  it('promises a person, not a booking', () => {
+    const titles = BOOKING_CONFIRMATION.map((b) => b.title)
+    expect(titles).toEqual(['Confirm with team', 'Not just yet'])
+    for (const title of titles) expect(title).not.toMatch(/\bbook(ed|ing)?\b/i)
+  })
+
+  /** One option is not a choice, and somebody nearly ready needs a way out. */
+  it('offers a way that is not yes', () => {
+    expect(BOOKING_CONFIRMATION).toHaveLength(2)
+  })
+
+  it.each(BOOKING_CONFIRMATION)('$title fits in a WhatsApp button', (button) => {
+    expect(button.title.length).toBeLessThanOrEqual(20)
+  })
+
+  it('turns a tap into words the conversation can carry', () => {
+    expect(meaningOfButton('booking_confirm', 'Confirm with team'))
+      .toBe('Yes — please have someone confirm this booking.')
+    expect(meaningOfButton('booking_wait', 'Not just yet')).toBe('Not just yet.')
   })
 })

@@ -479,6 +479,80 @@ describe('a turn that fails', () => {
 })
 
 /**
+ * The customer says yes, and the button says what actually happens.
+ *
+ * Live: "i want too book this" got a reply asking them to confirm the dates
+ * again, and nothing to tap. A "Book now" button would have been worse — it
+ * leads to request_booking_review, which is a stub that refuses.
+ */
+describe('offering to have a booking confirmed', () => {
+  const asking = async (body: string): Promise<ConversationContext> => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  /** Everything section 3 asks for, so there is nothing left to ask. */
+  const qualified = async () => {
+    const enquiryId = (await ensureEnquiry(run, OP, CONV))!
+    await recordFields(transact, {
+      operatorId: OP, enquiryId,
+      observations: [
+        { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
+        { field: 'start_at', value: '2026-09-25' },
+        { field: 'end_at', value: '2026-09-27' },
+        { field: 'delivery_preference', value: 'delivery' },
+      ],
+    })
+  }
+
+  const buttonsOn = async (body: string, reply: string) => {
+    const ctx = await asking(body)
+    await turn([{ toolCalls: [], reply }], 'send', ctx)
+    const [sent] = await run(
+      `select reply_buttons from messages where direction = 'outbound'
+       and delivery_state = 'pending' order by created_at desc limit 1`, [],
+    )
+    return sent?.['reply_buttons'] as Array<{ id: string; title: string }> | null
+  }
+
+  it('offers them when the enquiry is ready and they say so', async () => {
+    await qualified()
+    const buttons = await buttonsOn(
+      'i want too book this',
+      'Got it — the Rolls-Royce Cullinan, 25th to 27th September, delivered.',
+    )
+    expect(buttons?.map((b) => b.title)).toEqual(['Confirm with team', 'Not just yet'])
+  })
+
+  /**
+   * Offering to have a booking confirmed before anyone knows the dates is a
+   * button that cannot be honoured, and the point of this one is that it can.
+   */
+  it('stays away while the enquiry is still missing something', async () => {
+    const buttons = await buttonsOn('i want to book this', 'Which dates were you thinking?')
+    expect(buttons).toBeNull()
+  })
+
+  /** Asking how to book is a question, not a decision. */
+  it('stays away when they are only asking about booking', async () => {
+    await qualified()
+    const buttons = await buttonsOn('can i book online?', 'You can book right here with me.')
+    expect(buttons).toBeNull()
+  })
+
+  /** The reply carries buttons, so it cannot also carry a photograph. */
+  it('does not promise a booking in the words on the buttons', async () => {
+    await qualified()
+    const buttons = await buttonsOn('book it', 'The Cullinan, 25th to 27th September.')
+    for (const button of buttons ?? []) expect(button.title).not.toMatch(/\bbook/i)
+  })
+})
+
+/**
  * Section 15's rule, finally attached to something.
  *
  * Holding the turn is only half of it. A customer who has just crashed the car

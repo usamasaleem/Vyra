@@ -142,6 +142,27 @@ export const DATE_CONFIRMATION: ReplyButton[] = [
   { id: 'dates_wrong', title: 'Different dates' },
 ]
 
+/**
+ * The customer says yes, and this is the honest version of what happens next.
+ *
+ * "Book it" has nowhere to go. request_booking_review is a stub that refuses,
+ * there is no bookings table, and conversations.booking_status is read in six
+ * places and written in none — every row is permanently 'none'. A button
+ * saying "Book now" would drive somebody into that wall faster and more
+ * confidently than typing would.
+ *
+ * So the button says what the system can actually do: put it in front of a
+ * person, which is a queue that works, with an SLA, an escalation and a named
+ * fallback owner. It is a smaller promise and it is a true one.
+ *
+ * The second button matters as much as the first. One option is not a choice,
+ * and a customer who is nearly ready needs somewhere to go that is not yes.
+ */
+export const BOOKING_CONFIRMATION: ReplyButton[] = [
+  { id: 'booking_confirm', title: 'Confirm with team' },
+  { id: 'booking_wait', title: 'Not just yet' },
+]
+
 export const DELIVERY_CHOICE: ReplyButton[] = [
   { id: 'prefers_delivery', title: 'Delivery' },
   { id: 'prefers_collection', title: 'Collection' },
@@ -223,6 +244,8 @@ const BUTTON_MEANINGS: Record<string, string> = {
   dates_wrong: 'No, those dates are wrong.',
   prefers_delivery: 'Delivery, please.',
   prefers_collection: "I'll collect it.",
+  booking_confirm: 'Yes — please have someone confirm this booking.',
+  booking_wait: 'Not just yet.',
 }
 
 export function meaningOfButton(id: string, title: string): string {

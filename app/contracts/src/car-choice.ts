@@ -110,3 +110,32 @@ export function carChosenIn<T extends NamedCar & { variant?: string | null }>(
    */
   return ASKING_ABOUT.test(message) ? null : named[0]!
 }
+
+/**
+ * The customer saying they want it.
+ *
+ * Read from their message rather than from the reply, which is the difference
+ * between this and every other surface decision here. Whether to offer the
+ * booking buttons is not a judgement about how the agent phrased something —
+ * it is a fact about what the customer just said, and asking a regex to infer
+ * intent from the model's prose is what has failed repeatedly.
+ *
+ * Narrow. "Book" and its neighbours only, and only as a statement about this
+ * rental. A question — "can I book online?" — is asking how, not doing it.
+ */
+const READY = [
+  /\b(?:i|we)(?:'|’)?(?:d| would)? ?(?:want|like|wanna) (?:to )?(?:book|take|reserve|have) (?:it|this|that|the)\b/i,
+  /\b(?:i|we)(?:(?:'|’)?ll| will) take (?:it|this|that|the)\b/i,
+  /\b(?:let(?:'|’)?s|lets) (?:do|book|go with) (?:it|this|that|the)\b/i,
+  /\b(?:book|reserve) (?:it|this|that)\b/i,
+  /\bgo ahead\b/i,
+  /\b(?:confirm|confirmed) (?:it|this|the booking)\b/i,
+]
+
+export function wantsToBook(message: string | null): boolean {
+  if (message === null || message.trim() === '') return false
+  // A question about booking is not a booking. "How do I book?" needs an
+  // answer, not two buttons.
+  if (/\?\s*$/.test(message.trim()) && !/\b(?:yes|yeah|ok|okay)\b/i.test(message)) return false
+  return READY.some((pattern) => pattern.test(message))
+}

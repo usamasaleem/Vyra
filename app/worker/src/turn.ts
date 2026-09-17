@@ -1,6 +1,7 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  carChosenIn, FULL_RANGE_LABEL, type StopCode, mightNeedAvailability, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
+  BOOKING_CONFIRMATION, carChosenIn, FULL_RANGE_LABEL, type StopCode, mightNeedAvailability,
+  wantsToBook, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
   usableWebsite,
   vehicleList,
 } from '@vyra/contracts'
@@ -333,6 +334,8 @@ export async function runConversationTurn(
 
   /** The qualifying question this turn was told to put, if any. */
   let askedThisTurn: EnquiryField[] = []
+  /** Empty means the enquiry has everything section 3 asks for. */
+  let nothingOutstanding = false
 
   let end: (TurnEnd & {
     rounds: number
@@ -549,6 +552,7 @@ export async function runConversationTurn(
      * put. Recorded before the model runs so a turn that fails partway does
      * not ask the same thing again on the retry.
      */
+    nothingOutstanding = stillNeeded.length === 0
     askedThisTurn = stillNeeded.slice(0, 1).map((q) => q.field)
     if (askedThisTurn.length > 0) {
       await recordAsked(deps.run, {
@@ -696,8 +700,25 @@ export async function runConversationTurn(
     ? prefetchedFleet
     : ((searched.result as { data?: { fleet?: VehicleRow[] } }).data?.fleet ?? [])
 
+  /**
+   * The customer said they want it, and the enquiry has everything.
+   *
+   * Decided from their message rather than from the reply, unlike every other
+   * surface here. Whether to offer this is a fact about what the customer just
+   * said, not a judgement about how the model phrased something — and reading
+   * intent out of the model's prose with a regex is what has failed repeatedly.
+   *
+   * Only when nothing is outstanding. Offering to have a booking confirmed
+   * before anyone knows the dates is a button that cannot be honoured, and the
+   * point of this one is that it can be.
+   *
+   * What it promises is a person, not a booking, because a person is what
+   * exists. See BOOKING_CONFIRMATION.
+   */
+  const readyToBook = nothingOutstanding && wantsToBook(context.message.body)
+
   const offered = {
-    buttons: buttonsFor(end.reply),
+    buttons: readyToBook ? BOOKING_CONFIRMATION : buttonsFor(end.reply),
     list: invitesACarChoice(end.reply) ? vehicleList(fleet) : null,
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { carChosenIn, carsNamedIn } from '../src/car-choice.ts'
+import { carChosenIn, carsNamedIn, wantsToBook } from '../src/car-choice.ts'
 
 const FLEET = [
   { make: 'Rolls-Royce', model: 'Cullinan', variant: null },
@@ -68,5 +68,49 @@ describe('carChosenIn', () => {
   it('chooses nothing in a message about no car', () => {
     expect(chosen('what is the deposit?')).toBeNull()
     expect(chosen(null)).toBeNull()
+  })
+})
+
+/**
+ * The customer saying yes, read from their message rather than the reply.
+ *
+ * Every other surface here is decided by pattern-matching the model's prose,
+ * and that has failed repeatedly. Whether to offer the booking buttons is a
+ * fact about what the customer just said.
+ */
+describe('wantsToBook', () => {
+  it.each([
+    'i want too book this',
+    'I want to book this',
+    'I will take it',
+    "I'll take it",
+    'we would like to take the Cullinan',
+    "let's do it",
+    'book it',
+    'go ahead',
+    'confirm the booking',
+  ])('hears %j', (message) => {
+    expect(wantsToBook(message)).toBe(true)
+  })
+
+  /** Asking how to book is asking a question, not doing it. */
+  it.each([
+    'can i book online?',
+    'how do I book',
+    'what is the booking process?',
+    'do you need a deposit to book?',
+  ])('does not hear %j', (message) => {
+    expect(wantsToBook(message)).toBe(false)
+  })
+
+  it.each(['show me the cars', 'i want to see it', 'not yet', 'maybe later'])(
+    'leaves %j alone', (message) => {
+      expect(wantsToBook(message)).toBe(false)
+    },
+  )
+
+  it('says no to nothing at all', () => {
+    expect(wantsToBook(null)).toBe(false)
+    expect(wantsToBook('  ')).toBe(false)
   })
 })
