@@ -18,7 +18,15 @@
  * Asking for pictures by name. Unambiguous, and nothing overrides these.
  */
 const EXPLICIT: RegExp[] = [
-  /\b(?:show|send|see|share)\b[^.?!]{0,30}\b(?:photo|photos|picture|pictures|image|images|pic|pics)\b/i,
+  /**
+   * The verb in every form somebody writes it.
+   *
+   * It was `\bsend\b`, and a word boundary does not exist inside "resend" or
+   * before the g in "sending" — so "can you resend the photos" and "are you
+   * sending the images again or not?" both matched nothing. Both are real
+   * messages from one conversation, and the customer had to ask three times.
+   */
+  /\b(?:re-?)?(?:show|send|share|see)(?:s|ing|ed)?\b[^.?!]{0,30}\b(?:photo|photos|picture|pictures|image|images|pic|pics)\b/i,
   /\b(?:photo|photos|picture|pictures|image|images|pic|pics)\b[^.?!]{0,20}\b(?:please|pls)\b/i,
   /\b(?:more|other|another|different)\b[^.?!]{0,15}\b(?:photo|photos|picture|pictures|image|images|pic|pics|angle|angles|view|views|shot|shots)\b/i,
   /\bany (?:photo|photos|picture|pictures|image|images|pic|pics)\b/i,
@@ -40,6 +48,15 @@ const IMPLICIT: RegExp[] = [
   /\blet(?:'|\u2019)?s\s+see\b/i,
   /\bi(?:'|\u2019)?d?\s+(?:like|want|wanna)\s+to\s+see\b/i,
   /\bhow does it look\b/i,
+  /**
+   * Asking for the last thing again, without naming it.
+   *
+   * "can you send again" is the whole message, and in context the last thing
+   * sent was photographs. Implicit rather than explicit on purpose, so
+   * NOT_A_PICTURE below still catches "can you send the quote again".
+   */
+  /\b(?:re-?)?(?:show|send)(?:s|ing|ed)?\b[^.?!]{0,25}\bagain\b/i,
+  /\bre-?send(?:s|ing|ed)?\b/i,
 ]
 
 /**

@@ -121,3 +121,41 @@ describe('photosPromisedIn', () => {
     expect(photosPromisedIn(null)).toBe(false)
   })
 })
+
+/**
+ * One conversation, three asks, two ignored.
+ *
+ * "can you send again" got prose. "are you sending the images again or not?"
+ * got prose. The photographs arrived on the third attempt, and only because
+ * the reply happened to claim they were being resent — the claimed-attachment
+ * path, not this one.
+ *
+ * The cause was `\bsend\b`: a word boundary does not exist inside "resend",
+ * or before the g in "sending".
+ */
+describe('asking for them again', () => {
+  it.each([
+    'can you send again',
+    'are you sending the images again or not?',
+    'can you resend the photos',
+    'resend',
+    'send them again',
+    'could you re-send those',
+    'show me again',
+  ])('hears %j', (message) => {
+    expect(asksToSeePhotos(message)).toBe(true)
+  })
+
+  /**
+   * "Again" on its own is not about pictures. The repeat patterns are implicit
+   * rather than explicit precisely so this guard still applies to them.
+   */
+  it.each([
+    'can you send the quote again',
+    'send me the rates again',
+    'can you check availability again',
+    'show me the price again',
+  ])('does not hear %j', (message) => {
+    expect(asksToSeePhotos(message)).toBe(false)
+  })
+})
