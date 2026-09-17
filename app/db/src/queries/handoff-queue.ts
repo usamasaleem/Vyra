@@ -391,3 +391,37 @@ export async function listOpenHandoffs(
     waitingSinceMinutes: Number(r['waiting_since_minutes'] ?? 0),
   }))
 }
+
+/**
+ * A customer writing into a conversation nobody has picked up yet.
+ *
+ * "I've connected you with an agent" is the last thing this system said to a
+ * real customer before they asked which colours were available, then "??",
+ * then "Hi?", then to change their dates, then who runs the company — five
+ * messages into five minutes of nothing, while `ai_resumes_after_minutes`
+ * counted down.
+ *
+ * Deliberately only `waiting` and `escalated`, and only while nobody owns it.
+ * An accepted handoff is a person who is present, and a machine talking over
+ * a salesperson mid-sentence is worse than the silence — section 10's "one
+ * handler at a time" is about exactly that. This is the case where the
+ * handler does not exist yet.
+ */
+export async function unclaimedHandoffFor(
+  run: QueryRunner,
+  input: { conversationId: string; operatorId: string },
+): Promise<{ handoffId: string; dueAt: Date } | null> {
+  const rows = await run(
+    `select id, due_at from handoffs
+     where conversation_id = $1 and operator_id = $2
+       and state in ('waiting', 'escalated')
+       and owner_membership_id is null
+     order by created_at desc
+     limit 1`,
+    [input.conversationId, input.operatorId],
+  )
+  const row = rows[0]
+  return row === undefined
+    ? null
+    : { handoffId: row['id'] as string, dueAt: new Date(row['due_at'] as string) }
+}

@@ -5,7 +5,12 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
 import { loadConversationContext, type ConversationContext } from '../src/context.ts'
-import { handleNonTextMessage, handleUrgentMessage, runConversationTurn } from '../src/turn.ts'
+import {
+  acknowledgeWaiting, handleNonTextMessage, handleUrgentMessage, runConversationTurn,
+} from '../src/turn.ts'
+import {
+  acceptHandoff, raiseHandoff, resolveHandoff,
+} from '../../db/src/queries/handoff-queue.ts'
 import { ensureEnquiry, recordFields } from '../../db/src/queries/enquiry-fields.ts'
 import type { QueryRunner, Transactor } from '../../db/src/runner.ts'
 
@@ -549,6 +554,99 @@ describe('offering to have a booking confirmed', () => {
     await qualified()
     const buttons = await buttonsOn('book it', 'The Cullinan, 25th to 27th September.')
     for (const button of buttons ?? []) expect(button.title).not.toMatch(/\bbook/i)
+  })
+})
+
+/**
+ * The silence after "I've connected you with an agent".
+ *
+ * Live, that sentence was the last thing a customer heard before asking which
+ * colours were available, then "??", then "Hi?", then to change their dates,
+ * then who runs the company — five messages into five minutes of nothing,
+ * while ai_resumes_after_minutes counted down.
+ */
+describe('a customer waiting on a person nobody has become', () => {
+  const asking = async (body: string): Promise<ConversationContext> => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  const handedOver = async () => {
+    const { handoffId } = await raiseHandoff(run, {
+      operatorId: OP, conversationId: CONV, reason: 'customer_asked',
+      summary: 'Customer asked for a person.',
+    })
+    await run(`update conversations set handler_mode = 'human' where id = $1`, [CONV])
+    return handoffId!
+  }
+
+  const outbound = async () =>
+    run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'
+       order by created_at`, [CONV],
+    )
+
+  it('says something rather than nothing', async () => {
+    await handedOver()
+    const ctx = await asking('Which colour do you have?')
+
+    const result = await acknowledgeWaiting({ run, transact, destination: 'send' }, ctx)
+    expect(result.outcome).toBe('queued')
+
+    const sent = await outbound()
+    expect(sent).toHaveLength(1)
+    expect(String(sent[0]!['body'])).toContain('colleague')
+  })
+
+  /**
+   * Once is the whole design. A bot repeating "someone will be with you
+   * shortly" is the sound of nobody being there at all.
+   */
+  it('says it once, however many times they write', async () => {
+    await handedOver()
+    for (const body of ['Which colour do you have?', '??', 'Hi?', 'Please change my dates ?']) {
+      await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking(body))
+    }
+    expect(await outbound()).toHaveLength(1)
+  })
+
+  /**
+   * A salesperson who has accepted it is present, and a machine talking over
+   * them mid-sentence is worse than the quiet. Section 10's "one handler at a
+   * time" is about exactly that; this only fills the gap before the handler
+   * exists.
+   */
+  it('stays quiet once somebody has picked it up', async () => {
+    const handoffId = await handedOver()
+    await acceptHandoff(run, { handoffId, operatorId: OP, membershipId: MEMBER })
+
+    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Hi?'))
+    expect(await outbound()).toEqual([])
+  })
+
+  /** A deliberate takeover is a person choosing to be there. */
+  it('stays quiet when a person took it over with no handoff', async () => {
+    await run(`update conversations set handler_mode = 'human' where id = $1`, [CONV])
+    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Hi?'))
+    expect(await outbound()).toEqual([])
+  })
+
+  /** A new handoff is a new silence, and earns its own line. */
+  it('speaks again for a later handoff', async () => {
+    const first = await handedOver()
+    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Hi?'))
+    await resolveHandoff(run, { conversationId: CONV, operatorId: OP, resolution: 'handled' })
+
+    await handedOver()
+    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Back again'))
+
+    const sent = await outbound()
+    expect(sent).toHaveLength(2)
+    expect(first).toBeTruthy()
   })
 })
 

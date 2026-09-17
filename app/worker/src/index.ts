@@ -14,7 +14,9 @@ import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor }
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
 import { openaiModel, PROMPT_VERSION, type ModelAdapter } from '@vyra/agent'
-import { handleNonTextMessage, handleUrgentMessage, runConversationTurn } from './turn.js'
+import {
+  acknowledgeWaiting, handleNonTextMessage, handleUrgentMessage, runConversationTurn,
+} from './turn.js'
 
 const env = parseServerEnv()
 const { sql } = createClient(env.DATABASE_URL, { max: 4 })
@@ -516,6 +518,35 @@ const runner: Runner = await runWorker({
           autosend: env.AI_AUTOSEND_ENABLED,
           ...routed,
         })
+        return
+      }
+
+      /**
+       * Held because a person owns it — and nobody has picked it up.
+       *
+       * The handoff itself works: the queue has it, the SLA is running, the
+       * escalation names somebody. The customer was the part nothing covered.
+       * Told "I've connected you with an agent", they asked which colours were
+       * available and got nothing, then "??", then "Hi?", then to change their
+       * dates — five messages into five minutes of silence while
+       * ai_resumes_after_minutes counted down.
+       *
+       * One line, once per handoff, and only while the handoff is genuinely
+       * unclaimed. A salesperson who has accepted it is present, and talking
+       * over them is worse than the quiet.
+       */
+      if (handling.reason === 'human_owns_the_conversation') {
+        const told = await acknowledgeWaiting(
+          { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
+          context,
+        )
+        if (told.outcome === 'queued') {
+          log({
+            event: 'waiting.acknowledged',
+            jobId: helpers.job.id,
+            conversation: context.conversation.id,
+          })
+        }
         return
       }
 

@@ -37,6 +37,7 @@ import {
   carsWithoutPhotos,
   ENQUIRY_FIELDS,
   getEnquiryFields,
+  unclaimedHandoffFor,
   outstandingQuestions,
   recordAsked,
   type EnquiryField,
@@ -259,6 +260,55 @@ export async function handleUrgentMessage(
   })
 
   return { outcome: 'needs_a_person', reason: URGENT_HANDOFF_REASON[urgent.code] }
+}
+
+/**
+ * Somebody wrote into a conversation nobody has picked up.
+ *
+ * The handoff worked: the conversation went to a person, the queue has it,
+ * the SLA is running. What nothing covered is the customer, who had just been
+ * told "I've connected you with an agent" and then asked which colours were
+ * available — and got nothing, and asked again, and again, five times in five
+ * minutes while ai_resumes_after_minutes counted down.
+ *
+ * One line, once per handoff. Not an answer: a person owns the decision and
+ * section 10 is right that two handlers are worse than one. But "a colleague
+ * has this" costs nothing and is the difference between a queue and a void.
+ *
+ * Once is the whole design. The idempotency key is the handoff rather than the
+ * message, so the second, third and fifth message produce nothing — a bot
+ * repeating "someone will be with you shortly" is the sound of no one being
+ * there at all.
+ */
+export async function acknowledgeWaiting(
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  context: ConversationContext,
+): Promise<TurnResult> {
+  const unclaimed = await unclaimedHandoffFor(deps.run, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+  }).catch(() => null)
+
+  // No unclaimed handoff means a person is present, or took it over
+  // deliberately. Either way this is not the silence to fill.
+  if (unclaimed === null) return { outcome: 'skipped', reason: 'no_message_body' }
+
+  const accepted = await acceptTurnOutput(deps.transact, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    revisionAtTurnStart: context.conversation.revision,
+    body: 'A colleague has this one and will come back to you shortly — '
+      + "I've let them know you're waiting.",
+    idempotencyKey: `waiting:${unclaimed.handoffId}`,
+    destination: deps.destination,
+    ownHandoff: true,
+  })
+
+  // Not accepted means the idempotency key already exists: this handoff has
+  // been acknowledged, which is the point.
+  return accepted.accepted
+    ? { outcome: 'queued', messageId: null }
+    : { outcome: 'rejected', reason: 'already_acknowledged' }
 }
 
 export type TurnDependencies = {
