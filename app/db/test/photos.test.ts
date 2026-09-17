@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  findFleetShowcase, findVehiclePhoto, findVehiclePhotos, photosSentIn, photosShownIn,
+  carsWithoutPhotos, findFleetShowcase, findVehiclePhoto, findVehiclePhotos, photosSentIn,
+  photosShownIn,
 } from '../src/queries/photos.ts'
 import type { QueryRunner } from '../src/runner.ts'
 
@@ -312,5 +313,50 @@ describe('findFleetShowcase', () => {
 
   it('asks for nothing when there are no cars', async () => {
     expect(await findFleetShowcase(run, { operatorId: OP, cars: [] })).toEqual([])
+  })
+})
+
+/**
+ * The Ferrari the agent described as "the convertible in the photos", of which
+ * there are no photographs at all — the customer had only ever been sent the
+ * Lamborghini.
+ */
+describe('carsWithoutPhotos', () => {
+  it('names a car whose photo_urls is null', async () => {
+    await addCar({ make: 'Ferrari', model: '488', photos: null })
+    expect(await carsWithoutPhotos(run, OP)).toEqual(['Ferrari 488'])
+  })
+
+  it('names a car whose photo list is empty', async () => {
+    await addCar({ make: 'Ferrari', model: '488', photos: [] })
+    expect(await carsWithoutPhotos(run, OP)).toEqual(['Ferrari 488'])
+  })
+
+  it('leaves out a car that has one', async () => {
+    await addCar({ make: 'Ferrari', model: '488', photos: null })
+    await addCar()
+    expect(await carsWithoutPhotos(run, OP)).toEqual(['Ferrari 488'])
+  })
+
+  it('says nothing when every car has photographs', async () => {
+    await addCar()
+    expect(await carsWithoutPhotos(run, OP)).toEqual([])
+  })
+
+  /** A car that is not for hire is not a car the customer can be shown. */
+  it('leaves out a car that is not active', async () => {
+    await addCar({ make: 'Ferrari', model: '488', photos: null, active: false })
+    expect(await carsWithoutPhotos(run, OP)).toEqual([])
+  })
+
+  it('names them in a stable order', async () => {
+    await addCar({ make: 'Rolls-Royce', model: 'Cullinan', photos: null })
+    await addCar({ make: 'Ferrari', model: '488', photos: null })
+    expect(await carsWithoutPhotos(run, OP)).toEqual(['Ferrari 488', 'Rolls-Royce Cullinan'])
+  })
+
+  it('never names another operator\u2019s car', async () => {
+    await addCar({ make: 'Ferrari', model: '488', photos: null })
+    expect(await carsWithoutPhotos(run, '00000000-0000-0000-0000-0000000000ff')).toEqual([])
   })
 })

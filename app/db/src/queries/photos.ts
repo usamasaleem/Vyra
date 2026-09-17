@@ -253,3 +253,40 @@ export async function findFleetShowcase(
     (a, b) => (order.get(`${a.make} ${a.model}`) ?? 0) - (order.get(`${b.make} ${b.model}`) ?? 0),
   )
 }
+
+/**
+ * The cars there are no photographs of.
+ *
+ * Live, a customer picked the Ferrari from the list and asked to see it. The
+ * reply was "the yellow Ferrari 488 Spider is the convertible in the photos" —
+ * and the only photographs this customer had ever been sent were of the
+ * Lamborghini, an hour earlier. There are no photographs of the Ferrari at all.
+ *
+ * The model was not guessing wildly. It had been told, truthfully, that
+ * photographs had already gone to this customer, and nothing anywhere told it
+ * which car they were of or that this one had none. Given a gap between "you
+ * have sent photographs" and "show me the Ferrari", it bridged it.
+ *
+ * So the absence becomes a fact, the same way the fleet and the date already
+ * are. Names only, because what the model needs is to stop claiming a picture
+ * exists — which ones to send is decided in code and always has been.
+ */
+export async function carsWithoutPhotos(
+  run: QueryRunner,
+  operatorId: string,
+): Promise<string[]> {
+  const rows = await run(
+    `select make, model from vehicles
+     where operator_id = $1 and active and provenance = 'operator_confirmed'
+       -- photo_urls is null for a car nobody has added pictures to, and
+       -- jsonb_typeof of null is null rather than 'array', so the comparison
+       -- is null rather than true. That excluded the one car this was written
+       -- for, and the test caught it.
+       and (photo_urls is null
+            or jsonb_typeof(photo_urls) <> 'array'
+            or jsonb_array_length(photo_urls) = 0)
+     order by make, model`,
+    [operatorId],
+  )
+  return rows.map((r) => `${r['make'] as string} ${r['model'] as string}`)
+}

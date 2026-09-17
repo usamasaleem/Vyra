@@ -684,6 +684,63 @@ describe('showing a car the model did not look up', () => {
     )
     expect(sent!['reply_image_url']).toBeNull()
   })
+
+  /**
+   * Every car after the first used to be invisible.
+   *
+   * The unprompted send was gated on "this conversation has seen no
+   * photographs", which reads as restraint and behaves as "only the first car
+   * is ever shown". Live: the customer picked the Ferrari off the list an hour
+   * after being sent the Lamborghini, and got a paragraph with no picture.
+   */
+  describe('a second car, after the first has been seen', () => {
+    const FERRARI = ['https://example.com/ferrari-1.jpg']
+
+    const addFerrari = () =>
+      run(
+        `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                               chassis_number, provenance, confirmed_by, photo_urls)
+         values ($1,'Ferrari','488',2022,'Giallo','exotic','D 2','VIN2',
+                 'operator_confirmed','Owner',$2::jsonb)`,
+        [OP, JSON.stringify(FERRARI)],
+      )
+
+    it('shows it unasked, even though another car was shown already', async () => {
+      await addHuracan()
+      await addFerrari()
+      await shownAlready(PHOTOS[0]!)
+      const ctx = await asking('Ferrari 488, please.')
+
+      await turn(
+        [{ toolCalls: [], reply: 'The Ferrari 488 — Giallo Modena, AED 5,000 per day.' }],
+        'send', ctx,
+      )
+
+      const [sent] = await run(
+        `select reply_image_url from messages
+         where direction = 'outbound' and delivery_state = 'pending'
+         order by created_at desc limit 1`, [],
+      )
+      expect(sent!['reply_image_url']).toBe(FERRARI[0])
+    })
+
+    /** Restraint intact: the same car twice unasked is what a bot does. */
+    it('does not show the same car again unasked', async () => {
+      await addHuracan()
+      await shownAlready(PHOTOS[0]!)
+      await shownAlready(PHOTOS[1]!)
+      const ctx = await asking('the lambo please')
+
+      await turn([{ toolCalls: [], reply: 'The Huracán Tecnica it is.' }], 'send', ctx)
+
+      const [sent] = await run(
+        `select reply_image_url from messages
+         where direction = 'outbound' and delivery_state = 'pending'
+         order by created_at desc limit 1`, [],
+      )
+      expect(sent!['reply_image_url']).toBeNull()
+    })
+  })
 })
 
 /**

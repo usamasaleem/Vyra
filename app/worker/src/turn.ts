@@ -33,6 +33,7 @@ import {
   ensureEnquiry,
   recordAgentRun,
   recordFields,
+  carsWithoutPhotos,
   ENQUIRY_FIELDS,
   getEnquiryFields,
   outstandingQuestions,
@@ -416,6 +417,29 @@ export async function runConversationTurn(
         return []
       })
 
+    /**
+     * Which cars cannot be shown at all.
+     *
+     * Fetched whenever the turn might be about cars — the same gate as the
+     * fleet prefetch, plus an outright request to see one, because "can you
+     * show me" names no car and would otherwise miss.
+     *
+     * A nicety like the rest: without it the reply still goes, and the model is
+     * back to bridging "photographs have been sent" and "show me the Ferrari"
+     * with a sentence about photographs of a different car.
+     */
+    const noPhotosOf = mightNeedTheFleet(context.message.body)
+      || asksToSeePhotos(context.message.body)
+      ? await carsWithoutPhotos(deps.run, context.operator.id).catch((error: unknown) => {
+          console.error(JSON.stringify({
+            event: 'photo_coverage.failed',
+            conversationId: context.conversation.id,
+            error: error instanceof Error ? error.message : String(error),
+          }))
+          return []
+        })
+      : []
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -454,6 +478,7 @@ export async function runConversationTurn(
       ...(fleetOnHand === undefined ? {} : { fleetOnHand }),
       ...(stillNeeded.length === 0 ? {} : { stillNeeded: stillNeeded.slice(0, 1) }),
       ...(known.length === 0 ? {} : { known }),
+      ...(noPhotosOf.length === 0 ? {} : { noPhotosOf }),
     })
     end = {
       reply: outcome.reply,
@@ -741,9 +766,27 @@ const FLEET_CARDS = 6
     }))
   }
 
+  /**
+   * Whether this customer has seen this car — not whether they have seen any.
+   *
+   * The unprompted send used to be gated on `seen.size === 0`: photographs go
+   * out once, on the first reply that has any, and never again unasked. That
+   * reads as "do not spam them" and behaves as "only the first car in a
+   * conversation is ever shown".
+   *
+   * Live: a customer picked the Ferrari off the list, having been sent the
+   * Lamborghini an hour before, and got a paragraph of description with no
+   * picture — because `seen` was not empty. Every car after the first was
+   * invisible for the rest of the conversation.
+   *
+   * The rule that was meant is per car, and `unseen` already knows: a car whose
+   * photographs are all still unsent is one this customer has not been shown.
+   */
+  const carIsNewToThem = candidates.length > 0 && unseen.length === candidates.length
+
   const showing = asked || claimed
     ? (unseen.length > 0 ? unseen : candidates).slice(0, PHOTOS_PER_CAR)
-    : (seen.size === 0 ? candidates.slice(0, PHOTOS_PER_CAR) : [])
+    : (carIsNewToThem ? candidates.slice(0, PHOTOS_PER_CAR) : [])
 
   /**
    * When the answer is "I sent those earlier", say it attached to the message

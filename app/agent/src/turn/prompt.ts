@@ -344,6 +344,18 @@ export function systemPromptFor(input: {
    */
   known?: ReadonlyArray<{ field: string; value: string; since: Date }>
   /**
+   * Cars there are no photographs of.
+   *
+   * Asked to show the Ferrari, the reply was "the yellow Ferrari 488 Spider is
+   * the convertible in the photos". The only photographs that customer had ever
+   * been sent were of the Lamborghini, and there are none of the Ferrari at all.
+   *
+   * It was not inventing freely. It had been told, truthfully, that photographs
+   * had gone to this customer, and nothing said which car they were of or that
+   * this one had none — so it bridged the two facts it had.
+   */
+  noPhotosOf?: readonly string[]
+  /**
    * The enquiry this turn is about.
    *
    * prepare_quote takes it as an argument and refuses anything else, so that a
@@ -397,6 +409,14 @@ export function systemPromptFor(input: {
       + ` The operator's photographs of a car are all there is — there are no other `
       + `angles to fetch and no more to source. Whatever is being sent is attached to `
       + `this reply already, so never offer to find, arrange or resend different ones.`
+
+  const missing = input.noPhotosOf ?? []
+  const nothingToShow = missing.length === 0
+    ? ''
+    : `\n\nThere are no photographs of ${missing.length === 1 ? 'the ' + missing[0] : 'the ' + missing.slice(0, -1).join(', the ') + ' or the ' + missing[missing.length - 1]}. `
+      + `If they ask to see one of those, say so plainly and offer to have some sent over — `
+      + `do not describe a picture, do not say it is "in the photos", and never point at `
+      + `photographs of a different car as though they were of this one.`
 
   const onHand = input.fleetOnHand === undefined
     ? ''
@@ -473,7 +493,7 @@ export function systemPromptFor(input: {
       + `say when they are ready, and a question asked a third time is a form rather than a `
       + `person.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${onHand}${remembered}${outstanding}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${remembered}${outstanding}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

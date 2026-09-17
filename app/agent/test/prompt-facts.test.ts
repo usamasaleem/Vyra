@@ -80,6 +80,46 @@ describe('what it is told about photographs it has sent', () => {
 })
 
 /**
+ * The customer picked the Ferrari off the list and asked to see it. The reply
+ * was "the yellow Ferrari 488 Spider is the convertible in the photos" — and
+ * the only photographs they had ever been sent were of the Lamborghini, an hour
+ * earlier. There are none of the Ferrari at all.
+ */
+describe('cars there are no photographs of', () => {
+  const withMissing = (noPhotosOf: readonly string[]) =>
+    systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e1', noPhotosOf })
+
+  it('names the one car', () => {
+    const text = withMissing(['Ferrari 488'])
+    expect(text).toContain('There are no photographs of the Ferrari 488.')
+  })
+
+  it('names two of them the way a person lists two', () => {
+    expect(withMissing(['Ferrari 488', 'Rolls-Royce Cullinan']))
+      .toContain('no photographs of the Ferrari 488 or the Rolls-Royce Cullinan')
+  })
+
+  it('uses commas for three and "or" only before the last', () => {
+    expect(withMissing(['Aston Martin DB11', 'Ferrari 488', 'Rolls-Royce Cullinan']))
+      .toContain('the Aston Martin DB11, the Ferrari 488 or the Rolls-Royce Cullinan')
+  })
+
+  /** The exact sentence that went out, forbidden by name. */
+  it('forbids pointing at another car\u2019s photographs', () => {
+    const text = withMissing(['Ferrari 488'])
+    expect(text).toContain('in the photos')
+    expect(text).toContain('never point at photographs of a different car')
+    expect(text).toContain('offer to have some sent over')
+  })
+
+  it('says nothing when every car has photographs', () => {
+    expect(withMissing([])).not.toContain('There are no photographs of')
+    expect(systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e1' }))
+      .not.toContain('There are no photographs of')
+  })
+})
+
+/**
  * Every reply in the transcript opened with an acknowledgement — five
  * different words doing one identical move, without exception.
  */
