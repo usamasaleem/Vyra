@@ -27,6 +27,34 @@ describe('buttonsFor', () => {
     expect(buttonsFor(reply)).toEqual(DATE_CONFIRMATION)
   })
 
+  /**
+   * The four fixed phrases matched one reply in ninety-eight. This is the one
+   * that prompted widening them: as closed a question as exists, with the dates
+   * named, sent as plain text because the wording was not on the list.
+   */
+  it.each([
+    'The Ferrari 488 Spider — AED 5,000 per day. Still looking at 19th–21st September?',
+    'Still the 19th?',
+    'Still those dates, 20 to 23 September?',
+    'Does 19th to 21st September still work?',
+    '19th September — is that your start date?',
+    'Shall I keep you down for 19th to 21st September?',
+  ])('offers a date confirmation for the way it actually asks: %j', (reply) => {
+    expect(buttonsFor(reply)).toEqual(DATE_CONFIRMATION)
+  })
+
+  /**
+   * NAMES_A_DATE is what keeps the wider shapes honest. None of them may fire
+   * on a sentence with no date in it, however closed the question sounds.
+   */
+  it.each([
+    'Still looking at the Cullinan?',
+    'Is that your preference?',
+    'Does that still work?',
+  ])('will not offer a date confirmation with no date on the table: %j', (reply) => {
+    expect(buttonsFor(reply)).toBeNull()
+  })
+
   it.each([
     'Would you like delivery, or will you collect it?',
     'Are you collecting, or shall we deliver?',

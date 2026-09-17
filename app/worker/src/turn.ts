@@ -671,7 +671,27 @@ export async function runConversationTurn(
     ? { make: photosShown[0]!.make, model: photosShown[0]!.model }
     : null
 
-  const images = subject !== null && offered.list === null && offered.buttons === null
+  /**
+   * A WhatsApp message carries an image or an interactive, never both, so one
+   * of them has to lose. It used to be the photographs.
+   *
+   * That was invisible while the button patterns matched one reply in
+   * ninety-eight. Widening them surfaced it immediately: "The Ferrari 488
+   * Spider — Giallo Modena yellow, 3.9 L twin-turbo V8, AED 5,000 per day.
+   * Still looking at 19th–21st September?" would have lost its four
+   * photographs and gained two buttons.
+   *
+   * The photographs are worth more. A customer who has just picked a car off
+   * the list wants to see it; the date question is still there in the words,
+   * costs them a short reply, and comes back with buttons on the next turn,
+   * when there is nothing to attach. So the gate on `buttons` is gone from
+   * here and the buttons are dropped below instead — which also means this
+   * decision is made once, where the photographs are known, rather than twice.
+   *
+   * The list keeps its precedence: a reply inviting a choice between cars is
+   * not about one car, and the line-up sends its own pictures alongside.
+   */
+  const images = subject !== null && offered.list === null
     ? await findVehicleImages(deps.run, {
         operatorId: context.operator.id,
         make: subject.make,
@@ -944,8 +964,11 @@ const FLEET_CARDS = 6
      * Two closed questions get a tap instead of a typed answer. Everything
      * else — which is nearly everything — goes as plain text, because a menu
      * on an open question is the fixed-flow bot this is not.
+     *
+     * Dropped when photographs are going out, because one message cannot hold
+     * both and the picture of the car is the better half of that trade.
      */
-    replyButtons: offered.list === null ? offered.buttons : null,
+    replyButtons: offered.list === null && showing.length === 0 ? offered.buttons : null,
     replyList: offered.list,
     /**
      * The reply carries the first photograph when there is one — except when

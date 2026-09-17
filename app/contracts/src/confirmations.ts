@@ -160,11 +160,28 @@ const DATE_CONFIRMATION_PATTERNS: RegExp[] = [
   /\bcorrect\?/i,
   /\bdo you mean\b[^?]{0,40}\?/i,
   /\bhave i got (?:that|those)\b[^?]{0,20}\?/i,
+  /**
+   * How it actually re-confirms a date it already has.
+   *
+   * Four fixed phrases matched once in ninety-eight messages. The reply that
+   * prompted this read "Still looking at 19th–21st September?" — as closed a
+   * question as exists, with the dates named, and it went out as plain text
+   * because the wording was not on the list.
+   *
+   * The model is told to vary its phrasing, so a list of exact sentences will
+   * always be behind it. These are shapes rather than sentences; `NAMES_A_DATE`
+   * above is what keeps them honest, since none of them can fire unless a date
+   * is actually on the table.
+   */
+  /\bstill (?:looking at|on for|on|after|planning|want(?:ing)?|the|those)\b[^?]{0,40}\?/i,
+  /\bstill work(?:s|ing)?\b[^?]{0,20}\?/i,
+  /\b(?:is|are) (?:that|those|these) (?:your|the)\b[^?]{0,30}\?/i,
+  /\bkeep(?:ing)? (?:it|that|those|you down for)\b[^?]{0,40}\?/i,
 ]
 
 /** Month names, so a confirmation is only offered when a date is actually on the table. */
 const NAMES_A_DATE =
-  /\b(?:\d{1,2}(?:st|nd|rd|th)?\s*(?:to|-|–|until)\s*\d{1,2}|january|february|march|april|may|june|july|august|september|october|november|december|tomorrow|weekend)\b/i
+  /\b(?:\d{1,2}(?:st|nd|rd|th)?\s*(?:to|-|–|until)\s*\d{1,2}|\d{1,2}(?:st|nd|rd|th)|january|february|march|april|may|june|july|august|september|october|november|december|tomorrow|weekend)\b/i
 
 const DELIVERY_PATTERNS: RegExp[] = [
   /\bdeliver(?:y|ed)?\b[^?]{0,30}\bor\b[^?]{0,30}\b(?:collect|pick)/i,

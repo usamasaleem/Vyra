@@ -788,6 +788,55 @@ describe('showing a car the model did not look up', () => {
       expect(sent!['quotes_message_id']).not.toBe(ferrariMessage!['id'])
     })
 
+    /**
+     * A WhatsApp message carries an image or an interactive, never both.
+     *
+     * It used to be the buttons that won, which was invisible while the button
+     * patterns matched one reply in ninety-eight. Widening them surfaced it: a
+     * customer who had just picked the Ferrari off the list would have lost its
+     * photographs to two buttons.
+     */
+    it('keeps the photographs and drops the buttons', async () => {
+      await addHuracan()
+      await addFerrari()
+      await shownAlready(PHOTOS[0]!)
+      const ctx = await asking('Ferrari 488, please.')
+
+      await turn([{
+        toolCalls: [],
+        reply: 'The Ferrari 488 — AED 5,000 per day. Still looking at 19th to 21st September?',
+      }], 'send', ctx)
+
+      const [sent] = await run(
+        `select reply_image_url, reply_buttons from messages
+         where direction = 'outbound' and delivery_state = 'pending'
+         order by created_at desc limit 1`, [],
+      )
+      expect(sent!['reply_image_url']).toBe(FERRARI[0])
+      expect(sent!['reply_buttons']).toBeNull()
+    })
+
+    /** And the buttons still arrive when there is no picture to displace. */
+    it('keeps the buttons when no photograph is going out', async () => {
+      await addHuracan()
+      await shownAlready(PHOTOS[0]!)
+      await shownAlready(PHOTOS[1]!)
+      const ctx = await asking('the lambo please')
+
+      await turn([{
+        toolCalls: [],
+        reply: 'The Huracán Tecnica. Still looking at 19th to 21st September?',
+      }], 'send', ctx)
+
+      const [sent] = await run(
+        `select reply_image_url, reply_buttons from messages
+         where direction = 'outbound' and delivery_state = 'pending'
+         order by created_at desc limit 1`, [],
+      )
+      expect(sent!['reply_image_url']).toBeNull()
+      expect(sent!['reply_buttons']).not.toBeNull()
+    })
+
     /** Restraint intact: the same car twice unasked is what a bot does. */
     it('does not show the same car again unasked', async () => {
       await addHuracan()
