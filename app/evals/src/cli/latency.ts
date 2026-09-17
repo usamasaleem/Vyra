@@ -1,5 +1,6 @@
 import { createEvalWorld, EVAL_NOW } from '../harness/world.js'
-import { openaiModel, runTurn, type ServiceTier } from '@vyra/agent'
+import { mightNeedTheFleet } from '@vyra/contracts'
+import { openaiModel, runTurn, searchVehicles, type ServiceTier } from '@vyra/agent'
 
 /**
  * Does Fast mode actually make a reply arrive sooner?
@@ -17,6 +18,15 @@ import { openaiModel, runTurn, type ServiceTier } from '@vyra/agent'
  *
  * Real messages from the pilot transcripts rather than invented ones, and the
  * same set the reasoning-effort measurement used, so the two are comparable.
+ *
+ * The fleet is seeded and prefetched here exactly as the worker does it. The
+ * first version of this file did neither, which made every number a
+ * measurement of an agent with no cars — fine for comparing two service tiers,
+ * since both saw the same nothing, and useless for the question of whether the
+ * model stops calling search_vehicles when the answer is already in front of
+ * it. That question is worth more than the tier one: nineteen of the
+ * twenty-four two-round turns in the pilot had the fleet in the prompt and
+ * looked it up regardless.
  *
  * Usage:
  *   OPENAI_API_KEY=... npx tsx app/evals/src/cli/latency.ts [rounds]
@@ -50,6 +60,33 @@ const samples: Sample[] = []
 
 const world = await createEvalWorld()
 
+/**
+ * The pilot's own three cars, with their real rates.
+ *
+ * An empty fleet is not a cheaper version of a real one — it is a different
+ * conversation, and the model answers it differently.
+ */
+await world.run(
+  `insert into vehicles (operator_id, make, model, variant, year, colour, category,
+                         plate, chassis_number, seats, engine, provenance, confirmed_by)
+   values ($1,'Rolls-Royce','Cullinan',null,2023,'English White','suv','D 1','V1',5,
+           '6.75 L twin-turbo V12','operator_confirmed','Owner'),
+          ($1,'Lamborghini','Huracán','Tecnica',2023,'Verde','exotic','D 2','V2',2,
+           '5.2 L V10','operator_confirmed','Owner'),
+          ($1,'Ferrari','488','Spider',2022,'Giallo Modena','exotic','D 3','V3',2,
+           '3.9 L twin-turbo V8','operator_confirmed','Owner')`,
+  [world.operatorId],
+)
+await world.run(
+  `insert into vehicle_rates (operator_id, vehicle_id, currency, daily_rate_minor,
+                              confirmed_by, confirmed_at)
+   select $1, v.id, 'AED',
+          case v.model when 'Cullinan' then 800000 when 'Huracán' then 550000 else 500000 end,
+          'Owner', now()
+   from vehicles v where v.operator_id = $1`,
+  [world.operatorId],
+)
+
 for (let round = 1; round <= rounds; round++) {
   for (const tier of TIERS) {
     const adapter = openaiModel({
@@ -57,11 +94,28 @@ for (let round = 1; round <= rounds; round++) {
     })
     for (const message of MESSAGES) {
       const ctx = await world.contextFor(`${message.id}-${tier ?? 'std'}-${round}`, message.say)
+
+      /**
+       * The prefetch, as the worker does it — same gate, same all-null filters,
+       * same JSON. Deliberately outside the timer: the worker pays for it too,
+       * but it is one small query and the question here is model rounds.
+       */
+      const latest = message.say[message.say.length - 1] ?? ''
+      const prefetched = mightNeedTheFleet(latest)
+        ? await searchVehicles(ctx, {
+            vehicle: null, category: null, maxDayRateMinor: null,
+            minSeats: null, order: null, startDate: null, endDate: null,
+          }).then((r) => (r.status === 'ok' ? r.data : undefined)).catch(() => undefined)
+        : undefined
+
       const began = Date.now()
       try {
         const outcome = await runTurn(adapter, ctx, message.say.map((text) => ({
           from: 'customer' as const, text,
-        })), { summary: null })
+        })), {
+          summary: null,
+          ...(prefetched === undefined ? {} : { fleetOnHand: JSON.stringify(prefetched) }),
+        })
         samples.push({
           tier: tier ?? 'standard',
           caseId: message.id,

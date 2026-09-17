@@ -159,25 +159,34 @@ export async function relayOnce(
  * lands while a turn is already running.
  */
 /**
- * Two seconds is right for a fragment and wasteful for a finished sentence.
+ * Four hundred milliseconds, because the burst this was sized for does not
+ * exist.
  *
- * Measured: a reply takes 4.5 seconds when it needs no tool and 7.6 when it
- * does, so a flat two seconds in front of that is a fifth to a third of the
- * whole wait — paid on every message, and earned only on the ones a second
- * message follows.
+ * It was two seconds, halved to 400ms when the customer's message ended in a
+ * full stop or a question mark — a sensible-sounding split that paid the full
+ * two seconds on 50 of the pilot's 90 messages.
  *
- * So the window is short when the customer's message ended in a full stop or a
- * question mark, and unchanged when it did not, because the ones that do not
- * are exactly the bursts this exists for. The judgement is made at ingest,
- * where the words are, and travels in the payload.
+ * Measured against every inbound message the system has received. The two
+ * second window has caught a burst **zero** times, and the short path has never
+ * once been wrong either. The gap between consecutive customer messages, across
+ * sixty samples, has a *minimum* of 4.6 seconds and a median of 32.7 — so a
+ * window that actually collapsed the bursts people send would have to be about
+ * thirty seconds long, which is not a trade anyone would make.
  *
- * Both failures are cheap. Guess wrong on a finished message and two arrive as
- * two turns, which the revision check already handles and which cost a
- * duplicate reply before this existed. Guess wrong on a fragment and somebody
- * waits the two seconds they would have waited anyway.
+ * People do not type on WhatsApp the way this assumed. They send, then think,
+ * then send again. The window was mis-sized by an order of magnitude and the
+ * cost was two seconds on more than half of all replies — more than Fast mode
+ * bought back, for a burst that never came.
+ *
+ * So one window, short enough to be free and long enough for the job key to do
+ * its work when two webhook events land together. The revision check still
+ * covers the case this never could: a message arriving while a turn is already
+ * running.
+ *
+ * The evidence is one pilot's traffic. If a real operator's customers turn out
+ * to double-tap, the two-second branch and `looksFinished` are in the history.
  */
-const COLLECTION_WINDOW = '2 seconds'
-const SHORT_WINDOW = '400 milliseconds'
+const COLLECTION_WINDOW = '400 milliseconds'
 
 export const publishToGraphileWorker: Publisher = async (tx, row) => {
   const conversationId = row.payload['conversation_id']
@@ -198,11 +207,7 @@ export const publishToGraphileWorker: Publisher = async (tx, row) => {
        payload    => $2::json,
        queue_name => $3,
        job_key    => $4,
-       run_at     => case
-                       when not $5 then now()
-                       when $6 then now() + interval '${SHORT_WINDOW}'
-                       else now() + interval '${COLLECTION_WINDOW}'
-                     end,
+       run_at     => case when $5 then now() + interval '${COLLECTION_WINDOW}' else now() end,
        max_attempts => 5
      )`,
     [
@@ -211,7 +216,6 @@ export const publishToGraphileWorker: Publisher = async (tx, row) => {
       typeof conversationId === 'string' ? `conversation:${conversationId}` : null,
       jobKey,
       isInboundTurn,
-      row.payload['looks_finished'] === true,
     ],
   )
 }
