@@ -36,6 +36,19 @@ export type Metrics = {
   quotesSent: number
   won: number
   lost: number
+  /**
+   * Rentals confirmed, and how many of those the agent confirmed itself.
+   *
+   * The reports knew about quotes and outcomes and nothing about bookings,
+   * which were the newest thing in the product and the only one that commits a
+   * car. `confirmedByAgent` is the number an operator actually weighs when
+   * deciding whether to keep the switch on: it is the work that did not need
+   * anybody, and its counterpart is the wait that no customer had.
+   */
+  bookingsConfirmed: number
+  confirmedByAgent: number
+  /** What was given away, in minor units. The question a jsonb array answers badly. */
+  discountedMinor: number
   lostReasons: Array<{ reason: string; count: number }>
   /** Flagged by a person as untrue. Nothing else can detect one. */
   incorrectAnswers: number
@@ -116,6 +129,24 @@ select
   (select count(*)::int from audit_events a, window_bounds w
    where a.operator_id = $1 and a.action = 'lead.lost'
      and a.created_at >= w.from_at and a.created_at < w.to_at) as lost,
+  /*
+   * Inclusive at the top, unlike the counts above, and for the reason the
+   * window_bounds comment already gives. now() is transaction time, so a
+   * booking confirmed in the same instant the report runs sits exactly on
+   * to_at and an exclusive bound drops it. That is not a row from the future;
+   * it is this one. The symptom is the one described above — a test that
+   * failed only when it ran fast enough and passed the moment a console.log
+   * slowed it down, which is how this was found.
+   */
+  (select count(*)::int from bookings b, window_bounds w
+   where b.operator_id = $1 and b.state = 'confirmed'
+     and b.decided_at >= w.from_at and b.decided_at <= w.to_at) as bookings_confirmed,
+  (select count(*)::int from bookings b, window_bounds w
+   where b.operator_id = $1 and b.state = 'confirmed' and b.decided_automatically
+     and b.decided_at >= w.from_at and b.decided_at <= w.to_at) as confirmed_by_agent,
+  (select coalesce(sum(q.discount_minor), 0)::bigint from quotes q, window_bounds w
+   where q.operator_id = $1 and q.discount_minor is not null
+     and q.approved_at >= w.from_at and q.approved_at <= w.to_at) as discounted_minor,
   (select count(*)::int from audit_events a, window_bounds w
    where a.operator_id = $1 and a.action = 'answer.flagged_incorrect'
      and a.created_at >= w.from_at and a.created_at < w.to_at) as incorrect_answers,
@@ -161,6 +192,9 @@ export async function getMetrics(
     quotesSent: Number(row?.['quotes_sent'] ?? 0),
     won: Number(row?.['won'] ?? 0),
     lost: Number(row?.['lost'] ?? 0),
+    bookingsConfirmed: Number(row?.['bookings_confirmed'] ?? 0),
+    confirmedByAgent: Number(row?.['confirmed_by_agent'] ?? 0),
+    discountedMinor: Number(row?.['discounted_minor'] ?? 0),
     lostReasons: reasons.map((r) => ({
       reason: r['reason'] as string,
       count: Number(r['n']),

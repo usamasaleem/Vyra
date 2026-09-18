@@ -1,4 +1,5 @@
-import { getNavCounts, listMembers, listNotes, PRIORITIES, LOST_REASONS,
+import {
+  assembleHandoffPacket, getNavCounts, listMembers, listNotes, LOST_REASONS, PRIORITIES,
 } from '@vyra/db'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -53,10 +54,18 @@ export default async function ConversationPage({
     const members = permissions.canReassign(actor)
       ? await listMembers(run, actor.operatorId)
       : []
-    return { thread, counts, notes, members }
+    /**
+     * Section 8's packet: what is known, what is open, why it came to a
+     * person. It has existed since the handoff queue did and was rendered
+     * nowhere, so a salesperson opening a conversation cold got the messages
+     * and nothing else — and had to read ninety of them to find out what the
+     * customer had already said.
+     */
+    const packet = await assembleHandoffPacket(run, actor.operatorId, thread.id)
+    return { thread, counts, notes, members, packet }
   })
   if (page === null) notFound()
-  const { thread, counts, notes, members } = page
+  const { thread, counts, notes, members, packet } = page
 
   const humanOwned = thread.handlerMode === 'human'
   const canReply = permissions.canReply(actor)
@@ -265,6 +274,45 @@ export default async function ConversationPage({
           )
         })}
       </section>
+
+      {packet !== null && (packet.known.length > 0 || packet.unresolved.length > 0) && (
+        <section className="card" style={{ marginBottom: '1rem' }}>
+          <strong>What we know</strong>
+          {packet.known.length > 0 && (
+            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem' }}>
+              {packet.known.map((f) => (
+                <li key={`${f.field}-${f.at.toISOString()}`} style={{ fontSize: '0.9rem' }}>
+                  <strong>{f.field.replace(/_/g, ' ')}:</strong> {f.value}
+                  {f.saidAs === null ? '' : ` — they said "${f.saidAs}"`}
+                  <span className="muted" style={{ fontSize: '0.8rem' }}>
+                    {' '}· {f.basis.replace(/_/g, ' ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {packet.unresolved.length > 0 && (
+            <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.88rem' }}>
+              Still open: {packet.unresolved.map((u) => u.replace(/_/g, ' ')).join(', ')}. A
+              salesperson who knows what is missing asks for it; one who does not, guesses.
+            </p>
+          )}
+
+          {packet.waitingOnOperator !== null && (
+            <p className="notice" style={{ margin: '0.6rem 0 0' }}>
+              Waiting on your team: {packet.waitingOnOperator.replace(/_/g, ' ')}
+            </p>
+          )}
+
+          {packet.reason !== null && (
+            <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.85rem' }}>
+              Came to a person because: {packet.reason.replace(/_/g, ' ')}
+              {packet.summary === null ? '' : ` — ${packet.summary}`}
+            </p>
+          )}
+        </section>
+      )}
 
       <div className="stack">
         {canReply ? (

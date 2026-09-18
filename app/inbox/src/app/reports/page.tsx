@@ -3,9 +3,10 @@ import { SiteNav } from '../site-nav'
 import {
   findQueueBacklog,
   formatDuration,
-  getNavCounts,
+  formatMoney,
   getAgentCosts,
   getMetrics,
+  getNavCounts,
   getQueueWaits,
 } from '@vyra/db'
 import { requireActor } from '@/lib/auth'
@@ -120,6 +121,18 @@ export default async function ReportsPage({
           label="QUOTES"
           value={String(m.quoteRequests)}
           note={`${m.quotesSent} sent`}
+        />
+        <Measure
+          label="BOOKED"
+          value={String(m.bookingsConfirmed)}
+          note={m.bookingsConfirmed === 0
+            ? 'confirmed rentals'
+            : `${m.confirmedByAgent} confirmed by the agent`}
+        />
+        <Measure
+          label="DISCOUNTED"
+          value={formatMoney(m.discountedMinor, 'AED')}
+          note="given away by your people"
         />
         <Measure label="WON" value={String(m.won)} />
         <Measure label="LOST" value={String(m.lost)} />

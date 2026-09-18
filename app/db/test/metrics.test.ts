@@ -280,3 +280,60 @@ describe('reading a duration', () => {
     expect(formatDuration(seconds)).toBe(expected)
   })
 })
+
+/**
+ * The reports knew about quotes and outcomes and nothing about bookings —
+ * which were the newest thing in the product and the only one that commits a
+ * car. An operator deciding whether to leave the agent confirming has exactly
+ * one number to weigh, and it was not on the page.
+ */
+describe('what the bookings cost and earned', () => {
+  let nth = 0
+
+  const book = async (over: { discount?: number; automatic?: boolean } = {}) => {
+    nth += 1
+    // Counted rather than random: a phone collision silently loses a booking
+    // and reads as the metric under-counting, which is a slow afternoon.
+    const conv = await conversation(`9715500${String(nth).padStart(4, '0')}`)
+    const [q] = await run(
+      `insert into quotes (operator_id, conversation_id, revision, state, total_minor, lines,
+                           discount_minor, approved_by_membership_id, approved_at)
+       values ($1, $2, 1, 'sent', 500000, '[]'::jsonb, $3, $4, now())
+       returning id`,
+      [OP, conv, over.discount ?? null, SARA],
+    )
+    await run(
+      `insert into bookings (operator_id, conversation_id, quote_id, state,
+                             decided_automatically, decided_at)
+       values ($1, $2, $3, 'confirmed', $4, now())`,
+      [OP, conv, q!['id'], over.automatic === true],
+    )
+  }
+
+  it('counts what was confirmed', async () => {
+    await book()
+    await book({ automatic: true })
+    expect((await getMetrics(run, OP, since())).bookingsConfirmed).toBe(2)
+  })
+
+  /** The number an operator actually weighs: work that needed nobody. */
+  it('separates the ones nobody was asked about', async () => {
+    await book()
+    await book({ automatic: true })
+    await book({ automatic: true })
+    expect((await getMetrics(run, OP, since())).confirmedByAgent).toBe(2)
+  })
+
+  it('adds up what was given away', async () => {
+    await book({ discount: 50_000 })
+    await book({ discount: 25_000 })
+    await book()
+    expect((await getMetrics(run, OP, since())).discountedMinor).toBe(75_000)
+  })
+
+  it('is zero rather than absent when nothing happened', async () => {
+    expect(await getMetrics(run, OP, since())).toMatchObject({
+      bookingsConfirmed: 0, confirmedByAgent: 0, discountedMinor: 0,
+    })
+  })
+})
