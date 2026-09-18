@@ -453,27 +453,19 @@ const runner: Runner = await runWorker({
       })
 
       /**
-       * Two blue ticks, whatever happens next.
+       * Two blue ticks mean the business has read this, and the business has
+       * to have read it.
        *
-       * The typing indicator further down is sent only once the system has
-       * decided to reply, which is right — Meta asks that it not be shown
-       * otherwise. But it was the *only* receipt, so every path that holds
-       * left the customer's message on one grey tick: a voice note, a
-       * conversation a salesperson owns, an accident routed to a person, an
-       * opted-out contact. One tick reads as "this did not arrive" when the
-       * truth is "this arrived and a person has it".
+       * This was sent here for a few hours, before any branch, so that no path
+       * left a customer on one grey tick. It made the wrong promise. A
+       * conversation a salesperson owns is marked read by nobody — the inbox
+       * sends no receipts at all — so the ticks said somebody was looking at a
+       * message nobody had opened. Live: "what colour is this?" turned blue and
+       * was never answered.
        *
-       * So the receipt is sent here, before any branch, and the indicator
-       * stays where it is. A read receipt is a statement of fact; a typing
-       * indicator is a promise.
-       *
-       * Not awaited, for the same reason the indicator is not: a courtesy must
-       * not delay the thing it is apologising for. A reaction is the one thing
-       * skipped — marking a thumbs-up read is a receipt for a receipt.
+       * A grey tick on an unread message is the truth. So the receipt goes with
+       * the reply, wherever a reply is actually made, and nowhere else.
        */
-      if (context.message.providerId !== null && handling.reason !== 'reaction_needs_no_reply') {
-        void whatsapp.markRead({ messageId: context.message.providerId })
-      }
 
       /**
        * A voice note or photo: acknowledged honestly and put in front of a
@@ -489,6 +481,9 @@ const runner: Runner = await runWorker({
        * have had an accident" is the worst thing this system could produce.
        */
       if (handling.reason === 'urgent_needs_a_person' && handling.urgent !== undefined) {
+        if (context.message.providerId !== null) {
+          void whatsapp.markRead({ messageId: context.message.providerId })
+        }
         const routed = await handleUrgentMessage(
           { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
           context,
@@ -506,6 +501,9 @@ const runner: Runner = await runWorker({
       }
 
       if (handling.reason === 'non_text_needs_a_person') {
+        if (context.message.providerId !== null) {
+          void whatsapp.markRead({ messageId: context.message.providerId })
+        }
         const routed = await handleNonTextMessage(
           { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
           context,
@@ -541,6 +539,17 @@ const runner: Runner = await runWorker({
           context,
         )
         if (told.outcome === 'queued') {
+          /**
+           * Only when the line actually goes out — which is once per handoff.
+           *
+           * Every message after that is a customer waiting on a person who has
+           * not opened the conversation, and a blue tick there says somebody
+           * has. They have not, and the grey tick is the honest signal that
+           * this is still sitting unread.
+           */
+          if (context.message.providerId !== null) {
+            void whatsapp.markRead({ messageId: context.message.providerId })
+          }
           log({
             event: 'waiting.acknowledged',
             jobId: helpers.job.id,
