@@ -36,6 +36,7 @@ const valid: SettingsUpdate = {
   name: 'Vyra Pilot', timezone: 'Asia/Dubai', websiteUrl: null,
   aiResumesAfterMinutes: 60, followUpAfterMinutes: 10, handoffSlaMinutes: 30,
   answerValidMinutes: 240, retentionDays: 730, fallbackOwnerMembershipId: null,
+  autoConfirmBookings: false, autoConfirmLimitMinor: null,
 }
 
 const save = (over: Partial<SettingsUpdate> = {}) =>
@@ -155,5 +156,36 @@ describe('what will not be saved', () => {
 
   it('accepts the settings this operator actually runs on', () => {
     expect(checkSettings(valid)).toEqual([])
+  })
+})
+
+/**
+ * The switch that changes what the software may promise for somebody.
+ *
+ * Kept with the other settings because that is where an operator looks, and
+ * audited with them for the same reason the calendar claim is: turning this on
+ * is a decision about liability, not a preference about timing.
+ */
+describe('letting the agent confirm bookings', () => {
+  it('is off until somebody turns it on', async () => {
+    expect(await getOperatorSettings(run, OP)).toMatchObject({
+      autoConfirmBookings: false, autoConfirmLimitMinor: null,
+    })
+  })
+
+  it('stores the ceiling in minor units like every other amount', async () => {
+    await save({ autoConfirmBookings: true, autoConfirmLimitMinor: 2_000_000 })
+    expect(await getOperatorSettings(run, OP)).toMatchObject({
+      autoConfirmBookings: true, autoConfirmLimitMinor: 2_000_000,
+    })
+  })
+
+  it('records the change against the person who made it', async () => {
+    await save({ autoConfirmBookings: true })
+    const [event] = await run(
+      `select actor_id, data from audit_events
+       where action = 'operator.settings_changed' order by created_at desc limit 1`, [])
+    expect(event!['actor_id']).toBe(SARA)
+    expect((event!['data'] as Record<string, unknown>)['auto_confirm_bookings']).toBe(true)
   })
 })

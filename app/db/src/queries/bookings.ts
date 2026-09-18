@@ -29,6 +29,14 @@ export type BookingRequest = {
   quoteId: string
   /** True when this yes was already on file — they said it twice. */
   alreadyRequested: boolean
+  /**
+   * True when the agent confirmed it on the spot.
+   *
+   * What the reply is allowed to say turns on this and nothing else: booked,
+   * or a colleague will confirm. It is decided here, against the record,
+   * rather than by the model reading its own instructions.
+   */
+  confirmed: boolean
 }
 
 export type RequestBookingResult =
@@ -218,8 +226,131 @@ export async function requestBooking(
       [input.conversationId, input.operatorId],
     )
 
-    return { ok: true as const, booking: { bookingId, quoteId: input.quoteId, alreadyRequested } }
+    /**
+     * And, if the operator allows it, answer them now.
+     *
+     * Section 18.8 put final booking confirmation with refunds and payment
+     * verification as work that is not an AI tool, and that was right for as
+     * long as confirming meant asserting a car was free on a calendar nobody
+     * maintained. The system now writes a hold for every confirmed rental and
+     * the overlap check is real, so an operator can decide the machine may
+     * answer a yes it can actually prove. Off unless they turn it on, per
+     * operator, because it is their liability and not a property of the
+     * software.
+     *
+     * Every condition below is a way of saying "and nothing about this is
+     * unusual". The unusual booking is exactly the one worth a person's eyes,
+     * and the wait is only worth removing from the ordinary ones.
+     */
+    const confirmed = await autoConfirm(tx, {
+      operatorId: input.operatorId,
+      conversationId: input.conversationId,
+      bookingId,
+      quoteId: input.quoteId,
+    })
+
+    return {
+      ok: true as const,
+      booking: { bookingId, quoteId: input.quoteId, alreadyRequested, confirmed },
+    }
   })
+}
+
+/**
+ * Whether this one can be answered without asking anybody, and doing it.
+ *
+ * Runs inside the caller's transaction, takes the same lock on the vehicle and
+ * makes the same overlap check as a person pressing Confirm. Nothing here is a
+ * shortcut around the guarantees — what it removes is the wait, not a check.
+ */
+async function autoConfirm(
+  tx: QueryRunner,
+  input: {
+    operatorId: string
+    conversationId: string
+    bookingId: string
+    quoteId: string
+  },
+): Promise<boolean> {
+  const [rules] = await tx(
+    `select o.auto_confirm_bookings, o.auto_confirm_limit_minor,
+            o.availability_calendar_complete,
+            v.handler_mode::text as handler_mode,
+            q.vehicle_id, q.total_minor,
+            q.start_date::date::text as start_date,
+            coalesce(q.end_date, q.start_date)::date::text as end_date,
+            (select count(*) from handoffs h
+              where h.conversation_id = v.id and h.operator_id = v.operator_id
+                and h.state <> 'resolved') as open_handoffs
+     from operators o
+     join conversations v on v.id = $2 and v.operator_id = o.id
+     join quotes q on q.id = $3 and q.operator_id = o.id
+     where o.id = $1`,
+    [input.operatorId, input.conversationId, input.quoteId],
+  )
+  if (rules === undefined) return false
+
+  if (rules['auto_confirm_bookings'] !== true) return false
+
+  /**
+   * Without a calendar the operator vouches for, "no block" means "nobody
+   * knows" — and confirming on that is the double booking this system spent a
+   * day learning to prevent. An automatic yes needs a real no to be possible.
+   */
+  if (rules['availability_calendar_complete'] !== true) return false
+
+  // A person is already holding this conversation. Theirs to answer.
+  if (rules['handler_mode'] !== 'ai') return false
+  if (Number(rules['open_handoffs']) > 0) return false
+
+  const vehicleId = (rules['vehicle_id'] as string) ?? null
+  const startDate = (rules['start_date'] as string) ?? null
+  const endDate = (rules['end_date'] as string) ?? startDate
+  if (vehicleId === null || startDate === null) return false
+
+  const ceiling = rules['auto_confirm_limit_minor'] == null
+    ? null
+    : Number(rules['auto_confirm_limit_minor'])
+  if (ceiling !== null && Number(rules['total_minor']) > ceiling) return false
+
+  // The same lock and the same overlap test as a person's press.
+  await tx(`select id from vehicles where id = $1 and operator_id = $2 for update`,
+    [vehicleId, input.operatorId])
+
+  const [clash] = await tx(
+    `select 1 from vehicle_availability a
+     where a.operator_id = $1 and a.vehicle_id = $2 and a.released_at is null
+       and a.booking_id is distinct from $5
+       and a.start_date <= $4 and a.end_date >= $3
+     limit 1`,
+    [input.operatorId, vehicleId, startDate, endDate, input.bookingId],
+  )
+  if (clash !== undefined) return false
+
+  const moved = await tx(
+    `update bookings
+     set state = 'confirmed', decided_at = now(), decided_automatically = true,
+         updated_at = now()
+     where id = $1 and operator_id = $2 and state = 'requested'
+     returning id`,
+    [input.bookingId, input.operatorId],
+  )
+  if (moved.length === 0) return false
+
+  await tx(
+    `insert into vehicle_availability
+       (operator_id, vehicle_id, start_date, end_date, reason, recorded_by, booking_id)
+     values ($1, $2, $3, $4, 'booked', 'confirmed by the agent', $5)`,
+    [input.operatorId, vehicleId, startDate, endDate, input.bookingId],
+  )
+
+  await tx(
+    `update conversations set booking_status = 'confirmed', updated_at = now()
+     where id = $1 and operator_id = $2`,
+    [input.conversationId, input.operatorId],
+  )
+
+  return true
 }
 
 export type PendingBooking = {
@@ -525,6 +656,8 @@ export type ConfirmedBooking = {
   totalMinor: number
   confirmedAt: Date
   confirmedBy: string | null
+  /** True when the agent confirmed it and nobody was asked. */
+  confirmedAutomatically: boolean
 }
 
 /**
@@ -538,7 +671,7 @@ export async function listConfirmedBookings(
   operatorId: string,
 ): Promise<ConfirmedBooking[]> {
   const rows = await run(
-    `select b.id, b.conversation_id, b.decided_at,
+    `select b.id, b.conversation_id, b.decided_at, b.decided_automatically,
             ct.channel_identifier, ct.display_name,
             m.display_name as confirmed_by,
             trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle,
@@ -568,5 +701,6 @@ export async function listConfirmedBookings(
     totalMinor: Number(r['total_minor']),
     confirmedAt: new Date(r['decided_at'] as string),
     confirmedBy: (r['confirmed_by'] as string) ?? null,
+    confirmedAutomatically: r['decided_automatically'] === true,
   }))
 }

@@ -281,6 +281,13 @@
       "when": 1789753713272,
       "tag": "0039_booking_holds_the_car",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789756314616,
+      "tag": "0040_auto_confirm",
+      "breakpoints": true
     }
   ]
 }

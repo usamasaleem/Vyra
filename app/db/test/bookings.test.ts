@@ -304,3 +304,108 @@ describe('a confirmed booking holds the car', () => {
     })).toMatchObject({ cancelled: false })
   })
 })
+
+/**
+ * The agent answering a yes it can prove.
+ *
+ * Section 18.8 put final booking confirmation with refunds and payment
+ * verification as work that is not an AI tool, and that held for as long as
+ * confirming meant asserting a car was free on a calendar nobody maintained.
+ * With a real hold and a real overlap test, an operator can decide otherwise —
+ * so this is theirs to switch on, and every condition below is a way of saying
+ * "and nothing about this is unusual".
+ */
+describe('confirming without asking anybody', () => {
+  const allow = (over: Record<string, unknown> = {}) =>
+    run(
+      `update operators set auto_confirm_bookings = true,
+         availability_calendar_complete = coalesce($2, true),
+         auto_confirm_limit_minor = $1
+       where id = $3`,
+      [over['limit'] ?? null, over['calendar'] ?? null, OP],
+    )
+
+  it('does nothing unless the operator has switched it on', async () => {
+    const result = await request(await sentQuote())
+    expect(result).toMatchObject({ ok: true, booking: { confirmed: false } })
+    expect(await run(`select id from vehicle_availability`, [])).toEqual([])
+  })
+
+  it('confirms and holds the car in one go', async () => {
+    await allow()
+    const result = await request(await sentQuote())
+
+    expect(result).toMatchObject({ ok: true, booking: { confirmed: true } })
+    const [row] = await run(
+      `select state::text as state, decided_automatically, decided_by_membership_id
+       from bookings where operator_id = $1`, [OP])
+    expect(row).toMatchObject({
+      state: 'confirmed',
+      decided_automatically: true,
+      // Nobody answered it, and the record says so rather than implying it.
+      decided_by_membership_id: null,
+    })
+
+    const [block] = await run(
+      `select reason, recorded_by, start_date from vehicle_availability`, [])
+    expect(block).toMatchObject({ recorded_by: 'confirmed by the agent', start_date: '2026-09-20' })
+  })
+
+  /**
+   * Without a calendar the operator vouches for, "no block" means "nobody
+   * knows", and confirming on that is the double booking this system spent a
+   * day learning to prevent.
+   */
+  it('refuses to confirm while the calendar is not vouched for', async () => {
+    await allow({ calendar: false })
+    expect(await request(await sentQuote())).toMatchObject({ booking: { confirmed: false } })
+  })
+
+  it('leaves the car alone when it is already held', async () => {
+    await allow()
+    await request(await sentQuote({ revision: 1 }))
+
+    const second = await request(await sentQuote({
+      revision: 2, startDate: '2026-09-21', endDate: '2026-09-22',
+    }))
+    expect(second).toMatchObject({ booking: { confirmed: false } })
+
+    const held = await run(`select id from vehicle_availability where released_at is null`, [])
+    expect(held).toHaveLength(1)
+  })
+
+  /** The unusual booking is the one worth a person's eyes. */
+  it('sends a big one to a person', async () => {
+    await allow({ limit: 100000 })
+    expect(await request(await sentQuote())).toMatchObject({ booking: { confirmed: false } })
+  })
+
+  it('leaves it alone when a person already holds the conversation', async () => {
+    await allow()
+    await run(`update conversations set handler_mode = 'human' where id = $1`, [CONV])
+    expect(await request(await sentQuote())).toMatchObject({ booking: { confirmed: false } })
+  })
+
+  it('leaves it alone while a handoff is open', async () => {
+    await allow()
+    await run(
+      `insert into handoffs (operator_id, conversation_id, reason, summary, state, due_at)
+       values ($1, $2, 'customer_asked', 'wants a person', 'waiting', now() + interval '30 min')`,
+      [OP, CONV],
+    )
+    expect(await request(await sentQuote())).toMatchObject({ booking: { confirmed: false } })
+  })
+
+  /** An automatic confirmation is still a confirmation: it can be given back. */
+  it('can be cancelled like any other', async () => {
+    await allow()
+    const result = await request(await sentQuote())
+    const id = (result as { booking: { bookingId: string } }).booking.bookingId
+
+    expect(await cancelBooking(transact, {
+      operatorId: OP, bookingId: id, membershipId: MEMBER,
+    })).toMatchObject({ cancelled: true })
+    const [block] = await run(`select released_at from vehicle_availability`, [])
+    expect(block!['released_at']).not.toBeNull()
+  })
+})

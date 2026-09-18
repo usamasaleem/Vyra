@@ -14,6 +14,9 @@ type Settings = {
   answerValidMinutes: number
   retentionDays: number
   fallbackOwnerMembershipId: string | null
+  autoConfirmBookings: boolean
+  autoConfirmLimitMinor: number | null
+  availabilityCalendarComplete: boolean
 }
 
 /**
@@ -155,6 +158,48 @@ export function SettingsForm({
           problem={problem('answerValidMinutes')}
         >
           {number('answerValidMinutes', settings.answerValidMinutes)}
+        </Field>
+      </section>
+
+      <section className="card" style={{ marginBottom: '1rem' }}>
+        <h2 style={{ fontSize: '1.05rem', marginTop: 0 }}>Confirming bookings</h2>
+        <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0 }}>
+          Normally a customer says yes and one of your people confirms it. With this on, the
+          agent confirms it itself when it can prove the car is free — the same overlap check,
+          the same hold on the calendar, without the wait. Anything unusual still goes to a
+          person: a car already held, a conversation somebody has taken over, an open handoff,
+          or a total above the ceiling below.
+        </p>
+        {!settings.availabilityCalendarComplete && (
+          <p className="notice">
+            This does nothing until you tell us on <a href="/availability">Availability</a> that
+            you keep the calendar current. Without that, &ldquo;no booking on file&rdquo; means
+            nobody knows, and confirming on it is how the same car goes out twice.
+          </p>
+        )}
+        <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', margin: '0.6rem 0' }}>
+          <input
+            type="checkbox"
+            name="autoConfirmBookings"
+            defaultChecked={settings.autoConfirmBookings}
+            disabled={readOnly}
+          />
+          <span>Let the agent confirm bookings it can prove</span>
+        </label>
+        <Field
+          name="autoConfirmLimit"
+          label="Confirm on its own up to (AED total)"
+          hint="Blank for no ceiling. Above this, the customer's yes still goes to one of your people."
+          problem={problem('autoConfirmLimit')}
+        >
+          <input
+            className="input" id="autoConfirmLimit" name="autoConfirmLimit"
+            type="number" inputMode="numeric" min={1}
+            defaultValue={settings.autoConfirmLimitMinor === null
+              ? ''
+              : String(settings.autoConfirmLimitMinor / 100)}
+            disabled={readOnly}
+          />
         </Field>
       </section>
 

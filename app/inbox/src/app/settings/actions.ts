@@ -50,6 +50,18 @@ export async function saveSettings(
     answerValidMinutes: minutes(formData, 'answerValidMinutes') ?? Number.NaN,
     retentionDays: minutes(formData, 'retentionDays') ?? Number.NaN,
     fallbackOwnerMembershipId: owner === '' ? null : owner,
+    /**
+     * The one switch here that changes what the software may promise for
+     * somebody. A ceiling in whole currency on the form, stored in minor
+     * units like every other amount; blank means no ceiling.
+     */
+    autoConfirmBookings: formData.get('autoConfirmBookings') === 'on',
+    autoConfirmLimitMinor: (() => {
+      const raw = String(formData.get('autoConfirmLimit') ?? '').trim()
+      if (raw === '') return null
+      const major = Number(raw)
+      return Number.isFinite(major) && major > 0 ? Math.round(major * 100) : null
+    })(),
   }
 
   const problems = checkSettings(update)

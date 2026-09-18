@@ -9,6 +9,9 @@ export type BookingReviewRequested = {
   quoteId: string
   /** True when this yes was already on file. Say so; do not ask them again. */
   alreadyRequested: boolean
+  /** Whether it is booked, or waiting on a person. Decided by the record. */
+  confirmed: boolean
+  guidance: string
 }
 
 /**
@@ -56,9 +59,26 @@ export async function requestBookingReview(
     return refuse('invalid_arguments', result.refusal.detail)
   }
 
+  /**
+   * What the customer may be told, decided here rather than by the model.
+   *
+   * The difference between "booked" and "a colleague will confirm" is the
+   * difference between a promise the operator must keep and one nobody made.
+   * It turns on whether the car was actually held, which is a fact about the
+   * record, so it is stated as one — not left to an instruction the model
+   * weighs against everything else it has been told.
+   */
   return ok({
     bookingId: result.booking.bookingId,
     quoteId: result.booking.quoteId,
     alreadyRequested: result.booking.alreadyRequested,
+    confirmed: result.booking.confirmed,
+    guidance: result.booking.confirmed
+      ? 'This is CONFIRMED. The car is held for those dates and nobody else can be given '
+        + 'it. Tell them plainly that it is booked, say the car and the dates back once, and '
+        + 'say somebody will be in touch about the details. Do not say it is pending or that '
+        + 'a colleague still has to approve it.'
+      : 'This is NOT confirmed. Their agreement is recorded and a colleague will confirm it. '
+        + 'Say that, and do not say it is booked, held, reserved or secured.',
   })
 }

@@ -157,7 +157,9 @@ export default async function BookingsPage() {
                       {b.endDate !== null && b.endDate !== b.startDate ? ` to ${b.endDate}` : ''}
                       {' · '}{b.customerName ?? b.customer}
                       {' · '}{formatMoney(b.totalMinor, b.currency)}
-                      {b.confirmedBy === null ? '' : ` · confirmed by ${b.confirmedBy}`}
+                      {b.confirmedAutomatically
+                        ? ' · confirmed by the agent'
+                        : b.confirmedBy === null ? '' : ` · confirmed by ${b.confirmedBy}`}
                     </div>
                   </div>
                   <a className="button secondary" href={`/conversations/${b.conversationId}`}>

@@ -23,6 +23,17 @@ export type OperatorSettings = {
   answerValidMinutes: number
   retentionDays: number
   fallbackOwnerMembershipId: string | null
+  /**
+   * Whether the agent may confirm a booking itself.
+   *
+   * Audited on every change, like the calendar claim it depends on, because
+   * it changes what the software is allowed to promise on somebody's behalf.
+   */
+  autoConfirmBookings: boolean
+  /** The most it may confirm alone, in minor units. Null for no ceiling. */
+  autoConfirmLimitMinor: number | null
+  /** Whether the operator vouches for the calendar. Auto-confirm needs it. */
+  availabilityCalendarComplete: boolean
   /** Read-only here. Connecting a number is not something a form can do. */
   whatsappNumber: string | null
 }
@@ -35,6 +46,8 @@ export async function getOperatorSettings(
     `select o.name, o.timezone, o.website_url, o.ai_sending_enabled, o.ai_resumes_after_minutes,
             o.follow_up_after_minutes, o.handoff_sla_minutes, o.answer_valid_minutes,
             o.retention_days, o.fallback_owner_membership_id,
+            o.auto_confirm_bookings, o.auto_confirm_limit_minor,
+            o.availability_calendar_complete,
             (select w.display_phone_number from whatsapp_accounts w
              where w.operator_id = o.id order by w.created_at limit 1) as whatsapp_number
      from operators o
@@ -57,6 +70,11 @@ export async function getOperatorSettings(
     answerValidMinutes: Number(row['answer_valid_minutes']),
     retentionDays: Number(row['retention_days']),
     fallbackOwnerMembershipId: (row['fallback_owner_membership_id'] as string) ?? null,
+    autoConfirmBookings: row['auto_confirm_bookings'] === true,
+    autoConfirmLimitMinor: row['auto_confirm_limit_minor'] == null
+      ? null
+      : Number(row['auto_confirm_limit_minor']),
+    availabilityCalendarComplete: row['availability_calendar_complete'] === true,
     whatsappNumber: (row['whatsapp_number'] as string) ?? null,
   }
 }
@@ -71,6 +89,8 @@ export type SettingsUpdate = {
   answerValidMinutes: number
   retentionDays: number
   fallbackOwnerMembershipId: string | null
+  autoConfirmBookings: boolean
+  autoConfirmLimitMinor: number | null
 }
 
 /**
@@ -152,6 +172,8 @@ export async function updateOperatorSettings(
          select m.id from memberships m
          where m.id = $9::uuid and m.operator_id = o.id and m.active
        ),
+       auto_confirm_bookings = $11,
+       auto_confirm_limit_minor = $12,
        updated_at = now()
      where o.id = $1
      returning o.id`,
@@ -160,6 +182,7 @@ export async function updateOperatorSettings(
       input.aiResumesAfterMinutes, input.followUpAfterMinutes, input.handoffSlaMinutes,
       input.answerValidMinutes, input.retentionDays, input.fallbackOwnerMembershipId,
       usableWebsite(input.websiteUrl),
+      input.autoConfirmBookings, input.autoConfirmLimitMinor,
     ],
   )
   if (rows.length === 0) return { saved: false }
@@ -177,6 +200,8 @@ export async function updateOperatorSettings(
         handoff_sla_minutes: input.handoffSlaMinutes,
         answer_valid_minutes: input.answerValidMinutes,
         retention_days: input.retentionDays,
+        auto_confirm_bookings: input.autoConfirmBookings,
+        auto_confirm_limit_minor: input.autoConfirmLimitMinor,
       }),
     ],
   )

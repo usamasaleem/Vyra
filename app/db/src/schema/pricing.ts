@@ -1,5 +1,5 @@
 import {
-  foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid,
+  boolean,  foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { operators, memberships } from './operators.js'
@@ -199,6 +199,17 @@ export const bookings = pgTable(
     decidedAt: timestamp({ withTimezone: true }),
     /** Why, when the answer was no. For the person, not for the customer. */
     decisionNote: text(),
+
+    /**
+     * True when the agent confirmed this itself, with nobody asked.
+     *
+     * Recorded rather than inferred from a null membership, because null
+     * already means several things here — a request nobody has answered, a
+     * decision by somebody since removed. A booking that committed a car with
+     * no person in the loop is worth being able to find, count and argue with
+     * afterwards.
+     */
+    decidedAutomatically: boolean().notNull().default(false),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

@@ -114,6 +114,30 @@ export const operators = pgTable('operators', {
      * and it is their claim rather than our inference. Until then a block still
      * answers "no" with authority, and everything else still goes to a person.
      */
+    /**
+     * Whether the agent may confirm a booking itself.
+     *
+     * Section 18.8 puts final booking confirmation with refunds and payment
+     * verification as work that is not an AI tool, and that line held for as
+     * long as nothing could check anything: confirming meant asserting a car
+     * was free on a calendar nobody maintained. Now the system writes a hold
+     * for every confirmed rental and the overlap check is real, so the
+     * operator can decide the machine may answer a yes it can prove.
+     *
+     * Off by default and per operator, because it is their liability rather
+     * than a property of the software. Nothing here removes the checks — an
+     * automatic confirmation passes the same overlap test, behind the same
+     * lock, as one a person presses. What it removes is the wait.
+     */
+    autoConfirmBookings: boolean().notNull().default(false),
+    /**
+     * The most the agent may confirm without a person, in minor units.
+     *
+     * Null means no ceiling. The point is not the money as such — it is that
+     * the unusual booking is the one worth a person's eyes, and size is the
+     * cheapest proxy for unusual that does not need anybody to define it.
+     */
+    autoConfirmLimitMinor: integer(),
     availabilityCalendarComplete: boolean().notNull().default(false),
 
   /**
