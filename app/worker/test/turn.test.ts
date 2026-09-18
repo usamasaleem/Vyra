@@ -605,8 +605,8 @@ describe('a customer waiting on a person nobody has become', () => {
   })
 
   /**
-   * Once is the whole design. A bot repeating "someone will be with you
-   * shortly" is the sound of nobody being there at all.
+   * Once in a sitting. A bot repeating "someone will be with you shortly" is
+   * the sound of nobody being there at all.
    */
   it('says it once, however many times they write', async () => {
     await handedOver()
@@ -637,18 +637,43 @@ describe('a customer waiting on a person nobody has become', () => {
     expect(await outbound()).toEqual([])
   })
 
-  /** A new handoff is a new silence, and earns its own line. */
-  it('speaks again for a later handoff', async () => {
-    const first = await handedOver()
-    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Hi?'))
-    await resolveHandoff(run, { conversationId: CONV, operatorId: OP, resolution: 'handled' })
-
+  /**
+   * Coming back hours later is a new silence and earns its own line.
+   *
+   * The rule was once per handoff for a few hours and that was too stingy by a
+   * long way: a customer told at 05:51 that a colleague had it came back at
+   * 11:13 to a handoff still nobody's, and got nothing — on the grounds that
+   * the same task had already been mentioned.
+   */
+  it('speaks again when they come back to a silence', async () => {
     await handedOver()
-    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Back again'))
+    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Hi?'))
 
-    const sent = await outbound()
-    expect(sent).toHaveLength(2)
-    expect(first).toBeTruthy()
+    // Everything said to them so far is now an hour old.
+    await run(
+      `update messages set created_at = created_at - interval '1 hour'
+       where conversation_id = $1 and direction = 'outbound'`, [CONV],
+    )
+    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Still there?'))
+
+    expect(await outbound()).toHaveLength(2)
+  })
+
+  /**
+   * A salesperson's own reply counts. If somebody has just spoken to them they
+   * are not being ignored, and saying "a colleague has this" on top of it is
+   * noise.
+   */
+  it('stays quiet when a person has just replied', async () => {
+    await handedOver()
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'outbound', 'text', 'Looking into it now', $3)`,
+      [OP, CONV, `wamid.${Math.random()}`],
+    )
+
+    await acknowledgeWaiting({ run, transact, destination: 'send' }, await asking('Any news?'))
+    expect(await outbound()).toHaveLength(1)
   })
 })
 

@@ -277,11 +277,20 @@ export async function handleUrgentMessage(
  * section 10 is right that two handlers are worse than one. But "a colleague
  * has this" costs nothing and is the difference between a queue and a void.
  *
- * Once is the whole design. The idempotency key is the handoff rather than the
- * message, so the second, third and fifth message produce nothing — a bot
- * repeating "someone will be with you shortly" is the sound of no one being
- * there at all.
+ * Once per silence rather than once per handoff, which is what it was for a
+ * few hours and was too stingy by a long way. A customer was told at 05:51
+ * that a colleague had it, came back at 11:13 to a handoff still nobody's, and
+ * got nothing — five hours later, on the grounds that the same handoff had
+ * already been acknowledged. Once in a sitting is right. Once in a day is a
+ * different thing wearing the same rule.
+ *
+ * So the test is whether anything has been said to them recently, not whether
+ * this task has ever been mentioned. That makes it self-limiting without a
+ * counter: the acknowledgement is itself an outbound message, so a burst of
+ * four gets one and the other three see it and stay quiet.
  */
+const QUIET_FOR_MINUTES = 30
+
 export async function acknowledgeWaiting(
   deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
   context: ConversationContext,
@@ -295,13 +304,29 @@ export async function acknowledgeWaiting(
   // deliberately. Either way this is not the silence to fill.
   if (unclaimed === null) return { outcome: 'skipped', reason: 'no_message_body' }
 
+  /**
+   * Anything at all in the last half hour counts, including a salesperson's
+   * own reply. If somebody has just spoken to them, they are not being
+   * ignored, and saying "a colleague has this" on top of it is noise.
+   */
+  const recent = await deps.run(
+    `select 1 from messages
+     where conversation_id = $1 and operator_id = $2 and direction = 'outbound'
+       and created_at > now() - make_interval(mins => $3)
+     limit 1`,
+    [context.conversation.id, context.operator.id, QUIET_FOR_MINUTES],
+  ).catch(() => [])
+  if (recent.length > 0) return { outcome: 'rejected', reason: 'already_acknowledged' }
+
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
     revisionAtTurnStart: context.conversation.revision,
     body: 'A colleague has this one and will come back to you shortly — '
       + "I've let them know you're waiting.",
-    idempotencyKey: `waiting:${unclaimed.handoffId}`,
+    // Per message, which the quiet check above makes safe: a second message
+    // arriving behind this one sees the acknowledgement and says nothing.
+    idempotencyKey: `waiting:${context.message.id}`,
     destination: deps.destination,
     ownHandoff: true,
   })
