@@ -111,10 +111,22 @@ export function decideHandling(
   if (context.message.kind === 'reaction') {
     return { action: 'hold', reason: 'reaction_needs_no_reply' }
   }
-  // A voice note or photo is stored and acknowledged, never silently dropped,
-  // and never treated as though the customer said nothing. Until the AI can
-  // interpret one, it routes to a person.
-  if (context.message.kind !== 'text') {
+  /**
+   * A voice note that has been transcribed is a message like any other.
+   *
+   * `kind` stays `audio` — it was spoken, the inbox should say so, and the
+   * model is told so. What changes is that there are now words to answer, and
+   * holding a message we can read would be the same silence section 17 forbids
+   * for one we cannot.
+   *
+   * Everything else non-text still routes to a person: a photograph, a
+   * document, a location. And a voice note whose transcription failed has a
+   * null body and falls through to exactly the path it always took.
+   */
+  if (context.message.kind !== 'text' && context.message.body === null) {
+    return { action: 'hold', reason: 'non_text_needs_a_person' }
+  }
+  if (context.message.kind !== 'text' && context.message.kind !== 'audio') {
     return { action: 'hold', reason: 'non_text_needs_a_person' }
   }
   if (!options.dispatcherAvailable) {

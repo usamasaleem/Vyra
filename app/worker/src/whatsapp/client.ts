@@ -156,6 +156,19 @@ export type WhatsAppClient = {
    * statement of fact.
    */
   markRead(input: { messageId: string }): Promise<void>
+  /**
+   * The bytes behind a media id.
+   *
+   * Two calls, because Meta does not serve the file from the id: the first
+   * returns a short-lived lookaside URL and the second fetches it, and that
+   * second request needs the access token too — an unauthenticated GET of the
+   * URL returns 401, which is the part that surprises people.
+   *
+   * Returns null rather than throwing on anything that is not a clean
+   * download. A voice note that cannot be fetched is a voice note for a
+   * person, which is the behaviour that already exists and works.
+   */
+  fetchMedia(input: { mediaId: string }): Promise<{ bytes: Uint8Array<ArrayBuffer>; mimeType: string } | null>
 }
 
 /** 4xx that will never succeed on retry; anything else is worth retrying. */
@@ -212,6 +225,39 @@ export function createWhatsAppClient(config: {
 
     async markRead({ messageId }) {
       await receipt(messageId, false)
+    },
+
+    async fetchMedia({ mediaId }) {
+      const authorized = { authorization: `Bearer ${config.accessToken}` }
+      try {
+        const lookup = await doFetch(
+          `https://graph.facebook.com/${config.apiVersion}/${mediaId}`,
+          { headers: authorized, signal: AbortSignal.timeout(timeoutMs) },
+        )
+        if (!lookup.ok) return null
+
+        const described = (await lookup.json()) as { url?: unknown; mime_type?: unknown }
+        if (typeof described.url !== 'string') return null
+
+        // The lookaside URL is authenticated too, which an unauthenticated GET
+        // discovers as a 401 rather than as a redirect.
+        const file = await doFetch(described.url, {
+          headers: authorized,
+          signal: AbortSignal.timeout(timeoutMs),
+        })
+        if (!file.ok) return null
+
+        return {
+          bytes: new Uint8Array(await file.arrayBuffer()),
+          mimeType: typeof described.mime_type === 'string'
+            ? described.mime_type.split(';')[0]!.trim()
+            : 'application/octet-stream',
+        }
+      } catch {
+        // Same reasoning as the receipt above: a download that fails is a
+        // download that fails, and the message still reaches a person.
+        return null
+      }
     },
 
     async sendText({ to, body, buttons, list, imageUrl, link, quotesProviderId, flow }) {

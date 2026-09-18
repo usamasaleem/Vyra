@@ -727,6 +727,8 @@ export async function runConversationTurn(
       ...(noPhotosOf.length === 0 ? {} : { noPhotosOf }),
       // Loaded on every turn since this worker was written and never passed on.
       ...(context.contact.displayName == null ? {} : { customerName: context.contact.displayName }),
+      // A transcript is a reading of what somebody said, not a record of it.
+      ...(context.message.kind === 'audio' ? { spoken: true } : {}),
     })
     end = {
       reply: outcome.reply,

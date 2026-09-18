@@ -11,6 +11,7 @@ export * from './turn/summarise.js'
 export * from './turn/examples.js'
 export * from './turn/adapters/anthropic.js'
 export * from './turn/adapters/openai.js'
+export * from './turn/adapters/transcribe.js'
 export type { OperatorPolicy } from './tools/get-operator-policy.js'
 export type { VehicleSearchResult } from './tools/search-vehicles.js'
 /**

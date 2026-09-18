@@ -31,6 +31,40 @@ const messageSchema = z.object({
   type: z.string(),
   text: z.object({ body: z.string() }).optional(),
   /**
+   * The attachment, which was being thrown away before anything read it.
+   *
+   * `mediaPointer` is written to capture the id, the mime type, whether an
+   * audio message is a voice note, a document's filename and an image's
+   * caption. It never saw any of them: a Zod object strips unknown keys, so by
+   * the time the pointer ran the only field left was `type`. Every voice note
+   * in the database is `{"type":"audio"}` — a pointer to nothing, which is
+   * why none could be fetched, let alone transcribed.
+   */
+  audio: z.object({
+    id: z.string().optional(),
+    mime_type: z.string().optional(),
+    voice: z.boolean().optional(),
+  }).optional(),
+  image: z.object({
+    id: z.string().optional(),
+    mime_type: z.string().optional(),
+    caption: z.string().optional(),
+  }).optional(),
+  video: z.object({
+    id: z.string().optional(),
+    mime_type: z.string().optional(),
+    caption: z.string().optional(),
+  }).optional(),
+  document: z.object({
+    id: z.string().optional(),
+    mime_type: z.string().optional(),
+    filename: z.string().optional(),
+  }).optional(),
+  sticker: z.object({
+    id: z.string().optional(),
+    mime_type: z.string().optional(),
+  }).optional(),
+  /**
    * A tapped reply button. Meta sends the id we chose and the title the
    * customer saw; both matter, and the id is the one that cannot be mistyped.
    */

@@ -210,6 +210,41 @@ describe('deciding what happens next', () => {
     expect(decideHandling(await contextFor(), { ...ENABLED, dispatcherAvailable: false }))
       .toEqual({ action: 'hold', reason: 'no_dispatcher_yet' })
   })
+
+/**
+ * A voice note that became words is a message like any other.
+ *
+ * It stays `kind = 'audio'` — it was spoken, the inbox should say so, and the
+ * model is told so. What changes is that there is something to answer, and
+ * holding a message we can read would be the same silence section 17 forbids
+ * for one we cannot.
+ */
+  describe('a voice note that has been transcribed', () => {
+    it('goes to the agent like anything else', async () => {
+      await run(
+        `update messages set kind = 'audio', body = 'do you have the cullinan free friday'
+         where id = $1`, [messageId],
+      )
+      expect(decideHandling(await contextFor(), ENABLED))
+        .toEqual({ action: 'draft', reason: 'ready_for_ai_turn' })
+    })
+
+    it('still goes to a person when nothing could be made out', async () => {
+      await run(`update messages set kind = 'audio', body = null where id = $1`, [messageId])
+      expect(decideHandling(await contextFor(), ENABLED))
+        .toEqual({ action: 'hold', reason: 'non_text_needs_a_person' })
+    })
+
+    /** A photograph with a caption is still a photograph. */
+    it('does not let a captioned image through', async () => {
+      await run(
+        `update messages set kind = 'image', body = 'is this the one' where id = $1`, [messageId],
+      )
+      expect(decideHandling(await contextFor(), ENABLED))
+        .toEqual({ action: 'hold', reason: 'non_text_needs_a_person' })
+    })
+  })
+
 })
 
 /**

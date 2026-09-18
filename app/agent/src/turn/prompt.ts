@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v17'
+export const PROMPT_VERSION = 'sales-v18'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -371,6 +371,17 @@ export function systemPromptFor(input: {
    */
   customerName?: string | null
   /**
+   * Their last message was spoken, and what you have is a machine's reading
+   * of it.
+   *
+   * Worth saying because the failure is specific and quiet: "Huracán" and
+   * "hurricane" are one bad second apart, an accent turns "the 19th" into "the
+   * 90th", and a transcript reads with exactly the same confidence either way.
+   * A model that knows it is reading speech asks; one that thinks it is
+   * reading typing does not.
+   */
+  spoken?: boolean
+  /**
    * The enquiry this turn is about.
    *
    * prepare_quote takes it as an argument and refuses anything else, so that a
@@ -527,7 +538,24 @@ export function systemPromptFor(input: {
       + `Every message is worse than none. It is what they chose to be shown as, not a `
       + `verified name, so never treat it as proof of who they are.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${remembered}${outstanding}
+  /**
+   * Deliberately not an instruction to hedge everything.
+   *
+   * The useful behaviour is narrow: carry on normally, and check the one thing
+   * that would be expensive to get wrong. Told to be careful in general, a
+   * model turns every reply into a confirmation, which is worse than the
+   * occasional misheard word.
+   */
+  const heard = input.spoken !== true
+    ? ''
+    : `\n\nTheir last message was a voice note, and what you have is a machine's `
+      + `reading of it. Answer it as you would anything else — but a name, a date or `
+      + `a number from speech is worth saying back as you use it, because a wrong one `
+      + `costs a rental and a wrong word costs nothing. If a sentence plainly did not `
+      + `survive the transcription, say you did not catch it rather than answering the `
+      + `part you did.`
+
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${remembered}${outstanding}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

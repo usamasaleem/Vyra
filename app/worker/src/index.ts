@@ -13,7 +13,11 @@ import { sendDueFollowUps } from './follow-ups.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
-import { openaiModel, PROMPT_VERSION, type ModelAdapter } from '@vyra/agent'
+import { transcribeVoiceNote } from './transcribe-voice-note.js'
+import {
+  openaiModel, openaiTranscriber, PROMPT_VERSION,
+  type ModelAdapter, type Transcriber,
+} from '@vyra/agent'
 import {
   acknowledgeWaiting, greetIfNew, handleNonTextMessage, handleUrgentMessage,
   noticeOutOfHours, runConversationTurn,
@@ -52,6 +56,16 @@ const model: ModelAdapter | null =
         effort: env.AI_REASONING_EFFORT,
         serviceTier: env.AI_SERVICE_TIER,
       })
+
+/**
+ * Voice notes, in words.
+ *
+ * Same key, separate adapter, because it is a different endpoint and a
+ * different model — and null for the same reason the model above is: a missing
+ * key should cost the transcription, not the worker.
+ */
+const transcriber: Transcriber | null =
+  env.OPENAI_API_KEY === undefined ? null : openaiTranscriber({ apiKey: env.OPENAI_API_KEY })
 
 /**
  * The worker's own credentials, still used for one number.
@@ -418,6 +432,30 @@ const runner: Runner = await runWorker({
           waitedMs: queueWaitMs,
         })
       }
+
+      /**
+       * A voice note becomes words before anything decides what to do with it.
+       *
+       * Before processInboundMessage rather than inside it, because that
+       * function is a pure decision over a loaded context and this is two
+       * network calls and a write. It runs first so `decideHandling` sees a
+       * message with a body, and the ordinary turn answers it.
+       *
+       * Every failure lands in the same place: no transcriber, no media id, a
+       * download that 401s, an unreadable format, an empty transcript. The body
+       * stays null and the message routes to a person, which is what has always
+       * happened to voice notes and works.
+       */
+      await transcribeVoiceNote({
+        run: query, whatsapp, transcriber, log,
+        messageId: (payload as { message_id?: unknown } | null)?.message_id,
+      }).catch((error: unknown) => {
+        log({
+          event: 'transcribe.failed',
+          jobId: helpers.job.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
 
       const result = await processInboundMessage(
         query,
