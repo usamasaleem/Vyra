@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOOKING_CONFIRMATION, DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor,
-  invitesACarChoice, meaningOfButton, vehicleList,
+  invitesACarChoice, meaningOfButton, surfaceForAsking, vehicleList,
 } from '../src/confirmations.ts'
 
 describe("Meta's limits", () => {
@@ -269,5 +269,63 @@ describe('the booking buttons', () => {
     expect(meaningOfButton('booking_confirm', 'Confirm with team'))
       .toBe('Yes — please have someone confirm this booking.')
     expect(meaningOfButton('booking_wait', 'Not just yet')).toBe('Not just yet.')
+  })
+})
+
+/**
+ * The surface for the question the agent was told to ask.
+ *
+ * Every other matcher here reads the model's prose and infers what it meant,
+ * and that has failed repeatedly: the car list missed "Which one would you
+ * like to see?", the date confirmation matched one reply in ninety-eight. This
+ * reads the instruction the model was given instead.
+ */
+describe('surfaceForAsking', () => {
+  it.each([
+    'Would you like it delivered, or will you collect it?',
+    'The Cullinan is AED 8,000 a day. Shall we bring it to you, or would you rather pick it up?',
+    'Yes, it seats five comfortably. Are you collecting it or shall we deliver?',
+    'Happy to drop it anywhere in Dubai — delivery or collection?',
+  ])('offers the delivery buttons for %j', (reply) => {
+    expect(surfaceForAsking('delivery_preference', reply)).toBe('delivery_choice')
+  })
+
+  it.each([
+    'The range is small but nice. Which one takes your fancy?',
+    'We have three. Which would suit you best?',
+    'All three are quick — any of them interest you?',
+  ])('offers the car list for %j', (reply) => {
+    expect(surfaceForAsking('vehicle', reply)).toBe('car_list')
+  })
+
+  /**
+   * The instruction says what the model was told to ask, not that it asked.
+   * The same instruction tells it to drop a question passed over twice, so the
+   * words still have to mention the thing.
+   */
+  it('says nothing when the reply went somewhere else', () => {
+    expect(surfaceForAsking('delivery_preference', 'What dates were you thinking?')).toBeNull()
+    expect(surfaceForAsking('vehicle', 'The Cullinan is AED 8,000 per day.')).toBeNull()
+  })
+
+  /** Only two questions have a surface. A date is open, and a menu cannot hold one. */
+  it.each(['start_at', 'end_at', 'duration', 'budget'])(
+    'has nothing to offer for %j', (field) => {
+      expect(surfaceForAsking(field, 'When would you like it, and for how long?')).toBeNull()
+    },
+  )
+
+  /** One tap cannot answer two questions. */
+  it('declines a reply that asks more than one thing', () => {
+    expect(surfaceForAsking(
+      'delivery_preference',
+      'Delivered or collected? And what dates were you thinking?',
+    )).toBeNull()
+  })
+
+  it('says nothing when nothing was asked', () => {
+    expect(surfaceForAsking(undefined, 'Delivered or collected?')).toBeNull()
+    expect(surfaceForAsking('delivery_preference', null)).toBeNull()
+    expect(surfaceForAsking('delivery_preference', '  ')).toBeNull()
   })
 })

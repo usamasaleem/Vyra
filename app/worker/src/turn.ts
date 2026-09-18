@@ -1,6 +1,7 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  type AutomatedMessage, BOOKING_CONFIRMATION, carChosenIn, civilDateIn, formatCivil,
+  type AutomatedMessage, BOOKING_CONFIRMATION, carChosenIn, civilDateIn, DELIVERY_CHOICE,
+  formatCivil, surfaceForAsking,
   FULL_RANGE_LABEL, isOpenAt, readServiceHours, type StopCode, mightNeedAvailability,
   wantsToBook, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
   usableWebsite,
@@ -874,9 +875,25 @@ export async function runConversationTurn(
    */
   const readyToBook = nothingOutstanding && wantsToBook(context.message.body)
 
+  /**
+   * What the agent was told to ask, which is better evidence than what it
+   * wrote.
+   *
+   * The prose matchers below stay as a fallback — they catch a closed question
+   * nobody instructed, which is most date confirmations — but this goes first
+   * because it is the instruction rather than an inference about one.
+   */
+  const fromQuestion = surfaceForAsking(askedThisTurn[0], end.reply)
+
   const offered = {
-    buttons: readyToBook ? BOOKING_CONFIRMATION : buttonsFor(end.reply),
-    list: invitesACarChoice(end.reply) ? vehicleList(fleet) : null,
+    buttons: readyToBook
+      ? BOOKING_CONFIRMATION
+      : fromQuestion === 'delivery_choice'
+      ? DELIVERY_CHOICE
+      : buttonsFor(end.reply),
+    list: fromQuestion === 'car_list' || invitesACarChoice(end.reply)
+      ? vehicleList(fleet)
+      : null,
   }
 
   /**

@@ -486,6 +486,95 @@ describe('a turn that fails', () => {
 })
 
 /**
+ * A tap where a tap beats typing.
+ *
+ * Buttons fired on one reply in ninety-eight, because every surface here was
+ * decided by pattern-matching the model's prose. The turn already knows which
+ * question the agent was told to ask — that is the instruction, not an
+ * inference about it.
+ */
+describe('the surface for the question the agent was told to ask', () => {
+  const asking = async (body: string): Promise<ConversationContext> => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  const know = async (observations: Array<{ field: string; value: string }>) => {
+    const enquiryId = (await ensureEnquiry(run, OP, CONV))!
+    await recordFields(transact, {
+      operatorId: OP, enquiryId,
+      observations: observations as Parameters<typeof recordFields>[1]['observations'],
+    })
+  }
+
+  const surfacesOn = async (reply: string) => {
+    const ctx = await asking('tell me more')
+    await turn([{ toolCalls: [], reply }], 'send', ctx)
+    const [sent] = await run(
+      `select reply_buttons, reply_list from messages where direction = 'outbound'
+       and delivery_state = 'pending' order by created_at desc limit 1`, [],
+    )
+    return {
+      buttons: (sent?.['reply_buttons'] as Array<{ title: string }> | null)?.map((b) => b.title)
+        ?? null,
+      list: sent?.['reply_list'] != null,
+    }
+  }
+
+  /**
+   * Everything on file but delivery, so `outstandingQuestions` returns exactly
+   * that and the turn records it as the question asked.
+   */
+  it('offers delivery buttons when delivery is the outstanding question', async () => {
+    await know([
+      { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
+      { field: 'start_at', value: '2026-09-25' },
+      { field: 'end_at', value: '2026-09-27' },
+    ])
+
+    const { buttons } = await surfacesOn(
+      'It seats five comfortably. Shall we bring it to you, or would you rather pick it up?',
+    )
+    expect(buttons).toEqual(['Delivery', 'Collection'])
+  })
+
+  /**
+   * The old matcher wanted "delivered ... or ... collect" in one clause and
+   * missed this entirely.
+   */
+  it('hears a phrasing the prose matcher never did', async () => {
+    await know([
+      { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
+      { field: 'start_at', value: '2026-09-25' },
+      { field: 'end_at', value: '2026-09-27' },
+    ])
+
+    const { buttons } = await surfacesOn('Happy to drop it anywhere in Dubai — or collect from us?')
+    expect(buttons).toEqual(['Delivery', 'Collection'])
+  })
+
+  /**
+   * Told to ask about delivery and asked something else instead, which the
+   * same instruction permits once they have passed it over.
+   */
+  it('offers nothing when the reply went somewhere else', async () => {
+    await know([
+      { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
+      { field: 'start_at', value: '2026-09-25' },
+      { field: 'end_at', value: '2026-09-27' },
+    ])
+
+    const { buttons, list } = await surfacesOn('It has a 6.75 litre V12 and 571 horsepower.')
+    expect(buttons).toBeNull()
+    expect(list).toBe(false)
+  })
+})
+
+/**
  * The customer says yes, and the button says what actually happens.
  *
  * Live: "i want too book this" got a reply asking them to confirm the dates

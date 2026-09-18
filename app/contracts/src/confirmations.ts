@@ -137,6 +137,47 @@ export function invitesACarChoice(reply: string | null): boolean {
   return ASKS_WHICH_CAR.some((p) => p.test(reply))
 }
 
+/**
+ * The surface for the question the agent was told to ask.
+ *
+ * Everything else here reads the model's prose and infers what it meant, and
+ * that has failed over and over: the car list matched four phrases and missed
+ * "Which one would you like to see?", the date confirmation matched one reply
+ * in ninety-eight, and two rewrites of the fleet instruction measured
+ * identically. Inference about intent, from the author's own sentence, while
+ * the author is right there.
+ *
+ * `outstandingQuestions` already decided which fact the enquiry needs and the
+ * turn already recorded it. That is not an inference — it is the instruction
+ * the model was given a moment earlier, and v15 tells it to put exactly that
+ * question at the end of the reply.
+ *
+ * The reply is still checked, loosely. `askedFor` says what the model was told
+ * to ask; it does not prove it asked, because the same instruction says to
+ * drop a question they have passed over twice. So the words have to mention
+ * the thing — a far weaker test than matching a closed question, and one that
+ * fails toward no surface rather than toward a wrong one.
+ */
+export type AskedSurface = 'delivery_choice' | 'car_list' | null
+
+const MENTIONS_DELIVERY = /\b(?:deliver(?:y|ed|ing)?|collect(?:ion|ing)?|pick(?:ing)? (?:it )?up)\b/i
+const MENTIONS_A_CHOICE = /\b(?:which|prefer|pick|choose|fancy|leaning|interests?|suits?|like)\b/i
+
+export function surfaceForAsking(
+  askedFor: string | undefined,
+  reply: string | null,
+): AskedSurface {
+  if (askedFor === undefined || reply === null || reply.trim() === '') return null
+
+  // One question per message, the same rule the patterns below follow: a reply
+  // asking two things cannot be answered by one tap.
+  if ((reply.match(/\?/g) ?? []).length > 1) return null
+
+  if (askedFor === 'delivery_preference' && MENTIONS_DELIVERY.test(reply)) return 'delivery_choice'
+  if (askedFor === 'vehicle' && MENTIONS_A_CHOICE.test(reply)) return 'car_list'
+  return null
+}
+
 export const DATE_CONFIRMATION: ReplyButton[] = [
   { id: 'dates_confirmed', title: 'Yes, correct' },
   { id: 'dates_wrong', title: 'Different dates' },
