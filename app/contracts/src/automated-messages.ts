@@ -32,6 +32,23 @@ export const AUTOMATED_MESSAGES = [
    * the operator is the only one who can say what that is.
    */
   'out-of-hours',
+  /**
+   * The first chase, sent word for word when a customer goes quiet.
+   *
+   * Lived in POLICY_TOPICS, between the deposit and the kilometre allowance,
+   * on a page called "What the agent may say". It is not an answer to
+   * anything, and it went unwritten for the entire pilot — eleven chases
+   * became tasks for a person instead of messages to a customer.
+   */
+  'follow-up-message',
+  /**
+   * And the second, which has to say something the first did not.
+   *
+   * One wording reused for every attempt is what produced two identical
+   * messages thirty minutes apart. A machine repeats itself; a salesperson
+   * following up has a new reason to be in touch.
+   */
+  'follow-up-message-2',
 ] as const
 
 export type AutomatedMessage = (typeof AUTOMATED_MESSAGES)[number]
@@ -59,5 +76,17 @@ export const AUTOMATED_MESSAGE_LABELS: Record<AutomatedMessage, {
       + 'so say when somebody will pick it up, not that you are closed.',
     placeholder: 'We are away from the desk right now, but I can still help. Anything '
       + 'needing a colleague will be picked up when we open in the morning.',
+  },
+  'follow-up-message': {
+    title: 'Chasing a customer who went quiet',
+    why: 'Sent word for word, once, after the gap set in Settings. Until it is written '
+      + 'the chase becomes a task for one of your people instead.',
+    placeholder: 'Still thinking about those dates? Happy to help if you have any questions.',
+  },
+  'follow-up-message-2': {
+    title: 'And chasing a second time',
+    why: 'It has to say something the first one did not. Reusing one wording is what '
+      + 'sends the same sentence twice, half an hour apart, and reads as a machine.',
+    placeholder: 'No rush at all — just let me know if you would like me to hold anything.',
   },
 }

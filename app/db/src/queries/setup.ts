@@ -131,7 +131,7 @@ export async function getSetupState(
         : n('follow_up_wordings') === 1
         ? 'One published, one to go — a second chase currently becomes a task.'
         : 'Both published.',
-      href: '/knowledge',
+      href: '/messages',
       blocking: false,
     },
     {

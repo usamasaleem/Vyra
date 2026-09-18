@@ -56,9 +56,8 @@ export default async function MessagesPage() {
 
       {unwritten.length > 0 && (
         <p className="card" style={{ borderLeft: '3px solid var(--accent)' }}>
-          {unwritten.length === AUTOMATED_MESSAGES.length
-            ? 'Neither of these is written, so neither is sent.'
-            : 'One of these is not written, so it is not sent.'}
+          {unwritten.length} of {AUTOMATED_MESSAGES.length} are not written, so they are not
+          sent. A chase that has no wording becomes a task for one of your people instead.
         </p>
       )}
 
@@ -93,6 +92,15 @@ export default async function MessagesPage() {
             </li>
           )
         })}
+
+        <li className="card">
+          <strong>How long before a chase</strong>
+          <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.88rem' }}>
+            The gap before the first chase, and the widening one before the second, are set in{' '}
+            <a href="/settings">Settings</a>. There used to be a written rule here as well and
+            it was only ever a note to the team — the scheduler has always used the number.
+          </p>
+        </li>
 
         <li className="card">
           <strong>When somebody is at the desk</strong>

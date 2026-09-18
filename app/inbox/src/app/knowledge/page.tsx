@@ -46,23 +46,6 @@ const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = 
     question: 'When are you open, and what happens to a message out of hours?',
     placeholder: 'Days and times, and what a customer should expect at 2am.',
   },
-  'follow-up-timing': {
-    question: 'When should the agent chase a customer who has gone quiet?',
-    placeholder: 'How long to wait and how many times. Notes for your team, not a message.',
-  },
-  'follow-up-message': {
-    question: 'What exactly should it say when it chases?',
-    placeholder:
-      'The message itself, word for word. This is sent to the customer as you write it — '
-      + 'nothing rephrases it. "Still thinking about those dates? Happy to hold the car."',
-  },
-  'follow-up-message-2': {
-    question: 'And if they still have not replied, hours later?',
-    placeholder:
-      'A different message, saying something the first one did not — a reason to come back, '
-      + 'not the same nudge again. Leave this blank and a second chase becomes a task for '
-      + 'somebody to call instead.',
-  },
 }
 
 export default async function KnowledgePage() {
