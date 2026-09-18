@@ -266,7 +266,7 @@ export default async function ConversationPage({
 
       <div className="stack">
         {canReply ? (
-          <ReplyForm conversationId={thread.id} />
+          <ReplyForm conversationId={thread.id} signAs={actor.displayName} />
         ) : (
           <p className="notice">Your role cannot send customer replies, but you can leave a note.</p>
         )}

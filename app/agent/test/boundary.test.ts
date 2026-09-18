@@ -44,9 +44,9 @@ beforeEach(async () => {
       ('${OP}', 'Vyra Pilot', '${TZ}'), ('${RIVAL}', 'Rival', '${TZ}');
     insert into whatsapp_accounts (id, operator_id, provider_account_id, phone_number_id)
     values ('${ACCOUNT}', '${OP}', 'waba', '111');
-    insert into memberships (id, operator_id, user_id, role) values
-      ('${MEMBER}', '${OP}', '10000000-0000-0000-0000-000000000001', 'salesperson'),
-      ('${RIVAL_MEMBER}', '${RIVAL}', '10000000-0000-0000-0000-000000000002', 'salesperson');
+    insert into memberships (id, operator_id, user_id, role, display_name) values
+      ('${MEMBER}', '${OP}', '10000000-0000-0000-0000-000000000001', 'salesperson', 'Ahmed'),
+      ('${RIVAL_MEMBER}', '${RIVAL}', '10000000-0000-0000-0000-000000000002', 'salesperson', 'Omar');
     insert into contacts (id, operator_id, channel_identifier)
     values ('${CONTACT}', '${OP}', '971500000001');
     insert into conversations (id, operator_id, contact_id, whatsapp_account_id)

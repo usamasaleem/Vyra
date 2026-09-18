@@ -20,11 +20,17 @@ export type Actor = {
   membershipId: string
   operatorId: string
   operatorName: string
+  /**
+   * What customers see signed on this person's messages. Null until they set
+   * one, and until they do the send path refuses them.
+   */
+  displayName: string | null
   role: Role
 }
 
 const MEMBERSHIP_SQL = `
-  select m.id as membership_id, m.operator_id, m.role, o.name as operator_name
+  select m.id as membership_id, m.operator_id, m.role, m.display_name,
+         o.name as operator_name
   from memberships m
   join operators o on o.id = m.operator_id
   where m.user_id = $1 and m.active
@@ -81,6 +87,7 @@ async function actorForUser(
     membershipId: row['membership_id'] as string,
     operatorId: row['operator_id'] as string,
     operatorName: row['operator_name'] as string,
+    displayName: (row['display_name'] as string) ?? null,
     role: row['role'] as Role,
   }
 }

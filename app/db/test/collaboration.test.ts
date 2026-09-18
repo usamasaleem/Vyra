@@ -58,10 +58,10 @@ beforeEach(async () => {
     insert into conversations (id, operator_id, contact_id, whatsapp_account_id)
     values ('${CONVERSATION}', '${OPERATOR}', '55555555-5555-5555-5555-555555555555',
             '33333333-3333-3333-3333-333333333333');
-    insert into memberships (id, operator_id, user_id, role) values
-      ('${SALES}', '${OPERATOR}', '10000000-0000-0000-0000-000000000001', 'salesperson'),
-      ('${MANAGER}', '${OPERATOR}', '10000000-0000-0000-0000-000000000002', 'manager'),
-      ('${RIVAL_MEMBER}', '${RIVAL}', '10000000-0000-0000-0000-000000000003', 'salesperson');
+    insert into memberships (id, operator_id, user_id, role, display_name) values
+      ('${SALES}', '${OPERATOR}', '10000000-0000-0000-0000-000000000001', 'salesperson', 'Ahmed'),
+      ('${MANAGER}', '${OPERATOR}', '10000000-0000-0000-0000-000000000002', 'manager', 'Sara'),
+      ('${RIVAL_MEMBER}', '${RIVAL}', '10000000-0000-0000-0000-000000000003', 'salesperson', 'Omar');
   `)
 })
 
@@ -240,7 +240,8 @@ describe('notes and replies stay separate', () => {
       operatorId: OPERATOR, conversationId: CONVERSATION, membershipId: SALES, body: 'A private thought',
     })
 
+    // Signed, because it came from a person. The note is not a message at all.
     const bodies = (await run(`select body from messages`, [])).map((r) => r['body'])
-    expect(bodies).toEqual(['A real reply'])
+    expect(bodies).toEqual(['A real reply\n— Ahmed'])
   })
 })

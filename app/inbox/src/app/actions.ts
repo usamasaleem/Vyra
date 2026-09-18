@@ -12,6 +12,7 @@ import {
   setVehicleHighlight,
   assignConversation,
   queueOutboundText,
+  NoDisplayName,
   resumeAi,
   setOperatorAiSending,
   setPriority,
@@ -51,14 +52,30 @@ export async function sendReply(
    * the dispatcher. Section 18.12 forbids a second way to send, because a
    * direct call would skip the 24-hour window check and the delivery record.
    */
-  const result = await queueOutboundText(actorRunner(actor), {
-    conversationId,
-    operatorId: actor.operatorId,
-    body,
-    // Stable per submission so a double-click cannot queue two replies.
-    idempotencyKey: `staff:${actor.membershipId}:${hash(conversationId + body)}`,
-    sentByMembershipId: actor.membershipId,
-  })
+  /**
+   * The send path refuses an unsigned human message outright. Caught here so
+   * the person sees what to do rather than a stack trace — the guarantee is
+   * the throw, this is the manners.
+   */
+  let result
+  try {
+    result = await queueOutboundText(actorRunner(actor), {
+      conversationId,
+      operatorId: actor.operatorId,
+      body,
+      // Stable per submission so a double-click cannot queue two replies.
+      idempotencyKey: `staff:${actor.membershipId}:${hash(conversationId + body)}`,
+      sentByMembershipId: actor.membershipId,
+    })
+  } catch (error: unknown) {
+    if (error instanceof NoDisplayName) {
+      return {
+        error: 'Your replies are signed with your name, and you have not set one yet. '
+          + 'Add it on the Team page and send this again.',
+      }
+    }
+    throw error
+  }
 
   if (result.messageId === null && !result.duplicate) {
     return { error: 'That conversation could not be found.' }
@@ -297,6 +314,20 @@ export async function approveAndSendQuote(
   const draft = (await listDraftQuotes(run, actor.operatorId)).find((q) => q.id === quoteId)
   if (draft === undefined) return { error: 'That quote is no longer a draft.' }
 
+  /**
+   * Checked before the quote is approved, not after.
+   *
+   * Approving and then failing to send would leave a quote marked approved
+   * that the customer never received, which is the one state nobody watching
+   * this screen could tell apart from a delivered one.
+   */
+  if (actor.displayName === null) {
+    return {
+      error: 'A quote you approve goes out signed with your name, and you have not set '
+        + 'one yet. Add it on the Team page and approve this again.',
+    }
+  }
+
   const result = await approveQuote(run, {
     quoteId, operatorId: actor.operatorId, membershipId: actor.membershipId, revision,
   })
@@ -311,13 +342,24 @@ export async function approveAndSendQuote(
   }
 
   // Through the one path that sends, like every other outbound message.
-  const queued = await queueOutboundText(run, {
-    conversationId: draft.conversationId,
-    operatorId: actor.operatorId,
-    body: renderQuoteMessage(draft),
-    idempotencyKey: `quote:${quoteId}:${revision}`,
-    sentByMembershipId: actor.membershipId,
-  })
+  let queued
+  try {
+    queued = await queueOutboundText(run, {
+      conversationId: draft.conversationId,
+      operatorId: actor.operatorId,
+      body: renderQuoteMessage(draft),
+      idempotencyKey: `quote:${quoteId}:${revision}`,
+      sentByMembershipId: actor.membershipId,
+    })
+  } catch (error: unknown) {
+    if (error instanceof NoDisplayName) {
+      return {
+        error: 'A quote you approve goes out signed with your name, and you have not set '
+          + 'one yet. Add it on the Team page and approve this again.',
+      }
+    }
+    throw error
+  }
   if (queued.messageId !== null) {
     await run(
       `update quotes set state = 'sent', sent_message_id = $2, updated_at = now() where id = $1`,

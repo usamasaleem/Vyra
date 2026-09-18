@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { isMembershipRole } from '@vyra/contracts'
-import { inviteMember, revokeInvitation, setMemberActive, setMemberRole } from '@vyra/db'
+import {
+  inviteMember, revokeInvitation, setDisplayName, setMemberActive, setMemberRole,
+} from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner } from '@/lib/db'
 
@@ -72,6 +74,32 @@ export async function setActive(formData: FormData): Promise<void> {
     operatorId: actor.operatorId,
     membershipId: String(formData.get('membershipId') ?? ''),
     active: formData.get('active') === 'true',
+  })
+  revalidatePath('/team')
+}
+
+/**
+ * Setting the name a customer sees.
+ *
+ * Your own always, an administrator's for anybody — a salesperson who joined
+ * this morning should not have to wait on somebody else before they can reply,
+ * and an administrator setting up the team should not have to chase four
+ * people for a first name.
+ *
+ * Not a permission check that hides a button: the action refuses.
+ */
+export async function nameMember(formData: FormData): Promise<void> {
+  const actor = await requireActor()
+  const membershipId = String(formData.get('membershipId') ?? '')
+
+  if (membershipId !== actor.membershipId) {
+    assertPermitted(permissions.canAdminister(actor), "change a colleague's name")
+  }
+
+  await setDisplayName(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    membershipId,
+    displayName: String(formData.get('displayName') ?? ''),
   })
   revalidatePath('/team')
 }

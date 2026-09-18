@@ -2,7 +2,7 @@ import { MEMBERSHIP_ROLES } from '@vyra/contracts'
 import { getNavCounts, listTeam } from '@vyra/db'
 import { SiteNav } from '../site-nav'
 import { InviteForm } from './invite-form'
-import { changeRole, setActive, withdrawInvitation } from './actions'
+import { changeRole, nameMember, setActive, withdrawInvitation } from './actions'
 import { permissions, requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 
@@ -40,6 +40,18 @@ export default async function TeamPage() {
   const canAdminister = permissions.canAdminister(actor)
   const admins = team.members.filter((m) => m.active && m.role === 'admin').length
 
+  /**
+   * Who cannot reply yet, which is everybody until somebody writes a name.
+   *
+   * Counted over people whose role sends at all — an operations account never
+   * replies to a customer, so a missing name is not stopping them from doing
+   * anything.
+   */
+  const REPLIES = new Set(['admin', 'manager', 'salesperson'])
+  const unnamed = team.members.filter(
+    (m) => m.active && REPLIES.has(m.role) && m.displayName === null,
+  )
+
   return (
     <main className="shell">
       <SiteNav current="team" counts={counts} />
@@ -48,6 +60,18 @@ export default async function TeamPage() {
         Who can see your customers, and what each of them may do. Signing in proves who somebody
         is; being on this list is what gives them access to this company.
       </p>
+
+      {unnamed.length > 0 && (
+        <p className="card" style={{ borderLeft: '3px solid var(--accent)' }}>
+          {unnamed.length === 1 && unnamed[0]!.membershipId === actor.membershipId
+            ? 'You have no name on file, so you cannot reply to a customer yet. '
+            : `${unnamed.length} of your people have no name on file, so they cannot reply to a customer yet. `}
+          Every message a person sends is signed with it, which is the only way somebody on
+          WhatsApp can tell a colleague from the assistant. Nothing is guessed from an email
+          address — a customer reading &ldquo;&mdash; usama1221999&rdquo; is worse served than one
+          reading nothing at all.
+        </p>
+      )}
 
       {canAdminister && <InviteForm />}
 
@@ -58,7 +82,10 @@ export default async function TeamPage() {
             <li key={member.membershipId} className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
-                  <strong>{member.email ?? member.userId.slice(0, 8)}</strong>
+                  <strong>{member.displayName ?? member.email ?? member.userId.slice(0, 8)}</strong>
+                  {member.displayName !== null && member.email !== null && (
+                    <span className="muted" style={{ fontSize: '0.8rem' }}> · {member.email}</span>
+                  )}
                   {member.membershipId === actor.membershipId && (
                     <span className="muted" style={{ fontSize: '0.8rem' }}> · you</span>
                   )}
@@ -89,6 +116,27 @@ export default async function TeamPage() {
                   </div>
                 )}
               </div>
+
+              {(canAdminister || member.membershipId === actor.membershipId) && member.active
+                && REPLIES.has(member.role) && (
+                <form
+                  action={nameMember}
+                  style={{ display: 'flex', gap: '0.4rem', marginTop: '0.7rem', flexWrap: 'wrap' }}
+                >
+                  <input type="hidden" name="membershipId" value={member.membershipId} />
+                  <input
+                    className="input"
+                    name="displayName"
+                    defaultValue={member.displayName ?? ''}
+                    placeholder="First name, as a customer would say it"
+                    maxLength={40}
+                    style={{ flex: '1 1 12rem' }}
+                  />
+                  <button className="button secondary" type="submit">
+                    {member.displayName === null ? 'Set name' : 'Change name'}
+                  </button>
+                </form>
+              )}
             </li>
           ))}
         </ul>

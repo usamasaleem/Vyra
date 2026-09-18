@@ -269,6 +269,23 @@ export const memberships = pgTable(
     userId: uuid().notNull(),
     role: membershipRole().notNull(),
     active: boolean().notNull().default(true),
+    /**
+     * What a customer is told to call them.
+     *
+     * The only identity on file was a login address, and nothing had ever put
+     * a person's name in front of a customer: a salesperson taking over was
+     * indistinguishable from the agent, in the same thread, from the same
+     * number, with no change of voice. A hundred and fifty-six messages from
+     * the assistant and six from a human, and nobody on the other end could
+     * tell which were which.
+     *
+     * Nullable, and deliberately not defaulted from the email. "usama1221999"
+     * signed onto a message is worse than no signature at all, and a name is
+     * not a thing to derive from an address — it is a thing a person chooses.
+     * Until somebody writes it, that person cannot send, which is the same
+     * rule the greeting follows and for the same reason.
+     */
+    displayName: text(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

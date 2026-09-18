@@ -48,6 +48,45 @@ job as (
 select (select id from intent) as message_id, (select id from job) as outbox_id
 `
 
+/**
+ * A person's message goes out with their name on it.
+ *
+ * The alternative designs were both worse. Announcing a handover — "Ahmed has
+ * joined the conversation" — sounds right and does not survive contact with
+ * the data: `ai_resumes_after_minutes` is five, so the assistant takes the
+ * thread back before a salesperson has finished looking something up, and one
+ * live conversation already flips six times against six human messages in the
+ * entire database. That is an announcement per reply. Announcing only the
+ * human and staying quiet when the agent returns is worse still: the customer
+ * is then told, once, that they are speaking to Ahmed, and goes on believing
+ * it while the machine answers.
+ *
+ * A signature has no state to get wrong. Signed is a person, unsigned is the
+ * assistant, and the thread reads correctly however many times it changes
+ * hands. It is also the only moment a customer learns there are real people
+ * here at all.
+ *
+ * Every human message, not just the first of a stretch. The first-only version
+ * needs to know where a stretch begins, which is the handover state this is
+ * deliberately not built on.
+ */
+export class NoDisplayName extends Error {
+  membershipId: string
+
+  constructor(membershipId: string) {
+    super(`Membership ${membershipId} has no display name, so it cannot send.`)
+    this.name = 'NoDisplayName'
+    this.membershipId = membershipId
+  }
+}
+
+export function signed(body: string, name: string): string {
+  const signature = `— ${name}`
+  // Already signed: a caller that queued its own name, or a retry of a body
+  // read back from the record.
+  return body.trimEnd().endsWith(signature) ? body : `${body.trimEnd()}\n${signature}`
+}
+
 export type QueuedOutbound = {
   messageId: string | null
   outboxId: string | null
@@ -96,10 +135,26 @@ export async function queueOutboundText(
     replyLink?: { label: string; url: string } | null
   },
 ): Promise<QueuedOutbound> {
+  /**
+   * Signed here rather than at the call site, because this is the only way to
+   * queue anything — "never build a second way to send" is what makes that
+   * enforceable. A caller that forgets cannot send unsigned; it cannot send.
+   */
+  let body = input.body
+  if (input.sentByMembershipId != null) {
+    const [who] = await run(
+      `select display_name from memberships where id = $1 and operator_id = $2`,
+      [input.sentByMembershipId, input.operatorId],
+    )
+    const name = ((who?.['display_name'] as string) ?? '').trim()
+    if (name === '') throw new NoDisplayName(input.sentByMembershipId)
+    body = signed(input.body, name)
+  }
+
   const rows = await run(QUEUE_OUTBOUND_SQL, [
     input.conversationId,
     input.operatorId,
-    input.body,
+    body,
     input.idempotencyKey,
     input.sentByMembershipId ?? null,
     input.replyButtons === undefined || input.replyButtons === null

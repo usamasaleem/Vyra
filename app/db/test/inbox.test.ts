@@ -35,8 +35,8 @@ beforeEach(async () => {
     insert into conversations (id, operator_id, contact_id, whatsapp_account_id, last_customer_message_at)
     values ('${CONVERSATION}', '${OPERATOR}', '55555555-5555-5555-5555-555555555555',
             '33333333-3333-3333-3333-333333333333', now());
-    insert into memberships (id, operator_id, user_id, role)
-    values ('${MEMBERSHIP}', '${OPERATOR}', '99999999-9999-9999-9999-999999999999', 'salesperson');
+    insert into memberships (id, operator_id, user_id, role, display_name)
+    values ('${MEMBERSHIP}', '${OPERATOR}', '99999999-9999-9999-9999-999999999999', 'salesperson', 'Ahmed');
   `)
 })
 

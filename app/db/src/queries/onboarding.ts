@@ -149,6 +149,8 @@ export type TeamMember = {
   role: string
   active: boolean
   email: string | null
+  /** What customers are told to call them. Null until somebody writes it. */
+  displayName: string | null
   joinedAt: Date
 }
 
@@ -164,7 +166,8 @@ export async function listTeam(
   operatorId: string,
 ): Promise<{ members: TeamMember[]; invited: TeamInvitation[] }> {
   const members = await run(
-    `select m.id, m.user_id, m.role::text as role, m.active, m.created_at, e.email
+    `select m.id, m.user_id, m.role::text as role, m.active, m.created_at,
+            m.display_name, e.email
      from memberships m
      left join public.vyra_member_emails() e on e.user_id = m.user_id
      where m.operator_id = $1
@@ -187,6 +190,7 @@ export async function listTeam(
       role: r['role'] as string,
       active: r['active'] === true,
       email: (r['email'] as string) ?? null,
+      displayName: (r['display_name'] as string) ?? null,
       joinedAt: new Date(r['created_at'] as string),
     })),
     invited: invited.map((r) => ({
@@ -282,6 +286,28 @@ export async function setMemberActive(
     input.active
       ? [input.membershipId, input.operatorId, input.active]
       : [input.membershipId, input.operatorId, input.active, 'salesperson'],
+  )
+  return { changed: rows.length > 0 }
+}
+
+/**
+ * The name a customer sees on this person's messages.
+ *
+ * A first name is the right shape and the page says so, because "— Ahmed"
+ * reads as a colleague and "— Ahmed Al-Mansouri, Senior Sales Executive"
+ * reads as a signature block on an email. Not unique and not verified: it is
+ * how somebody introduces themselves, which is all a customer needs.
+ */
+export async function setDisplayName(
+  run: QueryRunner,
+  input: { operatorId: string; membershipId: string; displayName: string },
+): Promise<{ changed: boolean }> {
+  const name = input.displayName.trim()
+  const rows = await run(
+    `update memberships set display_name = $3
+     where id = $1 and operator_id = $2
+     returning id`,
+    [input.membershipId, input.operatorId, name === '' ? null : name],
   )
   return { changed: rows.length > 0 }
 }
