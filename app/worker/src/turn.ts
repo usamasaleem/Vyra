@@ -3,7 +3,7 @@ import {
   type AutomatedMessage, BOOKING_CONFIRMATION, carChosenIn, civilDateIn, DELIVERY_CHOICE,
   formatCivil, surfaceForAsking,
   FULL_RANGE_LABEL, isOpenAt, readServiceHours, type StopCode, mightNeedAvailability,
-  wantsToBook, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
+  wantsToBook, invitesACarChoice, mightNeedTheFleet, offersAChoice, offersTheFullRange,
   usableWebsite,
   vehicleList,
 } from '@vyra/contracts'
@@ -930,12 +930,26 @@ export async function runConversationTurn(
    */
   const fromQuestion = surfaceForAsking(askedThisTurn[0], end.reply)
 
+  /**
+   * Buttons that fit what the reply actually asks come first.
+   *
+   * `readyToBook` used to win outright, and it is a fact about the customer's
+   * message rather than about the reply — so a reply that asked "2 rental
+   * days, or 3?" went out under `Confirm with team` / `Not just yet`. The
+   * customer tapped one, it answered a different question, and the agent asked
+   * again. Offering to confirm is only honest when the reply is not itself
+   * waiting on an answer.
+   */
+  const fitsTheReply = buttonsFor(end.reply)
+
   const offered = {
-    buttons: readyToBook
-      ? BOOKING_CONFIRMATION
+    buttons: fitsTheReply !== null
+      ? fitsTheReply
       : fromQuestion === 'delivery_choice'
       ? DELIVERY_CHOICE
-      : buttonsFor(end.reply),
+      : readyToBook && !offersAChoice(end.reply)
+      ? BOOKING_CONFIRMATION
+      : null,
     list: fromQuestion === 'car_list' || invitesACarChoice(end.reply)
       ? vehicleList(fleet)
       : null,

@@ -51,7 +51,40 @@ export async function recordFields(
   return transact(async (tx) => {
     const recorded: RecordedField[] = []
 
+    /**
+     * An end date and a duration are the same fact counted two ways, and only
+     * one of them can be right.
+     *
+     * "From the 25th to the 27th" came in as start_at 25, end_at 27 **and**
+     * duration "3 days" — all three from one sentence, nobody having said
+     * three of anything. The quote calculator counts 2 rental days, saw a
+     * stated 3, and refused with dates_disagree, which is correct: a price is
+     * the one thing this system will not guess at. But that refusal was built
+     * for a customer who changed their mind, and here the contradiction was
+     * manufactured by the model in a single breath. The reply became "is that
+     * 2 days or 3?", which no button could answer, and the conversation
+     * stopped dead at the moment of sale.
+     *
+     * So the dates win. A duration is worth recording while the end is
+     * unknown — "three days from Friday" is a real thing to say — and the
+     * moment an end date exists it is a second copy of that fact with nothing
+     * to add. `missingFields` has always treated them as alternatives; this
+     * makes them alternatives in the record too.
+     */
+    const [live] = await tx(
+      `select
+         bool_or(field = 'end_at') as has_end,
+         bool_or(field = 'duration') as has_duration
+       from field_evidence
+       where enquiry_id = $1 and operator_id = $2 and superseded_at is null`,
+      [input.enquiryId, input.operatorId],
+    )
+    const endArriving = input.observations.some((o) => o.field === 'end_at')
+    const endIsKnown = endArriving || live?.['has_end'] === true
+
     for (const observation of input.observations) {
+      if (observation.field === 'duration' && endIsKnown) continue
+
       const existing = await tx(
         `select id, value from field_evidence
          where enquiry_id = $1 and operator_id = $2 and field = $3::enquiry_field
@@ -116,6 +149,20 @@ export async function recordFields(
         corrected: previous !== undefined,
         previousValue: previous === undefined ? null : (previous['value'] as string),
       })
+    }
+
+    /**
+     * And retire one that was already on file when the end date arrives, so a
+     * duration recorded before the dates cannot outlive them.
+     */
+    if (endArriving && live?.['has_duration'] === true) {
+      await tx(
+        `update field_evidence
+         set superseded_at = now()
+         where enquiry_id = $1 and operator_id = $2 and field = 'duration'
+           and superseded_at is null`,
+        [input.enquiryId, input.operatorId],
+      )
     }
 
     await tx(`update enquiries set updated_at = now() where id = $1 and operator_id = $2`,

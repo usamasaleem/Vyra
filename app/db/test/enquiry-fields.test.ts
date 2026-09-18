@@ -621,3 +621,61 @@ describe('the cars an enquiry has been about', () => {
     expect(await vehiclesConsidered(run, RIVAL, enquiryId)).toEqual([])
   })
 })
+
+/**
+ * Where "is that 2 days or 3?" came from.
+ *
+ * "I'd like the Ferrari 488 Spider from the 25th to the 27th" was recorded as
+ * start_at 2026-09-25, end_at 2026-09-27 **and** duration "3 days" — all three
+ * out of one sentence, nobody having said three of anything. The quote
+ * calculator counts 2 rental days, saw a stated 3, and refused with
+ * dates_disagree, which is right: a price is the one thing this system will
+ * not guess at. But that refusal was built for a customer who changed their
+ * mind, and this contradiction was manufactured by the model in a single
+ * breath. The conversation stopped dead at the moment of sale, asking a
+ * question no button could answer.
+ */
+describe('an end date and a duration are the same fact', () => {
+  const record = (observations: Array<{ field: string; value: string }>) =>
+    recordFields(transact, { operatorId: OP, enquiryId, observations: observations as never })
+
+  const live = async () =>
+    Object.fromEntries((await getEnquiryFields(run, OP, enquiryId)).map((f) => [f.field, f.value]))
+
+  it('drops a duration derived from dates recorded in the same breath', async () => {
+    await record([
+      { field: 'start_at', value: '2026-09-25' },
+      { field: 'end_at', value: '2026-09-27' },
+      { field: 'duration', value: '3 days' },
+    ])
+
+    const fields = await live()
+    expect(fields['end_at']).toBe('2026-09-27')
+    expect(fields['duration']).toBeUndefined()
+  })
+
+  it('retires one already on file when the end date arrives', async () => {
+    await record([{ field: 'start_at', value: '2026-09-25' }, { field: 'duration', value: '3 days' }])
+    expect((await live())['duration']).toBe('3 days')
+
+    await record([{ field: 'end_at', value: '2026-09-27' }])
+    expect((await live())['duration']).toBeUndefined()
+  })
+
+  /** "Three days from Friday" is a real thing to say, and the only fact there. */
+  it('keeps a duration while the end is unknown', async () => {
+    await record([{ field: 'start_at', value: '2026-09-25' }, { field: 'duration', value: '3 days' }])
+    expect((await live())['duration']).toBe('3 days')
+  })
+
+  it('ignores a later duration that would contradict the dates', async () => {
+    await record([
+      { field: 'start_at', value: '2026-09-25' },
+      { field: 'end_at', value: '2026-09-27' },
+    ])
+    await record([{ field: 'duration', value: '5 days' }])
+
+    expect((await live())['duration']).toBeUndefined()
+    expect((await live())['end_at']).toBe('2026-09-27')
+  })
+})

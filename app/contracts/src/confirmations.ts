@@ -117,11 +117,34 @@ export function vehicleList(
  * orange", which is a sentence, not a menu.
  */
 const ASKS_WHICH_CAR: RegExp[] = [
-  /\bwhich (?:one|car|model|of (?:them|these))\b/i,
+  /\bwhich (?:car|model|of (?:them|these))\b/i,
   /\b(?:any|either) of (?:them|these)\b/i,
   /\blet me know which\b/i,
   /\btake your pick\b/i,
 ]
+
+/**
+ * "Which one" says nothing about what is being chosen between.
+ *
+ * Read live: "25th–27th September is 2 days, while 3 days would be 25th–28th
+ * September. Which one should I use?" went out with a tappable list of the
+ * fleet under it. The question was about dates; the only way to answer it was
+ * to ignore the thing the message offered.
+ *
+ * Requiring the reply to name a car was the first attempt and it was wrong:
+ * "We have three that would suit — which one appeals?" names none and is
+ * plainly about cars. So the exclusion is the other way round. A reply
+ * weighing up rental lengths is asking about those, and "which one" belongs
+ * to them; a car named outright still wins, because "which one, the Ferrari
+ * or the Huracán, for the 25th?" is a car question whatever else it mentions.
+ *
+ * A miss costs a list and the customer types; a false positive puts the wrong
+ * surface under a question at the moment of a sale, which is what happened.
+ */
+const AMBIGUOUS_WHICH = /\bwhich (?:one|of those)\b/i
+const WEIGHING_UP_DAYS = /\b\d+\s*(?:rental\s*)?(?:days?|nights?)\b/i
+const MENTIONS_A_CAR =
+  /\b(?:car|cars|vehicle|vehicles|lamborghini|ferrari|rolls[- ]?royce|bentley|mclaren|porsche|range rover|mercedes|bmw|audi|aston martin|cullinan|hurac|spider|convertible|suv)/i
 
 export function invitesACarChoice(reply: string | null): boolean {
   if (reply === null || reply.trim() === '') return false
@@ -134,7 +157,9 @@ export function invitesACarChoice(reply: string | null): boolean {
    */
   if ((reply.match(/\?/g) ?? []).length > 1) return false
 
-  return ASKS_WHICH_CAR.some((p) => p.test(reply))
+  if (ASKS_WHICH_CAR.some((p) => p.test(reply))) return true
+  if (!AMBIGUOUS_WHICH.test(reply)) return false
+  return MENTIONS_A_CAR.test(reply) || !WEIGHING_UP_DAYS.test(reply)
 }
 
 /**
@@ -270,6 +295,30 @@ export function buttonsFor(reply: string | null): ReplyButton[] | null {
   }
 
   return null
+}
+
+/**
+ * Whether the reply is asking the customer to pick between alternatives.
+ *
+ * Read live, and the reason this exists. The agent replied "Ferrari 488
+ * Spider delivered from 25th to 27th September is *2 rental days* — or do you
+ * need 3 days, through the 27th?" and carried `Confirm with team` /
+ * `Not just yet` underneath it, because the buttons are chosen from what the
+ * customer said and the reply was never consulted. The customer tapped
+ * Confirm with team — which cannot answer "2 or 3" — and got the same
+ * question again, with the same two buttons.
+ *
+ * Deliberately narrow. This is not an attempt to read the model's intent out
+ * of its prose, which has failed here repeatedly; it is the "A or B" shape
+ * that `DELIVERY_PATTERNS` already trusts, inside the question itself. A
+ * confirmation prompt ends in a question mark too, so punctuation alone
+ * cannot tell them apart — the choice is what distinguishes them.
+ */
+const OFFERS_A_CHOICE = /\b(?:or)\b[^?]{0,60}\?/i
+
+export function offersAChoice(reply: string | null): boolean {
+  if (reply === null || reply.trim() === '') return false
+  return OFFERS_A_CHOICE.test(reply)
 }
 
 /**

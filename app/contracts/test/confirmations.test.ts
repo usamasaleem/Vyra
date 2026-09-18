@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOOKING_CONFIRMATION, DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor,
-  invitesACarChoice, meaningOfButton, surfaceForAsking, vehicleList,
+  invitesACarChoice, meaningOfButton, offersAChoice, surfaceForAsking, vehicleList,
 } from '../src/confirmations.ts'
 
 describe("Meta's limits", () => {
@@ -327,5 +327,55 @@ describe('surfaceForAsking', () => {
     expect(surfaceForAsking(undefined, 'Delivered or collected?')).toBeNull()
     expect(surfaceForAsking('delivery_preference', null)).toBeNull()
     expect(surfaceForAsking('delivery_preference', '  ')).toBeNull()
+  })
+})
+
+/**
+ * The surface has to answer the question above it.
+ *
+ * Read out of two screenshots, minutes apart, at the moment of a sale. The
+ * agent asked "Ferrari 488 Spider from 25th to 27th September is *2 rental
+ * days* — or do you need 3 days?" and carried `Confirm with team` /
+ * `Not just yet`. The customer tapped Confirm with team, which answers
+ * nothing about 2 or 3, and got the same question back with the same buttons.
+ * Then "25th–27th September is 2 days, while 3 days would be 25th–28th
+ * September. Which one should I use?" went out with a tappable list of the
+ * fleet under it.
+ *
+ * Every one of these is the same failure: the affordance was chosen from
+ * something other than the question being asked.
+ */
+describe('a surface that cannot answer its own question', () => {
+  const askedTwoOrThree =
+    'Just to confirm: *Ferrari 488 Spider* delivered from 25th to 27th September is '
+    + '*2 rental days* — or do you need 3 days, through the 27th?'
+  const askedWhichDates =
+    'I still need the dates to match before I can send it for confirmation: 25th–27th '
+    + 'September is 2 days, while 3 days would be 25th–28th September. Which one should I use?'
+
+  it('sees the two-or-three question as a choice', () => {
+    expect(offersAChoice(askedTwoOrThree)).toBe(true)
+  })
+
+  it('does not call a plain confirmation prompt a choice', () => {
+    expect(offersAChoice('Shall I have a colleague confirm this for you?')).toBe(false)
+    expect(offersAChoice('That is all noted — I will pass it to the team now.')).toBe(false)
+  })
+
+  it('keeps the fleet list away from a question about dates', () => {
+    expect(invitesACarChoice(askedWhichDates)).toBe(false)
+  })
+
+  /** The reply that made requiring a car name the wrong fix. */
+  it('still offers the list when the cars are the choice', () => {
+    expect(invitesACarChoice('We have three that would suit — which one appeals?')).toBe(true)
+    expect(invitesACarChoice('Which one would you like, the Ferrari or the Huracán?')).toBe(true)
+  })
+
+  /** A named car wins even where days are being discussed. */
+  it('offers the list when a car is named alongside the dates', () => {
+    expect(invitesACarChoice(
+      'For 3 days I would take the Huracán over the Cullinan — which one shall I price?',
+    )).toBe(true)
   })
 })
