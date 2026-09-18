@@ -81,7 +81,7 @@ export default async function OperationsPage() {
                   </tbody>
                 </table>
 
-                <ApproveQuote quoteId={q.id} revision={q.revision} />
+                <ApproveQuote quoteId={q.id} revision={q.revision} currency={q.currency} />
                 <p style={{ margin: '0.7rem 0 0' }}>
                   <Link href={`/conversations/${q.conversationId}`}>Open the conversation</Link>
                 </p>

@@ -129,6 +129,29 @@ export const quotes = pgTable(
     /** After this the price is not honoured and the quote must be redone. */
     validUntil: timestamp({ withTimezone: true }),
 
+    /**
+     * What a person took off the calculated price, in minor units.
+     *
+     * Null on an ordinary quote, which is nearly all of them. There was no way
+     * to do this at all: calculateDraftQuote has no discount input by design —
+     * "a discount is a manager's approval, not a calculation" — and approving
+     * sends the exact figures. So a salesperson who wanted to take five
+     * hundred off had to type it into a message, and then the record said one
+     * thing while the customer had been told another. That was survivable
+     * while a quote was only a number in a chat. It stopped being survivable
+     * when bookings started confirming against a quote id: the customer agrees
+     * to 9,500 and the booking holds them to 10,000.
+     *
+     * So a discount is a new revision of the quote with somebody's name on it,
+     * which is what "a manager's approval" means once it has to be recorded
+     * rather than remembered. A column rather than a line in `lines`, because
+     * an operator will want to ask how much was given away last month and a
+     * jsonb array is a poor thing to ask that of.
+     */
+    discountMinor: integer(),
+    /** Why it was given. For the operator's own reckoning, never sent. */
+    discountReason: text(),
+
     approvedByMembershipId: uuid(),
     approvedAt: timestamp({ withTimezone: true }),
     sentMessageId: uuid(),

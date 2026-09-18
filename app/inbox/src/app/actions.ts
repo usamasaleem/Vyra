@@ -6,6 +6,7 @@ import {
   addNote,
   answerOperationsRequest,
   approveQuote,
+  discountQuote,
   listDraftQuotes,
   renderQuoteMessage,
   setVehicleRate,
@@ -21,7 +22,7 @@ import {
 import { complaintAboutImage } from '@vyra/contracts'
 import { revalidatePath } from 'next/cache'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
-import { actorRunner } from '@/lib/db'
+import { actorRunner, actorTransactor } from '@/lib/db'
 
 /**
  * Every action re-derives the actor and its operator from the session.
@@ -567,5 +568,95 @@ export async function saveHighlight(
   }
 
   revalidatePath('/rates')
+  return { error: null }
+}
+
+/**
+ * Taking something off the price, and sending the new one.
+ *
+ * On the same screen as Approve and send, because a salesperson looking at a
+ * quote either sends it or wants it to be a different number, and making the
+ * second of those a different page is how it ends up typed into a message
+ * instead — which is what the record could not survive once bookings started
+ * confirming against a quote id.
+ *
+ * It sends in the same act. A discounted quote nobody sent is a customer still
+ * waiting on the price they asked about.
+ */
+export async function discountAndSendQuote(
+  _previous: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const actor = await requireActor()
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'discount a quote')
+  } catch {
+    return { error: 'Your role cannot change quotes.' }
+  }
+  if (actor.displayName === null) {
+    return {
+      error: 'The new price goes out signed with your name, and you have not set one yet. '
+        + 'Add it on the Team page and try again.',
+    }
+  }
+
+  const quoteId = String(formData.get('quoteId') ?? '')
+  const revision = Number(formData.get('revision') ?? 0)
+  const reason = String(formData.get('reason') ?? '').trim()
+
+  /** Whole currency on the form, minor units in the record, like every amount. */
+  const major = Number(String(formData.get('discount') ?? '').trim())
+  if (!Number.isFinite(major) || major <= 0) {
+    return { error: 'Enter how much to take off, as a number greater than zero.' }
+  }
+  if (reason === '') {
+    return { error: 'Say why. It is not sent to the customer — it is for your own reckoning.' }
+  }
+
+  const run = actorRunner(actor)
+  const result = await discountQuote(actorTransactor(actor), {
+    operatorId: actor.operatorId,
+    quoteId,
+    membershipId: actor.membershipId,
+    revision,
+    discountMinor: Math.round(major * 100),
+    reason,
+  })
+
+  if (!result.ok) {
+    return {
+      error: result.reason === 'revision_moved'
+        ? 'This quote changed while you were reading it. Reload and check the new figures.'
+        : result.reason === 'too_large'
+          ? 'That is more than the total. A discount takes something off a price; it cannot make one.'
+          : result.reason === 'not_a_draft'
+            ? 'That quote has already been sent. Ask the agent to prepare a new one.'
+            : 'That quote could not be found.',
+    }
+  }
+
+  const [draft] = await listDraftQuotes(run, actor.operatorId)
+    .then((all) => all.filter((q) => q.id === result.quoteId))
+  const message = draft === undefined ? null : renderQuoteMessage(draft)
+
+  if (message !== null) {
+    const queued = await queueOutboundText(run, {
+      conversationId: draft!.conversationId,
+      operatorId: actor.operatorId,
+      body: message,
+      idempotencyKey: `quote:${result.quoteId}:${result.revision}`,
+      sentByMembershipId: actor.membershipId,
+    })
+    if (queued.messageId !== null) {
+      await run(
+        `update quotes set state = 'sent', sent_message_id = $2, updated_at = now() where id = $1`,
+        [result.quoteId, queued.messageId],
+      )
+    }
+    revalidatePath(`/conversations/${draft!.conversationId}`)
+  }
+
+  revalidatePath('/operations')
   return { error: null }
 }

@@ -288,6 +288,13 @@
       "when": 1789756314616,
       "tag": "0040_auto_confirm",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789757063001,
+      "tag": "0041_quote_discount",
+      "breakpoints": true
     }
   ]
 }

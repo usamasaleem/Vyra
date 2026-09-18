@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  approveQuote, calculateDraftQuote, formatMoney, listDraftQuotes, listRates,
+  approveQuote, calculateDraftQuote, discountQuote, formatMoney, listDraftQuotes, listRates,
   renderQuoteMessage, setVehicleHighlight, setVehicleRate,
 } from '../src/queries/quotes.ts'
-import type { QueryRunner } from '../src/runner.ts'
+import type { QueryRunner, Transactor } from '../src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
 const OP = '11111111-1111-1111-1111-111111111111'
@@ -18,6 +18,7 @@ const CONV = '66666666-6666-6666-6666-666666666666'
 
 let db: PGlite
 let run: QueryRunner
+let transact: Transactor
 let vehicleId: string
 
 async function setRate(fields: Record<string, number | null> = {}) {
@@ -36,6 +37,13 @@ async function setRate(fields: Record<string, number | null> = {}) {
 beforeEach(async () => {
   db = await PGlite.create()
   run = async (t, p) => (await db.query(t, p)).rows as Array<Record<string, unknown>>
+  transact = async (fn) => {
+    let out: unknown
+    await db.transaction(async (tx) => {
+      out = await fn(async (text, params) => (await tx.query(text, params)).rows as Array<Record<string, unknown>>)
+    })
+    return out as never
+  }
   for (const f of readdirSync(migrationsDir).filter((n) => n.endsWith('.sql')).sort()) {
     await db.exec(readFileSync(join(migrationsDir, f), 'utf8'))
   }
@@ -431,5 +439,119 @@ describe('setting what is said about a car', () => {
       operatorId: '99999999-9999-9999-9999-999999999999', vehicleId: id,
       highlight: 'Best seller', actorMembershipId: SARA,
     })).toEqual({ changed: false })
+  })
+})
+
+/**
+ * Taking something off the price, which could not be done at all.
+ *
+ * calculateDraftQuote has no discount input by design — section 18.7 calls a
+ * discount a manager's approval rather than a calculation — and approving
+ * sends the exact figures. So the only way to give one was to type it into a
+ * message, and the record then said one thing while the customer held another.
+ * Survivable while a quote was a number in a chat; not survivable once a
+ * booking confirms against a quote id, because the customer agrees to 9,500
+ * and the booking holds them to 10,000.
+ */
+describe('discounting a quote', () => {
+  const draft = async () => {
+    await setRate()
+    const result = await calculateDraftQuote(run, {
+      operatorId: OP, conversationId: CONV, enquiryId: null, vehicleId,
+      startDate: '2026-09-25', endDate: '2026-09-27', duration: null,
+    })
+    if (!result.ok) throw new Error('fixture could not be priced: ' + result.refusal.reason)
+    return result.quote
+  }
+
+  const take = (q: { quoteId: string; revision: number }, off: number, reason = 'returning customer') =>
+    discountQuote(transact, {
+      operatorId: OP, quoteId: q.quoteId, membershipId: SARA,
+      revision: q.revision, discountMinor: off, reason,
+    })
+
+  it('produces a new revision at the lower price', async () => {
+    const q = await draft()
+    const result = await take(q, 50_000)
+
+    expect(result).toMatchObject({ ok: true, totalMinor: q.totalMinor - 50_000 })
+    expect((result as { revision: number }).revision).toBeGreaterThan(q.revision)
+  })
+
+  /** "What was I quoted before the discount" stays answerable. */
+  it('supersedes the original rather than overwriting it', async () => {
+    const q = await draft()
+    await take(q, 50_000)
+
+    const [old] = await run(
+      `select state::text as state, total_minor from quotes where id = $1`, [q.quoteId])
+    expect(old).toMatchObject({ state: 'superseded', total_minor: q.totalMinor })
+  })
+
+  it('carries who gave it and why, and the why never reaches the customer', async () => {
+    const q = await draft()
+    const result = await take(q, 50_000, 'third rental this year')
+
+    const [row] = await run(
+      `select discount_minor, discount_reason, approved_by_membership_id, approved_at, state::text as state
+       from quotes where id = $1`, [(result as { quoteId: string }).quoteId])
+    expect(row).toMatchObject({
+      discount_minor: 50_000,
+      discount_reason: 'third rental this year',
+      approved_by_membership_id: SARA,
+      // Approved in the same act: setting a discount is the approval.
+      state: 'approved',
+    })
+    expect(row!['approved_at']).not.toBeNull()
+  })
+
+  it('shows the reduction as its own line', async () => {
+    const q = await draft()
+    const result = await take(q, 50_000)
+    const [row] = await run(
+      `select lines from quotes where id = $1`, [(result as { quoteId: string }).quoteId])
+    const lines = row!['lines'] as Array<Record<string, unknown>>
+    expect(lines.at(-1)).toMatchObject({ label: 'Discount', amountMinor: -50_000 })
+  })
+
+  it('records it against the person in the audit trail', async () => {
+    const q = await draft()
+    await take(q, 50_000)
+    const [event] = await run(
+      `select actor_id, data from audit_events where action = 'quote.discounted'`, [])
+    expect(event!['actor_id']).toBe(SARA)
+    expect((event!['data'] as Record<string, unknown>)['discount_minor']).toBe(50_000)
+  })
+
+  /** A discount takes something off a price; it cannot make one. */
+  it('refuses more than the total', async () => {
+    const q = await draft()
+    expect(await take(q, q.totalMinor)).toMatchObject({ ok: false, reason: 'too_large' })
+    expect(await take(q, -100)).toMatchObject({ ok: false, reason: 'too_large' })
+  })
+
+  /** The same guard as approving: numbers nobody read cannot be sent. */
+  it('refuses when the quote was repriced while the page was open', async () => {
+    const q = await draft()
+    expect(await discountQuote(transact, {
+      operatorId: OP, quoteId: q.quoteId, membershipId: SARA,
+      revision: q.revision + 1, discountMinor: 50_000, reason: 'x',
+    })).toMatchObject({ ok: false, reason: 'revision_moved' })
+  })
+
+  /**
+   * Two people being generous about the same rental. The second takes its cut
+   * off what is now owed, not off the list price.
+   */
+  it('discounts a discounted quote from the new total', async () => {
+    const q = await draft()
+    const once = await take(q, 50_000) as { quoteId: string; revision: number; totalMinor: number }
+    const twice = await take(once, 25_000)
+
+    expect(twice).toMatchObject({ ok: true, totalMinor: once.totalMinor - 25_000 })
+    const [row] = await run(
+      `select discount_minor from quotes where id = $1`, [(twice as { quoteId: string }).quoteId])
+    // And the record knows the whole of what was given away, not just the last bite.
+    expect(row!['discount_minor']).toBe(75_000)
   })
 })

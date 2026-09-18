@@ -1,5 +1,5 @@
 import { formatDateForMessage, HIGHLIGHT_LIMIT } from '@vyra/contracts'
-import type { QueryRunner } from '../runner.js'
+import type { QueryRunner, Transactor } from '../runner.js'
 
 /**
  * Calculating a draft quote.
@@ -320,6 +320,142 @@ export async function listDraftQuotes(
     vehicleLabel: (r['vehicle_label'] as string) ?? null,
   }))
 }
+
+/**
+ * Taking something off the price, with a name against it.
+ *
+ * There was no way to do this. `calculateDraftQuote` has no discount input by
+ * design — section 18.7 calls a discount a manager's approval rather than a
+ * calculation — and approving sends the exact figures. So the only way to give
+ * one was to type it into a message, which left the record saying one thing
+ * and the customer holding another. Survivable while a quote was a number in a
+ * chat; not survivable now that a booking confirms against a quote id, because
+ * the customer agrees to 9,500 and the booking holds them to 10,000.
+ *
+ * A discount is therefore a new revision of the quote. Everything that made
+ * the original explainable applies to it unchanged: it supersedes rather than
+ * overwrites, it carries the person who approved it, and the arithmetic is
+ * integer minor units throughout. The old revision stays exactly as it was, so
+ * "what was I quoted before you gave me the discount" is still answerable.
+ *
+ * Approved in the same act, because a person setting a discount is the
+ * approval — asking them to approve their own figure afterwards is a second
+ * click that can only ever be pressed.
+ */
+export type DiscountResult =
+  | { ok: true; quoteId: string; revision: number; totalMinor: number }
+  | { ok: false; reason: 'not_found' | 'revision_moved' | 'not_a_draft' | 'too_large' }
+
+export async function discountQuote(
+  transact: Transactor,
+  input: {
+    operatorId: string
+    quoteId: string
+    membershipId: string
+    /** The revision on screen, so a reprice while the page was open refuses. */
+    revision: number
+    /** How much to take off, in minor units. */
+    discountMinor: number
+    reason: string
+  },
+): Promise<DiscountResult> {
+  if (!Number.isInteger(input.discountMinor) || input.discountMinor <= 0) {
+    return { ok: false, reason: 'too_large' }
+  }
+
+  return transact(async (tx) => {
+    const [quote] = await tx(
+      `select * from quotes where id = $1 and operator_id = $2 for update`,
+      [input.quoteId, input.operatorId],
+    )
+    if (quote === undefined) return { ok: false as const, reason: 'not_found' as const }
+    if (Number(quote['revision']) !== input.revision) {
+      return { ok: false as const, reason: 'revision_moved' as const }
+    }
+    /**
+     * Anything not yet in front of the customer. A draft is the usual case;
+     * approved-but-unsent is the manager who pressed the button and then
+     * thought better of the number, and there is no reason to make them wait
+     * for the customer to see it first. Once it is sent it is a price somebody
+     * has been given, and changing it means a fresh quote rather than a
+     * quieter edit of the old one.
+     */
+    if (quote['state'] !== 'draft' && quote['state'] !== 'approved') {
+      return { ok: false as const, reason: 'not_a_draft' as const }
+    }
+
+    /**
+     * Off the already-discounted total, not the original. Two discounts in a
+     * row are two people being generous about the same rental, and compounding
+     * them from the list price is how a car goes out below cost.
+     */
+    const before = Number(quote['total_minor'])
+    if (input.discountMinor >= before) return { ok: false as const, reason: 'too_large' as const }
+    const after = before - input.discountMinor
+
+    const lines = [
+      ...(quote['lines'] as Array<Record<string, unknown>>),
+      { label: 'Discount', amountMinor: -input.discountMinor },
+    ]
+
+    await tx(
+      `update quotes set state = 'superseded', updated_at = now() where id = $1`,
+      [input.quoteId],
+    )
+
+    const [created] = await tx(
+      `insert into quotes (
+         operator_id, conversation_id, enquiry_id, vehicle_id, revision, state,
+         currency, total_minor, deposit_minor, lines, start_date, end_date, days,
+         rate_id, valid_until, discount_minor, discount_reason,
+         approved_by_membership_id, approved_at
+       )
+       select operator_id, conversation_id, enquiry_id, vehicle_id,
+              -- Numbered per conversation, like calculateDraftQuote. Per enquiry
+              -- would collide the moment a thread holds two rentals, and an
+              -- enquiry-less quote would restart at 1 on top of an existing row.
+              (select coalesce(max(revision), 0) + 1 from quotes
+                where conversation_id = q.conversation_id and operator_id = q.operator_id),
+              'approved', currency, $3, deposit_minor, $4::jsonb,
+              start_date, end_date, days, rate_id, valid_until,
+              coalesce(discount_minor, 0) + $5, $6, $7, now()
+       from quotes q where q.id = $1 and q.operator_id = $2
+       returning id, revision, total_minor`,
+      [
+        input.quoteId, input.operatorId, after, JSON.stringify(lines),
+        input.discountMinor, input.reason.trim() === '' ? null : input.reason.trim(),
+        input.membershipId,
+      ],
+    )
+    if (created === undefined) return { ok: false as const, reason: 'not_found' as const }
+
+    await tx(
+      `insert into audit_events (
+         operator_id, actor_type, actor_id, action, subject_type, subject_id,
+         subject_version, data
+       )
+       values ($1, 'user', $2, 'quote.discounted', 'quote', $3, $4, $5::jsonb)`,
+      [
+        input.operatorId, input.membershipId, created['id'], created['revision'],
+        JSON.stringify({
+          from_quote: input.quoteId,
+          discount_minor: input.discountMinor,
+          total_before_minor: before,
+          total_minor: after,
+          reason: input.reason,
+        }),
+      ],
+    )
+
+    return {
+      ok: true as const,
+      quoteId: created['id'] as string,
+      revision: Number(created['revision']),
+      totalMinor: Number(created['total_minor']),
+    }
+  })
+}
+
 
 /**
  * Approving a quote, which is the moment a figure becomes something the
