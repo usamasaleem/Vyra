@@ -255,3 +255,41 @@ export async function searchFleet(
     fleetSize: Number(size?.['n'] ?? 0),
   }
 }
+
+/**
+ * One car, one spelling.
+ *
+ * Two code paths wrote the vehicle field and disagreed about its name. The
+ * model records what the customer said, resolved to the full name — "Ferrari
+ * 488 Spider", "Lamborghini Huracán Tecnica". The turn's own auto-record wrote
+ * `make model` and dropped the variant. So the same car went in as two values
+ * that each superseded the other, sixteen seconds apart in one case and four
+ * in another, and the enquiry looked like somebody changing their mind about a
+ * car they had not stopped talking about.
+ *
+ * Twenty-four of the pilot's twenty-seven vehicle records are superseded, and a
+ * good share of those supersedes are this.
+ *
+ * Folded, because the enquiry records the customer's own wording, accents and
+ * all or neither — the same comparison prepare_quote makes, for the same
+ * reason. Returns null when it matches no car or more than one, and the caller
+ * keeps what it had: a name nobody can resolve is still what the customer said.
+ */
+export async function canonicalVehicleName(
+  run: QueryRunner,
+  operatorId: string,
+  spoken: string,
+): Promise<string | null> {
+  if (spoken.trim() === '') return null
+
+  const rows = await run(
+    `select trim(make || ' ' || model || ' ' || coalesce(variant, '')) as name
+     from vehicles
+     where operator_id = $1 and active and provenance = 'operator_confirmed'
+       and public.vyra_fold(make || ' ' || model || ' ' || coalesce(variant, ''))
+           like '%' || public.vyra_fold($2) || '%'
+     limit 2`,
+    [operatorId, spoken],
+  )
+  return rows.length === 1 ? (rows[0]!['name'] as string) : null
+}

@@ -80,6 +80,10 @@ export type RunTurnOptions = {
   noPhotosOf?: readonly string[]
   /** The customer's WhatsApp profile name. See systemPromptFor. */
   customerName?: string | null
+  /** Every car this enquiry has been about. See systemPromptFor. */
+  considering?: readonly string[]
+  /** They have said yes and the enquiry is complete. See systemPromptFor. */
+  readyToConfirm?: boolean
   /** Their last message was a voice note. See systemPromptFor. */
   spoken?: boolean
   /** Tools to withhold this turn because their answer is already in the prompt. */
@@ -139,6 +143,8 @@ export async function runTurn(
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),
           ...(options.spoken === true ? { spoken: true } : {}),
+          ...(options.considering === undefined ? {} : { considering: options.considering }),
+          ...(options.readyToConfirm === true ? { readyToConfirm: true } : {}),
         }),
       summary: options.summary ?? null,
       transcript: [...transcript],

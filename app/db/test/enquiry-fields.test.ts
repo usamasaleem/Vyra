@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  advanceStage, ensureEnquiry, getEnquiryFields, getFieldHistory, missingFields,
+  advanceStage, ensureEnquiry, getEnquiryFields, getFieldHistory, missingFields, vehiclesConsidered,
   outstandingQuestions, recordAsked, recordFields, stageFromEvidence,
 } from '../src/queries/enquiry-fields.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
@@ -442,5 +442,47 @@ describe('the order the questions come in', () => {
       ['end_at', '2026-09-20'], ['delivery_preference', 'delivery'],
     ]) await know(field!, value!)
     expect(await missing()).toEqual([])
+  })
+})
+
+/**
+ * An enquiry holds one vehicle, so a customer weighing a Cullinan against a
+ * Huracán was indistinguishable from one who changed their mind twice.
+ * Derived, like the sales stage — every car they have mentioned is already in
+ * the evidence, and nothing was reading it as a set.
+ */
+describe('the cars an enquiry has been about', () => {
+  const sawCar = (value: string) =>
+    recordFields(transact, {
+      operatorId: OP, enquiryId, observations: [{ field: 'vehicle', value }],
+    })
+
+  it('has nothing to say before they have named one', async () => {
+    expect(await vehiclesConsidered(run, OP, enquiryId)).toEqual([])
+  })
+
+  it('keeps a car they moved on from', async () => {
+    await sawCar('Rolls-Royce Cullinan')
+    await sawCar('Lamborghini Huracán Tecnica')
+
+    // Newest first, and the superseded one is the point rather than a leak.
+    expect(await vehiclesConsidered(run, OP, enquiryId))
+      .toEqual(['Lamborghini Huracán Tecnica', 'Rolls-Royce Cullinan'])
+  })
+
+  /** Going back to a car is not a third car. */
+  it('counts a car once however often they return to it', async () => {
+    await sawCar('Rolls-Royce Cullinan')
+    await sawCar('Lamborghini Huracán Tecnica')
+    await sawCar('Rolls-Royce Cullinan')
+
+    const considered = await vehiclesConsidered(run, OP, enquiryId)
+    expect(considered).toHaveLength(2)
+    expect(considered[0]).toBe('Rolls-Royce Cullinan')
+  })
+
+  it('never reaches into another operator', async () => {
+    await sawCar('Rolls-Royce Cullinan')
+    expect(await vehiclesConsidered(run, RIVAL, enquiryId)).toEqual([])
   })
 })

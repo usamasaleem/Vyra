@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v18'
+export const PROMPT_VERSION = 'sales-v19'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -382,6 +382,20 @@ export function systemPromptFor(input: {
    */
   spoken?: boolean
   /**
+   * Every car this enquiry has been about, newest first.
+   *
+   * The enquiry holds one vehicle, so a customer weighing a Cullinan against a
+   * Huracán was indistinguishable from one who changed their mind twice. This
+   * is the set, derived from what they have mentioned.
+   */
+  considering?: readonly string[]
+  /**
+   * Everything the enquiry needs is on file and they have said they want it.
+   *
+   * The one moment a summary is a check rather than an interrogation.
+   */
+  readyToConfirm?: boolean
+  /**
    * The enquiry this turn is about.
    *
    * prepare_quote takes it as an argument and refuses anything else, so that a
@@ -555,7 +569,40 @@ export function systemPromptFor(input: {
       + `survive the transcription, say you did not catch it rather than answering the `
       + `part you did.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${remembered}${outstanding}
+  /**
+   * Two cars in play is a comparison, not indecision.
+   *
+   * Live, a customer asked "is it popular compared to lambo", "what other cars
+   * are good too" and "give me the highest priced" — shopping, not confusion.
+   * The useful move is not to recap it back and ask them to choose, which
+   * hands them the work and reads as having lost track. It is to give them the
+   * reason they were trying to work out by asking.
+   */
+  const weighing = (input.considering ?? []).slice(0, 3)
+  const comparing = weighing.length < 2
+    ? ''
+    : `\n\nThey have been looking at ${weighing.slice(0, -1).join(', ')} and `
+      + `${weighing[weighing.length - 1]}. That is somebody comparing rather than somebody `
+      + `undecided, so give them the reason to pick one — what each is actually for, and `
+      + `what each costs for their dates if you know them. Do not list back what they have `
+      + `looked at and ask which; they know, and it reads as though you lost track.`
+
+  /**
+   * The one place a summary belongs.
+   *
+   * Not during browsing, where it interrupts. Here, where it is the last thing
+   * before a person gets involved and a wrong detail becomes an expensive
+   * phone call.
+   */
+  const confirming = input.readyToConfirm !== true
+    ? ''
+    : `\n\nThey have said they want it and the enquiry has everything. Say the whole `
+      + `arrangement back in one short line before anything else — the car, the dates, `
+      + `delivery or collection, and the total if you have quoted one — so a wrong detail `
+      + `is caught now rather than by a colleague on the phone. Then ask them to confirm. `
+      + `You cannot book anything yourself and must not say it is booked.`
+
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${outstanding}${confirming}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

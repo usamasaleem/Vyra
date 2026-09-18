@@ -39,6 +39,7 @@ import {
   carsWithoutPhotos,
   ENQUIRY_FIELDS,
   getApprovedAnswer,
+  vehiclesConsidered,
   getEnquiryFields,
   unclaimedHandoffFor,
   outstandingQuestions,
@@ -687,6 +688,17 @@ export async function runConversationTurn(
         })
       : []
 
+    /**
+     * Every car this enquiry has been about.
+     *
+     * The live vehicle answers "which car is this rental for". This answers
+     * the one nothing could: which cars are they weighing up. Derived from the
+     * evidence they have already given, so there is nothing new to keep in
+     * step.
+     */
+    const considering = await vehiclesConsidered(deps.run, context.operator.id, enquiryId)
+      .catch(() => [] as string[])
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -755,6 +767,15 @@ export async function runConversationTurn(
       ...(context.contact.displayName == null ? {} : { customerName: context.contact.displayName }),
       // A transcript is a reading of what somebody said, not a record of it.
       ...(context.message.kind === 'audio' ? { spoken: true } : {}),
+      // Two cars in play is a comparison, not indecision.
+      ...(considering.length < 2 ? {} : { considering }),
+      /**
+       * The same test the booking buttons use, so the words and the buttons
+       * cannot disagree: everything on file, and they have just said yes.
+       */
+      ...(stillNeeded.length === 0 && wantsToBook(context.message.body)
+        ? { readyToConfirm: true }
+        : {}),
     })
     end = {
       reply: outcome.reply,
@@ -965,12 +986,14 @@ export async function runConversationTurn(
    */
   const chosen = carChosenIn(context.message.body, fleet)
 
+  // Variant carried through, so a subject used to record a vehicle names the
+  // same car the tool would have named.
   const subject = fleet.length === 1
-    ? { make: fleet[0]!.make, model: fleet[0]!.model }
+    ? { make: fleet[0]!.make, model: fleet[0]!.model, variant: fleet[0]!.variant }
     : chosen !== null
-    ? { make: chosen.make, model: chosen.model }
+    ? { make: chosen.make, model: chosen.model, variant: chosen.variant }
     : namedInReply.length === 1
-    ? { make: namedInReply[0]!.make, model: namedInReply[0]!.model }
+    ? { make: namedInReply[0]!.make, model: namedInReply[0]!.model, variant: namedInReply[0]!.variant }
     // Only when the search found nothing at all. A search that came back with
     // three cars has told us the turn is not about one of them, and narrowing
     // to the single car this customer happens to have seen is worse than
@@ -1316,12 +1339,22 @@ const PHOTOS_PER_CAR = 6
   const onFile = await getEnquiryFields(deps.run, context.operator.id, enquiryId)
     .catch(() => [])
 
+  /**
+   * The same name the tool records, so the two cannot disagree.
+   *
+   * `${make} ${model}` drops the variant and "Lamborghini Huracán" then
+   * supersedes "Lamborghini Huracán Tecnica", which is the same car. The fleet
+   * row has the variant; use it.
+   */
+  const fullName = (car: { make: string; model: string; variant?: string | null }) =>
+    [car.make, car.model, car.variant].filter((p) => p != null && p !== '').join(' ')
+
   const settledOn = carChosenIn(context.message.body, fleet)
   const noVehicleYet = !onFile.some((f) => f.field === 'vehicle')
   const vehicleToRecord = settledOn !== null
-    ? `${settledOn.make} ${settledOn.model}`
+    ? fullName(settledOn)
     : noVehicleYet && subject !== null
-    ? `${subject.make} ${subject.model}`
+    ? fullName(subject)
     : null
 
   if (vehicleToRecord !== null) {

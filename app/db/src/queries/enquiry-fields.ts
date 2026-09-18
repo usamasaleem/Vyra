@@ -436,3 +436,37 @@ export async function recordAsked(
     [input.conversationId, input.operatorId, input.fields as string[]],
   )
 }
+
+/**
+ * Every car this enquiry has been about, newest first.
+ *
+ * An enquiry holds one vehicle: `carChosenIn` picks it and anything else
+ * supersedes. That is right for "which car is this rental for" and wrong for
+ * "which cars are they weighing up", and the system had no way to say the
+ * second — so a customer comparing a Cullinan against a Huracán looked
+ * identical to one changing their mind twice.
+ *
+ * Derived rather than stored, like the sales stage. Every car they have
+ * mentioned is already in `field_evidence` with the time they mentioned it;
+ * what was missing was anything reading it as a set. No column, no migration,
+ * and no second thing to keep in step with the first.
+ *
+ * Superseded rows included on purpose — that is the whole point. The live one
+ * is still the live one and comes back first.
+ */
+export async function vehiclesConsidered(
+  run: QueryRunner,
+  operatorId: string,
+  enquiryId: string,
+): Promise<string[]> {
+  const rows = await run(
+    `select value, max(extracted_at) as last_mentioned
+     from field_evidence
+     where enquiry_id = $1 and operator_id = $2 and field = 'vehicle'
+     group by value
+     order by max(extracted_at) desc
+     limit 6`,
+    [enquiryId, operatorId],
+  )
+  return rows.map((r) => r['value'] as string)
+}

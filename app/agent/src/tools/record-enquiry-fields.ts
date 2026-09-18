@@ -1,4 +1,4 @@
-import { recordFields, type FieldObservation } from '@vyra/db'
+import { canonicalVehicleName, recordFields, type FieldObservation } from '@vyra/db'
 import { civilDateIn, formatCivil } from '@vyra/contracts'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
@@ -61,12 +61,31 @@ export async function recordEnquiryFields(
     }
   }
 
-  const observations: FieldObservation[] = args.fields.map((f) => ({
-    field: f.field,
-    value: f.value,
-    originalWording: f.originalWording,
-    sourceMessageId: ctx.messageId,
-    verificationState: 'customer_stated',
+  /**
+   * A car goes in under one name, whichever name it arrived as.
+   *
+   * The model writes what it understood — "Ferrari 488", "the Huracán", "Rolls
+   * Royce" — and the turn's own auto-record writes `make model`. Left alone
+   * those are different strings for one car, each superseding the other, and
+   * an enquiry that looks like a customer changing their mind about something
+   * they never stopped talking about.
+   *
+   * The customer's own words are kept in `originalWording` either way, which
+   * is where the evidence lives. This only settles what the value is.
+   */
+  const observations: FieldObservation[] = await Promise.all(args.fields.map(async (f) => {
+    const canonical = f.field !== 'vehicle'
+      ? null
+      : await canonicalVehicleName(ctx.run, ctx.operatorId, f.value).catch(() => null)
+
+    return {
+      field: f.field,
+      value: canonical ?? f.value,
+      // What they actually said, preferred over what the model resolved it to.
+      originalWording: f.originalWording ?? (canonical === null ? null : f.value),
+      sourceMessageId: ctx.messageId,
+      verificationState: 'customer_stated' as const,
+    }
   }))
 
   const recorded = await recordFields(ctx.transact, {

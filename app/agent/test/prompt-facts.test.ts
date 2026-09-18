@@ -171,3 +171,55 @@ describe('the customer\u2019s name', () => {
     expect(withName('+971501234567')).not.toContain('WhatsApp name is')
   })
 })
+
+/**
+ * Live, a customer asked "is it popular compared to lambo", "what other cars
+ * are good too" and "give me the highest priced". That is shopping, not
+ * confusion, and a recap would hand them the work of deciding.
+ */
+describe('two cars in play', () => {
+  const weighing = (considering: string[]) =>
+    systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e1', considering })
+
+  it('names both and asks for a reason to pick one', () => {
+    const text = weighing(['Rolls-Royce Cullinan', 'Lamborghini Huracán Tecnica'])
+    expect(text).toContain('Rolls-Royce Cullinan and Lamborghini Huracán Tecnica')
+    expect(text).toContain('give them the reason to pick one')
+  })
+
+  /** The whole point: a recap is the weak version and reads as having lost track. */
+  it('forbids listing it back and asking which', () => {
+    expect(weighing(['Rolls-Royce Cullinan', 'Ferrari 488 Spider']))
+      .toContain('Do not list back what they have looked at and ask which')
+  })
+
+  it('says nothing about comparing when there is only one car', () => {
+    expect(weighing(['Rolls-Royce Cullinan'])).not.toContain('They have been looking at')
+    expect(weighing([])).not.toContain('They have been looking at')
+  })
+})
+
+/**
+ * The one place a summary belongs: not during browsing, where it interrupts,
+ * but at the last moment before a person gets involved and a wrong detail
+ * becomes an expensive phone call.
+ */
+describe('the moment before a person takes over', () => {
+  const ready = (readyToConfirm: boolean) =>
+    systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e1', readyToConfirm })
+
+  it('asks for the whole arrangement in one line', () => {
+    const text = ready(true)
+    expect(text).toContain('Say the whole arrangement back')
+    expect(text).toContain('the car, the dates, delivery or collection')
+  })
+
+  /** request_booking_review is a stub. Nothing here may claim otherwise. */
+  it('still refuses to claim anything is booked', () => {
+    expect(ready(true)).toContain('must not say it is booked')
+  })
+
+  it('says nothing until they have said yes', () => {
+    expect(ready(false)).not.toContain('Say the whole arrangement back')
+  })
+})
