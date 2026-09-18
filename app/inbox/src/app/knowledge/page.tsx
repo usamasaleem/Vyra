@@ -21,6 +21,38 @@ import { AnswerForm } from './answer-form'
  */
 export const dynamic = 'force-dynamic'
 
+/**
+ * Wording to argue with, for the topics where the facts are not the operator's
+ * to invent.
+ *
+ * Only the two driver-requirements answers have one. What a visitor must carry
+ * to drive in the UAE is law rather than policy — passport, visa or entry
+ * stamp, a home licence, an International Driving Permit unless the licence is
+ * from a country the UAE recognises — and an operator retyping it from memory
+ * is more likely to be wrong than a draft is.
+ *
+ * Deposit, kilometres, delivery areas and hours have none, and never will.
+ * Those are this operator's own figures, and a plausible invented deposit is
+ * the single failure this whole system was built to prevent.
+ *
+ * A starter is not a default: nothing is sent until somebody reads it, puts
+ * their name to it and publishes it. The age thresholds are deliberately left
+ * as a blank for the operator, because 21, 23 and 25 are all real answers in
+ * this market and only they know which is theirs.
+ */
+const STARTERS: Record<string, string> = {
+  'driver-requirements-visitor':
+    'You will need your passport, a valid visit visa or entry stamp, and your driving licence '
+    + 'from home. Licences from the GCC, UK, EU, US, Canada, Australia, New Zealand, Japan and '
+    + 'South Korea are accepted on their own if they are in English or Arabic; otherwise bring '
+    + 'an International Driving Permit alongside your licence. Minimum age for this car is ___, '
+    + 'and we take the security deposit on a credit card in the driver\u2019s own name.',
+  'driver-requirements-resident':
+    'You will need your Emirates ID and your UAE driving licence, both in the driver\u2019s own '
+    + 'name. Minimum age for this car is ___, and the licence must have been held for at least '
+    + '___. The security deposit is taken on a credit card in the same name.',
+}
+
 const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = {
   deposit: {
     question: 'What is the security deposit, and when is it returned?',
@@ -113,6 +145,7 @@ export default async function KnowledgePage() {
                     topic={topic}
                     current={answer}
                     placeholder={meta?.placeholder ?? ''}
+                    starter={STARTERS[topic] ?? null}
                   />
                 </div>
               ) : (

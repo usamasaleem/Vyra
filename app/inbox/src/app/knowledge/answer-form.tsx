@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useRef, useState } from 'react'
 import { saveAnswer, type AnswerState } from './actions'
 
 /**
@@ -15,12 +15,21 @@ export function AnswerForm({
   topic,
   current,
   placeholder,
+  starter,
 }: {
   topic: string
   current: string | null
   placeholder: string
+  /**
+   * Wording to begin from, for the topics whose facts are not the operator's
+   * to invent. Null for everything priced, where a plausible invented figure
+   * is the failure this system exists to prevent.
+   */
+  starter?: string | null
 }) {
   const [state, action, pending] = useActionState<AnswerState, FormData>(saveAnswer, { error: null })
+  const box = useRef<HTMLTextAreaElement>(null)
+  const [blank, setBlank] = useState(current === null || current.trim() === '')
 
   return (
     <form action={action} className="stack" style={{ gap: '0.6rem' }}>
@@ -30,13 +39,39 @@ export function AnswerForm({
         The answer, in your own words
       </label>
       <textarea
+        ref={box}
         id={`answer-${topic}`}
         className="input"
         name="answer"
         rows={3}
         defaultValue={current ?? ''}
         placeholder={placeholder}
+        onChange={(event) => setBlank(event.target.value.trim() === '')}
       />
+
+      {blank && starter != null && starter !== '' && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+          The rules here are the law rather than your policy, so there is{' '}
+          <button
+            type="button"
+            onClick={() => {
+              const el = box.current
+              if (el === null) return
+              el.value = starter
+              setBlank(false)
+              el.focus()
+              el.setSelectionRange(starter.length, starter.length)
+            }}
+            style={{
+              background: 'none', border: 'none', padding: 0, font: 'inherit',
+              color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer',
+            }}
+          >
+            wording to start from
+          </button>. Fill in the blanks and check it before you publish — nothing is quoted to
+          anybody until you do.
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 14rem' }}>
