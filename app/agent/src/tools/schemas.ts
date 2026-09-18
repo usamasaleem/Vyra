@@ -76,6 +76,25 @@ export const recordEnquiryFieldsSchema = z.strictObject({
         .describe('What the customer actually typed, if it differs from the value.'),
     }),
   ).min(1).describe('Facts the customer stated in this conversation.'),
+  /**
+   * The one judgement code cannot make for itself.
+   *
+   * Whether a second car is an addition or a change of mind is a reading of
+   * what somebody meant — "actually make it the Ferrari" supersedes, "I want
+   * two bookings, one Cullinan and one Lambo" does not — and the difference is
+   * in the language, not in the data. So the model says which, and everything
+   * that follows is the code's.
+   */
+  forVehicle: z.string().nullable().describe(
+    'Null almost always. Name a car here ONLY when the customer wants this car AS WELL AS '
+    + 'another one they are still taking — two rentals at the same time, like "the Cullinan '
+    + 'on Tuesday for my family and the Lamborghini on Sunday". The facts in this call are '
+    + 'then recorded against that car\'s own booking, with its own dates and its own price. '
+    + 'Do NOT use it when they change their mind or narrow down ("actually the Ferrari", "no, '
+    + 'the yellow one") — that is one booking whose car changed, and naming it here would '
+    + 'leave a second booking for a car they turned down. When they want two cars, make one '
+    + 'call per car.',
+  ),
 })
 
 export const requestHandoffSchema = z.strictObject({

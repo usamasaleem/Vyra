@@ -64,7 +64,7 @@ const REPLIES: ModelResponse[] = [
   {
     toolCalls: [{
       id: 't1', name: 'record_enquiry_fields',
-      arguments: { fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
+      arguments: { forVehicle: null, fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
     }],
     reply: null,
   },
@@ -432,7 +432,7 @@ describe('work the agent promised a person would do', () => {
       {
         toolCalls: [{
           id: 't1', name: 'record_enquiry_fields',
-          arguments: { fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
+          arguments: { forVehicle: null, fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
         }],
         reply: null,
       },

@@ -669,7 +669,7 @@ describe('prepare_quote', () => {
 
 describe('record_enquiry_fields', () => {
   it('attaches the message the customer actually sent as evidence', async () => {
-    const result = await createToolBoundary(ctx).call('record_enquiry_fields', {
+    const result = await createToolBoundary(ctx).call('record_enquiry_fields', { forVehicle: null,
       fields: [{ field: 'vehicle', value: 'Ferrari 488', originalWording: 'the red ferrari' }],
     })
     expect(result).toMatchObject({ status: 'ok' })
@@ -688,8 +688,8 @@ describe('record_enquiry_fields', () => {
 
   it('reports a correction as a conflict instead of overwriting silently', async () => {
     const boundary = createToolBoundary(ctx)
-    await boundary.call('record_enquiry_fields', { fields: [{ field: 'start_at', value: '2026-09-18', originalWording: 'Friday' }] })
-    const second = await boundary.call('record_enquiry_fields', {
+    await boundary.call('record_enquiry_fields', { forVehicle: null, fields: [{ field: 'start_at', value: '2026-09-18', originalWording: 'Friday' }] })
+    const second = await boundary.call('record_enquiry_fields', { forVehicle: null,
       fields: [{ field: 'start_at', value: '2026-09-19', originalWording: 'actually Saturday' }],
     })
 
@@ -708,15 +708,73 @@ describe('record_enquiry_fields', () => {
 
   it('does not treat a customer repeating themselves as a correction', async () => {
     const boundary = createToolBoundary(ctx)
-    await boundary.call('record_enquiry_fields', { fields: [{ field: 'vehicle', value: 'Ferrari 488', originalWording: null }] })
-    const again = await boundary.call('record_enquiry_fields', {
+    await boundary.call('record_enquiry_fields', { forVehicle: null, fields: [{ field: 'vehicle', value: 'Ferrari 488', originalWording: null }] })
+    const again = await boundary.call('record_enquiry_fields', { forVehicle: null,
       fields: [{ field: 'vehicle', value: 'Ferrari 488', originalWording: null }],
     })
     expect(again).toMatchObject({ status: 'ok', data: { conflicts: [] } })
   })
 
+  /**
+   * The judgement the schema exists to capture, in both directions.
+   *
+   * These two came one after the other in the same live thread: "Okay, I want
+   * a Ferrari 488 Spider" replacing the Huracán, and four minutes later "I
+   * want two bookings, one for the Cullinan and one for the Lambo". One is a
+   * customer narrowing down and one is a customer taking two cars, the
+   * difference is entirely in the words, and getting it backwards either loses
+   * a rental or invents one for a car they turned down.
+   */
+  it('supersedes rather than splitting when they change their mind', async () => {
+    const boundary = createToolBoundary(ctx)
+    await boundary.call('record_enquiry_fields', {
+      forVehicle: null,
+      fields: [{ field: 'vehicle', value: 'Lamborghini Huracán', originalWording: null }],
+    })
+    const changed = await boundary.call('record_enquiry_fields', {
+      forVehicle: null,
+      fields: [{ field: 'vehicle', value: 'Ferrari 488 Spider', originalWording: null }],
+    })
+
+    expect(changed).toMatchObject({ status: 'ok', data: { enquiryId: ctx.enquiryId } })
+    const live = await run(
+      `select count(*)::int as n from enquiries where conversation_id = $1`, [CONV],
+    )
+    expect(live[0]!['n']).toBe(1)
+  })
+
+  it('opens a separate booking when they want the second car as well', async () => {
+    const boundary = createToolBoundary(ctx)
+    await boundary.call('record_enquiry_fields', {
+      forVehicle: null,
+      fields: [
+        { field: 'vehicle', value: 'Lamborghini Huracán', originalWording: null },
+        { field: 'start_at', value: '2026-09-20', originalWording: 'Sunday' },
+      ],
+    })
+    const second = await boundary.call('record_enquiry_fields', {
+      forVehicle: 'Rolls-Royce Cullinan',
+      fields: [{ field: 'start_at', value: '2026-09-22', originalWording: 'Tuesday' }],
+    })
+
+    expect(second).toMatchObject({ status: 'ok', data: { startedNewBooking: true } })
+    const on = (second as { data: { enquiryId: string } }).data.enquiryId
+    expect(on).not.toBe(ctx.enquiryId)
+
+    // Each car keeps its own date, rather than one superseding the other.
+    const dates = await run(
+      `select e.id, fe.field::text as field, fe.value from enquiries e
+       join field_evidence fe on fe.enquiry_id = e.id and fe.superseded_at is null
+       where e.conversation_id = $1 order by fe.value`, [CONV],
+    )
+    expect(dates.filter((r) => r['field'] === 'start_at').map((r) => r['value']))
+      .toEqual(['2026-09-20', '2026-09-22'])
+    expect(dates.filter((r) => r['field'] === 'vehicle').map((r) => r['value']))
+      .toEqual(['Lamborghini Huracán', 'Rolls-Royce Cullinan'])
+  })
+
   it('refuses to record an unresolved date as a fact', async () => {
-    const result = await createToolBoundary(ctx).call('record_enquiry_fields', {
+    const result = await createToolBoundary(ctx).call('record_enquiry_fields', { forVehicle: null,
       fields: [{ field: 'start_at', value: 'next Friday', originalWording: 'next friday' }],
     })
     expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })
@@ -726,7 +784,7 @@ describe('record_enquiry_fields', () => {
   })
 
   it('refuses a field that is not part of an enquiry', async () => {
-    const result = await createToolBoundary(ctx).call('record_enquiry_fields', {
+    const result = await createToolBoundary(ctx).call('record_enquiry_fields', { forVehicle: null,
       fields: [{ field: 'credit_card', value: '4111111111111111', originalWording: null }],
     })
     expect(result).toMatchObject({ status: 'refused', reason: 'invalid_arguments' })

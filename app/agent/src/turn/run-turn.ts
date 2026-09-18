@@ -73,7 +73,12 @@ export type RunTurnOptions = {
   /** The fleet, looked up before the first model call. See systemPromptFor. */
   fleetOnHand?: string
   /** What the enquiry still needs and may be asked about. See systemPromptFor. */
-  stillNeeded?: ReadonlyArray<{ field: string; timesAsked: number }>
+  stillNeeded?: ReadonlyArray<{ field: string; timesAsked: number; vehicle?: string | null }>
+  bookings?: ReadonlyArray<{
+    enquiryId: string
+    vehicle: string | null
+    known: ReadonlyArray<{ field: string; value: string; since: Date }>
+  }>
   /** What the enquiry already knows. See systemPromptFor. */
   known?: ReadonlyArray<{ field: string; value: string; since: Date }>
   /** Cars there are no photographs of. See systemPromptFor. */
@@ -139,6 +144,7 @@ export async function runTurn(
           ...(options.photosShown === undefined ? {} : { photosShown: options.photosShown }),
           ...(options.fleetOnHand === undefined ? {} : { fleetOnHand: options.fleetOnHand }),
           ...(options.stillNeeded === undefined ? {} : { stillNeeded: options.stillNeeded }),
+          ...(options.bookings === undefined ? {} : { bookings: options.bookings }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),

@@ -241,7 +241,7 @@ describe('extraction is graded on the database, not the claim', () => {
           toolCalls: [{
             id: 't1', name: 'record_enquiry_fields',
             // An unresolved date. The boundary refuses the whole call.
-            arguments: { fields: [{ field: 'start_at', value: 'next Friday', originalWording: 'next friday' }] },
+            arguments: { forVehicle: null, fields: [{ field: 'start_at', value: 'next Friday', originalWording: 'next friday' }] },
           }],
           reply: null,
         },
@@ -259,7 +259,7 @@ describe('extraction is graded on the database, not the claim', () => {
         {
           toolCalls: [{
             id: 't1', name: 'record_enquiry_fields',
-            arguments: { fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
+            arguments: { forVehicle: null, fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
           }],
           reply: null,
         },
@@ -304,7 +304,7 @@ describe('the availability check', () => {
         {
           toolCalls: [{
             id: 't1', name: 'record_enquiry_fields',
-            arguments: { fields: [{ field: 'vehicle', value: 'Huracan', originalWording: null }] },
+            arguments: { forVehicle: null, fields: [{ field: 'vehicle', value: 'Huracan', originalWording: null }] },
           }],
           reply: null,
         },
@@ -326,7 +326,7 @@ describe('the availability check', () => {
         {
           toolCalls: [{
             id: 't1', name: 'record_enquiry_fields',
-            arguments: { fields: [{ field: 'start_at', value: '2026-09-20', originalWording: 'the 20th' }] },
+            arguments: { forVehicle: null, fields: [{ field: 'start_at', value: '2026-09-20', originalWording: 'the 20th' }] },
           }],
           reply: null,
         },

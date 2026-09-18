@@ -244,11 +244,24 @@ export async function missingFields(
  * anything. The old rows stay exactly as they are — that is what made the
  * quote explainable in the first place.
  *
- * What this does not do: split "a Lamborghini for the weekend and a chauffeur
- * car for the airport" into two live enquiries. That needs the model to say so
- * and there is no tool for it, so a second concurrent rental still overwrites
- * the first, as it always has.
+ * It returns the enquiry *under discussion*, which since `enquiryForVehicle`
+ * is no longer the only live one. Ordered by `updated_at` rather than creation
+ * so that a customer returning to the first of two bookings picks it back up:
+ * recording against an enquiry touches it, so the one last written to is the
+ * one last talked about. With a single enquiry the two orderings agree and
+ * this is the behaviour it has always had.
  */
+const NOT_YET_SPENT = `
+  coalesce(
+    (select max(fe.value::date) from field_evidence fe
+      where fe.enquiry_id = e.id and fe.superseded_at is null
+        and fe.field in ('start_at', 'end_at')
+        -- Guard the cast: the column is text and only a resolved date is
+        -- safe to compare.
+        and fe.value ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+    current_date
+  ) >= current_date`
+
 export async function ensureEnquiry(
   run: QueryRunner,
   operatorId: string,
@@ -258,16 +271,8 @@ export async function ensureEnquiry(
     `with live as (
        select e.id from enquiries e
        where e.conversation_id = $2 and e.operator_id = $1
-         and coalesce(
-               (select max(fe.value::date) from field_evidence fe
-                 where fe.enquiry_id = e.id and fe.superseded_at is null
-                   and fe.field in ('start_at', 'end_at')
-                   -- Guard the cast: the column is text and only a resolved
-                   -- date is safe to compare.
-                   and fe.value ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
-               current_date
-             ) >= current_date
-       order by e.created_at desc
+         and ${NOT_YET_SPENT}
+       order by e.updated_at desc, e.created_at desc
        limit 1
      ),
      created as (
@@ -280,6 +285,140 @@ export async function ensureEnquiry(
     [operatorId, conversationId],
   )
   return (rows[0]?.['id'] as string) ?? null
+}
+
+/**
+ * Every rental this conversation is currently about.
+ *
+ * A conversation has been able to hold several enquiries since the schema was
+ * written — "a Lamborghini for the weekend and a chauffeur car for the airport
+ * run are two enquiries in one thread" — and nothing ever made a second one.
+ * The cost was not theoretical. Asked for two bookings, the model put both car
+ * names into the single `vehicle` slot as one string that matches no car in
+ * the fleet, and wrote the second rental's dates into `special_requirements`,
+ * where nothing prices them, checks them or reads them at all.
+ *
+ * Ordered oldest first, which is the order they were asked for and the order a
+ * person would recount them in. `ensureEnquiry` picks the one being discussed;
+ * this is all of them.
+ */
+export type Booking = {
+  enquiryId: string
+  /** The car, once one has been named. Null while it is still being chosen. */
+  vehicle: string | null
+  fields: EnquiryFieldValue[]
+  updatedAt: Date
+}
+
+export async function liveEnquiries(
+  run: QueryRunner,
+  operatorId: string,
+  conversationId: string,
+): Promise<Booking[]> {
+  const rows = await run(
+    `select e.id, e.updated_at from enquiries e
+     where e.conversation_id = $2 and e.operator_id = $1
+       and ${NOT_YET_SPENT}
+     order by e.created_at asc`,
+    [operatorId, conversationId],
+  )
+
+  return Promise.all(rows.map(async (row) => {
+    const enquiryId = row['id'] as string
+    const fields = await getEnquiryFields(run, operatorId, enquiryId)
+    return {
+      enquiryId,
+      vehicle: fields.find((f) => f.field === 'vehicle')?.value ?? null,
+      fields,
+      updatedAt: new Date(row['updated_at'] as string),
+    }
+  }))
+}
+
+/**
+ * The booking for one named car, started if this conversation has none.
+ *
+ * The discriminator is the car rather than an opaque id, because the car is
+ * what the customer actually says. "The Cullinan on Tuesday and the Lambo on
+ * Sunday" names both; an id names neither, and handing the model ids to keep
+ * straight is how it ends up quoting the wrong one.
+ *
+ * Deliberately not reached by a change of vehicle on its own. "Actually make
+ * it the Ferrari" must still supersede, because that is a customer changing
+ * their mind and splitting it would leave a phantom booking for a car they
+ * turned down. Only an explicit `forVehicle` gets here — the judgement of
+ * whether a second car is an addition or a correction is a reading of what
+ * somebody meant, which is the model's to make and nothing else's.
+ *
+ * `vehicle` must already be canonical. The caller resolves it against the
+ * fleet, so that "the Huracán" and "Lamborghini Huracán" find one booking
+ * rather than opening two.
+ */
+export async function enquiryForVehicle(
+  transact: Transactor,
+  input: {
+    operatorId: string
+    conversationId: string
+    vehicle: string
+    sourceMessageId?: string | null
+  },
+): Promise<{ enquiryId: string; created: boolean }> {
+  return transact(async (tx) => {
+    const [existing] = await tx(
+      `select e.id from enquiries e
+       join field_evidence fe
+         on fe.enquiry_id = e.id and fe.superseded_at is null
+        and fe.field = 'vehicle' and lower(fe.value) = lower($3)
+       where e.conversation_id = $2 and e.operator_id = $1
+         and ${NOT_YET_SPENT}
+       order by e.updated_at desc
+       limit 1`,
+      [input.operatorId, input.conversationId, input.vehicle],
+    )
+    if (existing !== undefined) {
+      return { enquiryId: existing['id'] as string, created: false }
+    }
+
+    /**
+     * An empty live enquiry is the one to adopt, not a second to sit beside.
+     *
+     * Every conversation opens one before the first reply, so the first car
+     * named would otherwise always leave a blank enquiry behind it — and a
+     * blank enquiry is a booking with nothing in it, which reads to everything
+     * downstream as a rental whose car nobody has chosen yet.
+     */
+    const [blank] = await tx(
+      `select e.id from enquiries e
+       where e.conversation_id = $2 and e.operator_id = $1
+         and ${NOT_YET_SPENT}
+         and not exists (
+           select 1 from field_evidence fe
+           where fe.enquiry_id = e.id and fe.superseded_at is null
+         )
+       order by e.updated_at desc
+       limit 1`,
+      [input.operatorId, input.conversationId],
+    )
+
+    const enquiryId = blank !== undefined
+      ? (blank['id'] as string)
+      : ((await tx(
+          `insert into enquiries (operator_id, conversation_id)
+           select v.operator_id, v.id from conversations v
+           where v.id = $2 and v.operator_id = $1
+           returning id`,
+          [input.operatorId, input.conversationId],
+        ))[0]!['id'] as string)
+
+    await tx(
+      `insert into field_evidence
+         (operator_id, enquiry_id, field, value, source_message_id, verification_state)
+       values ($1, $2, 'vehicle', $3, $4, 'customer_stated')`,
+      [input.operatorId, enquiryId, input.vehicle, input.sourceMessageId ?? null],
+    )
+
+    return { enquiryId, created: blank === undefined }
+  })
 }
 
 /**
@@ -378,14 +517,43 @@ export type OutstandingQuestion = {
   field: EnquiryField
   /** How many times it has already been put to them. */
   timesAsked: number
+  /** Which booking it belongs to. */
+  enquiryId: string
+  /**
+   * The car it is about, when the booking has one.
+   *
+   * What makes the question askable at all once there are two. "How long do
+   * you want it for?" has no answer when there is a Cullinan on Tuesday and a
+   * Huracán on Sunday, and the customer has to guess which one is meant.
+   */
+  vehicle: string | null
+}
+
+/**
+ * Counted per booking, not per field name.
+ *
+ * Keyed by field alone, the counter could not see the failure it was built
+ * for. A conversation with a Cullinan and a Huracán in it asked "one day or
+ * two?" four times in a hundred seconds while `asked_for` sat on a single
+ * entry from seventy-eight revisions earlier — because the field it kept
+ * asking about belonged to a booking that did not exist, so nothing counted
+ * it, and the answer had nowhere to be written, so the next turn did not know
+ * it had been given. A question that cannot be recorded is asked forever.
+ *
+ * Older entries are keyed by the bare field name and no longer match. They
+ * simply stop applying, which errs towards asking once more rather than
+ * falling silent, and `ASK_EVERY` still paces it.
+ */
+function askKey(enquiryId: string, field: EnquiryField): string {
+  return `${enquiryId}:${field}`
 }
 
 export async function outstandingQuestions(
   run: QueryRunner,
-  input: { operatorId: string; conversationId: string; enquiryId: string },
+  input: { operatorId: string; conversationId: string },
 ): Promise<OutstandingQuestion[]> {
-  const missing = await missingFields(run, input.operatorId, input.enquiryId)
-  if (missing.length === 0) return []
+  const bookings = await liveEnquiries(run, input.operatorId, input.conversationId)
+  if (bookings.length === 0) return []
 
   const [row] = await run(
     `select revision, asked_for from conversations where id = $1 and operator_id = $2`,
@@ -396,14 +564,35 @@ export async function outstandingQuestions(
   const revision = Number(row['revision'])
   const asked = (row['asked_for'] ?? {}) as Record<string, { times: number; revision: number }>
 
-  return missing
-    .map((field) => ({ field, record: asked[field] }))
-    .filter(({ record }) => {
-      if (record === undefined) return true
-      if (record.times >= ASK_AT_MOST) return false
-      return revision - record.revision >= ASK_EVERY
-    })
-    .map(({ field, record }) => ({ field, timesAsked: record?.times ?? 0 }))
+  /**
+   * The booking under discussion first, so its questions are asked before a
+   * second one's. Everything else keeps the order it was opened in.
+   */
+  const ordered = [...bookings].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+
+  const out: OutstandingQuestion[] = []
+  for (const booking of ordered) {
+    const present = new Set(booking.fields.map((f) => f.field))
+    const missing = ASK_ORDER.filter((field) =>
+      field === 'end_at'
+        ? !present.has('end_at') && !present.has('duration')
+        : !present.has(field))
+
+    for (const field of missing) {
+      const record = asked[askKey(booking.enquiryId, field)]
+      if (record !== undefined) {
+        if (record.times >= ASK_AT_MOST) continue
+        if (revision - record.revision < ASK_EVERY) continue
+      }
+      out.push({
+        field,
+        timesAsked: record?.times ?? 0,
+        enquiryId: booking.enquiryId,
+        vehicle: booking.vehicle,
+      })
+    }
+  }
+  return out
 }
 
 /**
@@ -416,24 +605,29 @@ export async function outstandingQuestions(
  */
 export async function recordAsked(
   run: QueryRunner,
-  input: { operatorId: string; conversationId: string; fields: readonly EnquiryField[] },
+  input: {
+    operatorId: string
+    conversationId: string
+    asked: ReadonlyArray<{ enquiryId: string; field: EnquiryField }>
+  },
 ): Promise<void> {
-  if (input.fields.length === 0) return
+  if (input.asked.length === 0) return
+  const keys = input.asked.map((a) => askKey(a.enquiryId, a.field))
 
   await run(
     `update conversations v
      set asked_for = (
        select coalesce(v.asked_for, '{}'::jsonb) || jsonb_object_agg(
-         f.field,
+         f.key,
          jsonb_build_object(
-           'times', coalesce((v.asked_for -> f.field ->> 'times')::int, 0) + 1,
+           'times', coalesce((v.asked_for -> f.key ->> 'times')::int, 0) + 1,
            'revision', v.revision
          )
        )
-       from unnest($3::text[]) as f(field)
+       from unnest($3::text[]) as f(key)
      )
      where v.id = $1 and v.operator_id = $2`,
-    [input.conversationId, input.operatorId, input.fields as string[]],
+    [input.conversationId, input.operatorId, keys],
   )
 }
 

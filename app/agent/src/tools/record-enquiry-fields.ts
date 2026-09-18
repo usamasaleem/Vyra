@@ -1,4 +1,6 @@
-import { canonicalVehicleName, recordFields, type FieldObservation } from '@vyra/db'
+import {
+  canonicalVehicleName, enquiryForVehicle, recordFields, type FieldObservation,
+} from '@vyra/db'
 import { civilDateIn, formatCivil } from '@vyra/contracts'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
@@ -7,6 +9,16 @@ import type { z } from 'zod'
 
 export type RecordedFields = {
   recorded: Array<{ field: string; value: string }>
+  /**
+   * Which booking these landed on.
+   *
+   * Returned because the model needs it to quote: `prepare_quote` takes an
+   * enquiry id, and with two rentals in one thread the id it was given at the
+   * top of the turn is only one of them.
+   */
+  enquiryId: string
+  /** True when this call opened a second rental alongside an existing one. */
+  startedNewBooking?: boolean
   /**
    * Fields where this contradicts something the customer said earlier.
    *
@@ -88,9 +100,35 @@ export async function recordEnquiryFields(
     }
   }))
 
+  /**
+   * Which rental this is about.
+   *
+   * `ctx.enquiryId` is the one under discussion, which is right for every call
+   * that does not name a car — including a change of mind, where superseding
+   * on the current enquiry is exactly what should happen. A named car means a
+   * second rental running alongside, and it gets its own enquiry so that it
+   * has its own dates, its own availability and its own price. Both cars in
+   * one `vehicle` field is a value matching no car in the fleet, which is what
+   * the record showed before this existed.
+   */
+  let enquiryId = ctx.enquiryId
+  let startedNewBooking = false
+  if (args.forVehicle !== null && args.forVehicle.trim() !== '') {
+    const named = await canonicalVehicleName(ctx.run, ctx.operatorId, args.forVehicle)
+      .catch(() => null) ?? args.forVehicle
+    const booking = await enquiryForVehicle(ctx.transact, {
+      operatorId: ctx.operatorId,
+      conversationId: ctx.conversationId,
+      vehicle: named,
+      sourceMessageId: ctx.messageId,
+    })
+    enquiryId = booking.enquiryId
+    startedNewBooking = booking.created
+  }
+
   const recorded = await recordFields(ctx.transact, {
     operatorId: ctx.operatorId,
-    enquiryId: ctx.enquiryId,
+    enquiryId,
     observations,
   })
 
@@ -99,6 +137,8 @@ export async function recordEnquiryFields(
   }
 
   return ok({
+    enquiryId,
+    ...(startedNewBooking ? { startedNewBooking: true } : {}),
     recorded: recorded.map((r) => ({ field: r.field, value: r.value })),
     conflicts: recorded
       .filter((r) => r.corrected && r.previousValue !== null)

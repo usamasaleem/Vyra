@@ -223,3 +223,58 @@ describe('the moment before a person takes over', () => {
     expect(ready(false)).not.toContain('Say the whole arrangement back')
   })
 })
+
+/**
+ * What it is told when a customer is taking two cars at once.
+ *
+ * Read out of the same transcript. The reply named both cars correctly and the
+ * record kept one, so the second rental's dates survived only as a sentence in
+ * a free-text field. The prompt now describes each booking separately, and
+ * carries each enquiry id, because a price for "the Cullinan and the
+ * Lamborghini" is not a price either of them can be given.
+ */
+describe('two rentals in one thread', () => {
+  const said = new Date('2026-09-16T09:00:00Z')
+  const bookings = [
+    {
+      enquiryId: 'e-lambo',
+      vehicle: 'Lamborghini Huracán Tecnica',
+      known: [{ field: 'start_at', value: '2026-09-20', since: said }],
+    },
+    {
+      enquiryId: 'e-rolls',
+      vehicle: 'Rolls-Royce Cullinan',
+      known: [{ field: 'start_at', value: '2026-09-22', since: said }],
+    },
+  ]
+
+  const twoCars = (extra: Partial<Parameters<typeof systemPromptFor>[0]> = {}) =>
+    systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e-lambo', bookings, ...extra })
+
+  it('describes each car with its own dates', () => {
+    const text = twoCars()
+    expect(text).toContain('Lamborghini Huracán Tecnica')
+    expect(text).toContain('Rolls-Royce Cullinan')
+    expect(text).toContain('e-rolls')
+  })
+
+  /** The question that was asked four times, now answerable. */
+  it('names the car in the question it is told to ask', () => {
+    const text = twoCars({
+      stillNeeded: [{ field: 'end_at', timesAsked: 0, vehicle: 'Rolls-Royce Cullinan' }],
+    })
+    expect(text).toContain('or how many days, for the Rolls-Royce Cullinan')
+  })
+
+  /** One booking is the ordinary case and must read exactly as it did. */
+  it('says nothing about keeping them apart when there is only one', () => {
+    const text = systemPromptFor({
+      now,
+      timezone: 'Asia/Dubai',
+      enquiryId: 'e1',
+      known: [{ field: 'start_at', value: '2026-09-20', since: said }],
+    })
+    expect(text).not.toContain('cars at once')
+    expect(text).toContain('This enquiry already has:')
+  })
+})

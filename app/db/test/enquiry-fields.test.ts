@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  advanceStage, ensureEnquiry, getEnquiryFields, getFieldHistory, missingFields, vehiclesConsidered,
+  advanceStage, ensureEnquiry, enquiryForVehicle, getEnquiryFields, getFieldHistory,
+  liveEnquiries, missingFields, vehiclesConsidered,
   outstandingQuestions, recordAsked, recordFields, stageFromEvidence,
 } from '../src/queries/enquiry-fields.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
@@ -332,14 +333,146 @@ describe('advanceStage', () => {
  * and it showed — it asked for dates once, the customer asked four questions
  * of their own instead, and it answered all four and never came back.
  */
+/**
+ * Two cars at once, which the record could not hold at all.
+ *
+ * Live, asked for "two bookings, one for the Cullinan and one for the Lambo",
+ * the model wrote `vehicle = "Rolls-Royce Cullinan and Lamborghini Huracán"` —
+ * a value matching no car in the fleet — put the second rental's dates into
+ * `special_requirements`, where nothing prices or checks them, and then asked
+ * how long they wanted it for four times in a hundred seconds, because the
+ * answer had nowhere to be written and the next turn did not know it had been
+ * given.
+ */
+describe('a second car alongside the first', () => {
+  const CULLINAN = 'Rolls-Royce Cullinan'
+  const HURACAN = 'Lamborghini Huracán Tecnica'
+
+  it('adopts the empty enquiry rather than leaving a blank booking beside it', async () => {
+    const first = await enquiryForVehicle(transact, {
+      operatorId: OP, conversationId: CONV, vehicle: HURACAN, sourceMessageId: messageId,
+    })
+    expect(first.enquiryId).toBe(enquiryId)
+    expect(await liveEnquiries(run, OP, CONV)).toHaveLength(1)
+  })
+
+  it('opens a second booking for a second car', async () => {
+    await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: HURACAN })
+    const second = await enquiryForVehicle(transact, {
+      operatorId: OP, conversationId: CONV, vehicle: CULLINAN,
+    })
+
+    expect(second.created).toBe(true)
+    expect(second.enquiryId).not.toBe(enquiryId)
+    expect((await liveEnquiries(run, OP, CONV)).map((b) => b.vehicle))
+      .toEqual([HURACAN, CULLINAN])
+  })
+
+  it('returns the same booking when the car is named again', async () => {
+    const a = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: HURACAN })
+    await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: CULLINAN })
+    const b = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: HURACAN })
+    expect(b.enquiryId).toBe(a.enquiryId)
+    expect(b.created).toBe(false)
+  })
+
+  /** The dates that used to end up in a free-text field nothing reads. */
+  it('keeps each car on its own dates', async () => {
+    const lambo = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: HURACAN })
+    const rolls = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: CULLINAN })
+
+    await recordFields(transact, {
+      operatorId: OP, enquiryId: lambo.enquiryId,
+      observations: [{ field: 'start_at', value: '2026-09-20' }, { field: 'end_at', value: '2026-09-20' }],
+    })
+    await recordFields(transact, {
+      operatorId: OP, enquiryId: rolls.enquiryId,
+      observations: [{ field: 'start_at', value: '2026-09-22' }],
+    })
+
+    const bookings = await liveEnquiries(run, OP, CONV)
+    const dateFor = (vehicle: string) => bookings
+      .find((b) => b.vehicle === vehicle)!.fields
+      .find((f) => f.field === 'start_at')!.value
+
+    expect(dateFor(HURACAN)).toBe('2026-09-20')
+    expect(dateFor(CULLINAN)).toBe('2026-09-22')
+  })
+
+  /**
+   * The question that was asked four times. It is outstanding on the Cullinan
+   * and settled on the Huracán, and until a second booking could exist there
+   * was no field to notice was missing.
+   */
+  it('asks for the second car\'s end date, and says which car it means', async () => {
+    const lambo = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: HURACAN })
+    const rolls = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: CULLINAN })
+    await recordFields(transact, {
+      operatorId: OP, enquiryId: lambo.enquiryId,
+      observations: [
+        { field: 'start_at', value: '2026-09-20' }, { field: 'end_at', value: '2026-09-20' },
+        { field: 'delivery_preference', value: 'delivery' },
+      ],
+    })
+    await recordFields(transact, {
+      operatorId: OP, enquiryId: rolls.enquiryId,
+      observations: [{ field: 'start_at', value: '2026-09-22' }],
+    })
+
+    const out = await outstandingQuestions(run, { operatorId: OP, conversationId: CONV })
+    const endDate = out.find((q) => q.field === 'end_at')
+
+    expect(endDate).toMatchObject({ enquiryId: rolls.enquiryId, vehicle: CULLINAN })
+    expect(out.filter((q) => q.enquiryId === lambo.enquiryId)).toEqual([])
+  })
+
+  /** One car's question going quiet must not silence the other's. */
+  it('counts the asking per car', async () => {
+    const lambo = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: HURACAN })
+    const rolls = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: CULLINAN })
+
+    await recordAsked(run, {
+      operatorId: OP, conversationId: CONV,
+      asked: [{ enquiryId: rolls.enquiryId, field: 'end_at' }],
+    })
+
+    const out = await outstandingQuestions(run, { operatorId: OP, conversationId: CONV })
+    expect(out.some((q) => q.enquiryId === rolls.enquiryId && q.field === 'end_at')).toBe(false)
+    expect(out.some((q) => q.enquiryId === lambo.enquiryId && q.field === 'end_at')).toBe(true)
+  })
+
+  /**
+   * The loop, exactly as it ran. Asked twice and never answered, it stops —
+   * which it could not do before, because the counter was keyed on the field
+   * name and the field belonged to a booking that did not exist.
+   */
+  it('stops asking about a car after twice', async () => {
+    const rolls = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: CULLINAN })
+    const askAgain = async () => {
+      await recordAsked(run, {
+        operatorId: OP, conversationId: CONV,
+        asked: [{ enquiryId: rolls.enquiryId, field: 'end_at' }],
+      })
+      await run(`update conversations set revision = revision + 3 where id = $1`, [CONV])
+    }
+    await askAgain()
+    await askAgain()
+
+    const out = await outstandingQuestions(run, { operatorId: OP, conversationId: CONV })
+    expect(out.some((q) => q.enquiryId === rolls.enquiryId && q.field === 'end_at')).toBe(false)
+  })
+})
+
 describe('outstandingQuestions', () => {
   const ask = (fields: readonly string[]) =>
     recordAsked(run, {
-      operatorId: OP, conversationId: CONV, fields: fields as never,
+      operatorId: OP,
+      conversationId: CONV,
+      asked: fields.map((field) => ({ enquiryId, field: field as never })),
     })
 
   const outstanding = async () =>
-    (await outstandingQuestions(run, { operatorId: OP, conversationId: CONV, enquiryId }))
+    (await outstandingQuestions(run, { operatorId: OP, conversationId: CONV }))
       .map((q) => q.field)
 
   const bumpRevision = (by: number) =>
@@ -395,7 +528,9 @@ describe('outstandingQuestions', () => {
 
   it('leaves another operator conversation alone', async () => {
     await recordAsked(run, {
-      operatorId: RIVAL, conversationId: CONV, fields: ['start_at'] as never,
+      operatorId: RIVAL,
+      conversationId: CONV,
+      asked: [{ enquiryId, field: 'start_at' }],
     })
     expect(await outstanding()).toContain('start_at')
   })

@@ -34,6 +34,7 @@ import { searchVehicles } from '@vyra/agent'
 import {
   acceptTurnOutput,
   ensureEnquiry,
+  liveEnquiries,
   recordAgentRun,
   recordFields,
   carsWithoutPhotos,
@@ -699,10 +700,32 @@ export async function runConversationTurn(
     const considering = await vehiclesConsidered(deps.run, context.operator.id, enquiryId)
       .catch(() => [] as string[])
 
+    /**
+     * Every rental in this thread, when there is more than one.
+     *
+     * A nicety like the rest: without it the turn is exactly what it was, a
+     * conversation about one car. With it, two rentals stay two rentals.
+     */
+    const bookings = await liveEnquiries(deps.run, context.operator.id, context.conversation.id)
+      .then((all) => all.map((b) => ({
+        enquiryId: b.enquiryId,
+        vehicle: b.vehicle,
+        known: [...b.fields]
+          .sort((a, c) => ENQUIRY_FIELDS.indexOf(a.field) - ENQUIRY_FIELDS.indexOf(c.field))
+          .map((f) => ({ field: f.field as string, value: f.value, since: f.extractedAt })),
+      })))
+      .catch((error: unknown) => {
+        console.error(JSON.stringify({
+          event: 'live_enquiries.failed',
+          conversationId: context.conversation.id,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+        return []
+      })
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
-      enquiryId,
     }).catch((error: unknown) => {
       console.error(JSON.stringify({
         event: 'outstanding_questions.failed',
@@ -722,11 +745,11 @@ export async function runConversationTurn(
      */
     nothingOutstanding = stillNeeded.length === 0
     askedThisTurn = stillNeeded.slice(0, 1).map((q) => q.field)
-    if (askedThisTurn.length > 0) {
+    if (stillNeeded.length > 0) {
       await recordAsked(deps.run, {
         operatorId: context.operator.id,
         conversationId: context.conversation.id,
-        fields: askedThisTurn,
+        asked: stillNeeded.slice(0, 1).map((q) => ({ enquiryId: q.enquiryId, field: q.field })),
       }).catch(() => undefined)
     }
 
@@ -738,6 +761,7 @@ export async function runConversationTurn(
       ...(fleetOnHand === undefined ? {} : { fleetOnHand }),
       ...(stillNeeded.length === 0 ? {} : { stillNeeded: stillNeeded.slice(0, 1) }),
       ...(known.length === 0 ? {} : { known }),
+      ...(bookings.length > 1 ? { bookings } : {}),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *
