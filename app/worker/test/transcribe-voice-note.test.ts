@@ -159,3 +159,43 @@ describe('a voice note it cannot read', () => {
     expect((await body(messageId))!['body']).toBe('typed')
   })
 })
+
+/**
+ * "Cullinan on Tuesday" came back as "Call in on the Tuesday", and "the
+ * Cullinan would be also wanted" as "the curtain would be also wanted". The
+ * hint did name the Rolls-Royce Cullinan; nobody says the whole thing.
+ */
+describe('what the transcriber is told to expect', () => {
+  const withFleet = async () => {
+    await run(
+      `insert into vehicles (operator_id, make, model, variant, year, colour, category,
+                             plate, chassis_number, provenance, confirmed_by)
+       values ($1, 'Rolls-Royce', 'Cullinan', null, 2023, 'White', 'suv', 'D 3', 'V3',
+               'operator_confirmed', 'Owner')`,
+      [OP],
+    )
+  }
+
+  it('hands it this operator\'s own car names, bare model included', async () => {
+    await withFleet()
+    const messageId = await voiceNote()
+    const transcriber = vi.fn(async () => 'Cullinan on Tuesday')
+
+    await transcribeVoiceNote({ run, whatsapp: downloads(), transcriber, messageId, log })
+
+    const vocabulary = transcriber.mock.calls[0]![0]!.vocabulary ?? []
+    expect(vocabulary).toContain('Cullinan')
+    expect(vocabulary).toContain('Rolls-Royce Cullinan')
+  })
+
+  it('still transcribes when the operator has no fleet on file', async () => {
+    const messageId = await voiceNote()
+    const transcriber = vi.fn(async () => 'a car please')
+
+    await transcribeVoiceNote({ run, whatsapp: downloads(), transcriber, messageId, log })
+
+    expect(transcriber.mock.calls[0]![0]!.vocabulary).toEqual([])
+    const [row] = await run(`select body from messages where id = $1`, [messageId])
+    expect(row!['body']).toBe('a car please')
+  })
+})

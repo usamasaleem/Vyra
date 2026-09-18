@@ -35,6 +35,14 @@ export type Transcriber = (input: {
   /** The file itself. Typed as a view over an ArrayBuffer so Blob accepts it. */
   bytes: Uint8Array<ArrayBuffer>
   mimeType: string
+  /**
+   * Names this particular operator's customers actually say.
+   *
+   * Empty falls back to the general hint. Passed per call rather than baked
+   * in because a fleet is not the same from one operator to the next, and the
+   * words worth expecting are exactly the ones on their own forecourt.
+   */
+  vocabulary?: readonly string[]
 }) => Promise<string | null>
 
 export function openaiTranscriber(options: {
@@ -49,7 +57,7 @@ export function openaiTranscriber(options: {
   const timeoutMs = options.timeoutMs ?? TIMEOUT_MS
   const doFetch = options.fetchImpl ?? fetch
 
-  return async ({ bytes, mimeType }) => {
+  return async ({ bytes, mimeType, vocabulary }) => {
     const extension = EXTENSIONS[mimeType.toLowerCase()]
     if (extension === undefined) return null
     if (bytes.byteLength === 0) return null
@@ -62,12 +70,18 @@ export function openaiTranscriber(options: {
      * worth more here than anywhere: these are car names in a Gulf accent, and
      * "Huracán" is not a word a general model expects to hear.
      */
+    /**
+     * Capped, because the hint is a prompt and a hundred-car fleet listed in
+     * full crowds out the rest of the context it is there to provide.
+     */
+    const cars = (vocabulary ?? []).slice(0, 40)
     form.append(
       'prompt',
       'A customer messaging a Dubai luxury car rental company. Car names likely to '
-      + 'appear: Lamborghini Huracán, Ferrari, Rolls-Royce Cullinan, Bentley, '
-      + 'McLaren, Porsche, Range Rover, G63. Places: Dubai Marina, Downtown, JBR, '
-      + 'Palm Jumeirah, Abu Dhabi, Sharjah. Amounts are in AED.',
+      + `appear: ${cars.length > 0 ? cars.join(', ') : 'Lamborghini Huracán, Ferrari, '
+        + 'Rolls-Royce Cullinan, Bentley, McLaren, Porsche, Range Rover, G63'}. `
+      + 'Places: Dubai Marina, Downtown, JBR, Palm Jumeirah, Abu Dhabi, Sharjah. '
+      + 'Amounts are in AED.',
     )
 
     try {

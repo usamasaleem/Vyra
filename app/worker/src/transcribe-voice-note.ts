@@ -1,4 +1,4 @@
-import { recordTranscript, type QueryRunner } from '@vyra/db'
+import { fleetVocabulary, recordTranscript, type QueryRunner } from '@vyra/db'
 import type { Transcriber } from '@vyra/agent'
 import type { WhatsAppClient } from './whatsapp/client.js'
 
@@ -49,7 +49,18 @@ export async function transcribeVoiceNote(deps: {
   }
 
   const began = Date.now()
-  const text = await deps.transcriber({ bytes: file.bytes, mimeType: file.mimeType })
+  /**
+   * Their own fleet, so the model hears the car rather than a phrase that
+   * sounds like it. A nicety: without it the general hint still applies.
+   */
+  const vocabulary = await fleetVocabulary(deps.run, row['operator_id'] as string)
+    .catch(() => [] as string[])
+
+  const text = await deps.transcriber({
+    bytes: file.bytes,
+    mimeType: file.mimeType,
+    vocabulary,
+  })
   if (text === null) {
     deps.log({
       event: 'transcribe.unreadable',

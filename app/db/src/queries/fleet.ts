@@ -293,3 +293,37 @@ export async function canonicalVehicleName(
   )
   return rows.length === 1 ? (rows[0]!['name'] as string) : null
 }
+
+/**
+ * The names a customer says out loud, for the transcriber to expect.
+ *
+ * A voice note saying "Cullinan on Tuesday" came back as "Call in on the
+ * Tuesday", and "the Cullinan would be also wanted" as "the curtain would be
+ * also wanted". The transcription prompt did list "Rolls-Royce Cullinan", but
+ * nobody says the whole thing — they say the model, once, in the middle of a
+ * sentence, and a general model has no reason to prefer a word it has barely
+ * heard over a common phrase that sounds just like it.
+ *
+ * So the bare model goes in alongside the full name, and it comes from this
+ * operator's own fleet rather than a list written once and never revisited: a
+ * hardcoded hint helps whoever it was written for and nobody else.
+ */
+export async function fleetVocabulary(
+  run: QueryRunner,
+  operatorId: string,
+): Promise<string[]> {
+  const rows = await run(
+    `select distinct name from (
+       select trim(make || ' ' || model || ' ' || coalesce(variant, '')) as name
+         from vehicles where operator_id = $1 and active
+       union
+       select model from vehicles where operator_id = $1 and active
+       union
+       select make from vehicles where operator_id = $1 and active
+     ) names
+     where name is not null and trim(name) <> ''
+     order by name`,
+    [operatorId],
+  )
+  return rows.map((r) => r['name'] as string)
+}
