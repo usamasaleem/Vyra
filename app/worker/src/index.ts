@@ -15,7 +15,8 @@ import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
 import { openaiModel, PROMPT_VERSION, type ModelAdapter } from '@vyra/agent'
 import {
-  acknowledgeWaiting, handleNonTextMessage, handleUrgentMessage, runConversationTurn,
+  acknowledgeWaiting, greetIfNew, handleNonTextMessage, handleUrgentMessage,
+  noticeOutOfHours, runConversationTurn,
 } from './turn.js'
 
 const env = parseServerEnv()
@@ -560,6 +561,30 @@ const runner: Runner = await runWorker({
       }
 
       if (handling.action !== 'draft') return
+
+      /**
+       * The operator's own two messages, before the agent says anything.
+       *
+       * Awaited, and in this order, because both are addressed to somebody who
+       * has not been spoken to yet: a greeting that lands after the answer it
+       * was meant to introduce is not a greeting.
+       *
+       * Neither sends unless the operator has written it. Both are idempotent
+       * — once per contact, once per closed night — so a retried job repeats
+       * nothing.
+       */
+      const written = { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' as const : 'draft' as const }
+      const greeted = await greetIfNew(written, context).catch(() => false)
+      const noticed = await noticeOutOfHours(written, context).catch(() => false)
+      if (greeted || noticed) {
+        log({
+          event: 'written.sent',
+          jobId: helpers.job.id,
+          conversation: context.conversation.id,
+          greeting: greeted,
+          outOfHours: noticed,
+        })
+      }
 
       /**
        * Two blue ticks and a typing indicator, before the model is asked

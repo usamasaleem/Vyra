@@ -21,6 +21,7 @@ const DESTINATIONS = [
   { key: 'rates', href: '/rates', label: 'Rates' },
   { key: 'availability', href: '/availability', label: 'Availability' },
   { key: 'knowledge', href: '/knowledge', label: 'Answers' },
+  { key: 'messages', href: '/messages', label: 'Messages' },
   { key: 'reports', href: '/reports', label: 'Reports' },
   { key: 'team', href: '/team', label: 'Team' },
   { key: 'settings', href: '/settings', label: 'Settings' },

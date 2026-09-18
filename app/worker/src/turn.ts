@@ -1,6 +1,7 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  BOOKING_CONFIRMATION, carChosenIn, FULL_RANGE_LABEL, type StopCode, mightNeedAvailability,
+  type AutomatedMessage, BOOKING_CONFIRMATION, carChosenIn, civilDateIn, formatCivil,
+  FULL_RANGE_LABEL, isOpenAt, readServiceHours, type StopCode, mightNeedAvailability,
   wantsToBook, invitesACarChoice, mightNeedTheFleet, offersTheFullRange,
   usableWebsite,
   vehicleList,
@@ -36,6 +37,7 @@ import {
   recordFields,
   carsWithoutPhotos,
   ENQUIRY_FIELDS,
+  getApprovedAnswer,
   getEnquiryFields,
   unclaimedHandoffFor,
   outstandingQuestions,
@@ -309,6 +311,84 @@ export async function acknowledgeWaiting(
   return accepted.accepted
     ? { outcome: 'queued', messageId: null }
     : { outcome: 'rejected', reason: 'already_acknowledged' }
+}
+
+/**
+ * The two messages the operator writes and the system sends on its own.
+ *
+ * Neither is composed, guessed or defaulted. An operator who has not written a
+ * greeting has no greeting, and nothing goes out — the same rule as a policy
+ * answer, for the same reason: this is their voice, not ours, and inventing it
+ * is the mistake that took a day to undo.
+ *
+ * Sent as their own message before the agent's reply, rather than folded into
+ * it. The operator's words and the model's words in one bubble is neither
+ * person speaking.
+ */
+async function sendWrittenMessage(
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  context: ConversationContext,
+  topic: AutomatedMessage,
+  idempotencyKey: string,
+  now: Date,
+): Promise<boolean> {
+  const written = await getApprovedAnswer(deps.run, context.operator.id, topic, now)
+    .catch(() => null)
+  if (written === null) return false
+
+  const accepted = await acceptTurnOutput(deps.transact, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    revisionAtTurnStart: context.conversation.revision,
+    body: written.answer,
+    idempotencyKey,
+    destination: deps.destination,
+    // Not an answer to this message, and it must not be discarded when a
+    // second one arrives behind it: a greeting is about the person, not the
+    // question.
+    ownHandoff: true,
+  })
+  return accepted.accepted
+}
+
+/**
+ * Said once to each person, ever.
+ *
+ * Keyed on the contact rather than the conversation, because a conversation
+ * reopens for years — being welcomed again in March is being told you are a
+ * stranger.
+ */
+export async function greetIfNew(
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  context: ConversationContext,
+  now: Date = new Date(),
+): Promise<boolean> {
+  return sendWrittenMessage(deps, context, 'greeting', `greeting:${context.contact.id}`, now)
+}
+
+/**
+ * Said when they write and nobody is in.
+ *
+ * The agent still answers — it is the people who are away, not the system — so
+ * this is about what happens to anything needing one of them.
+ *
+ * Once per closed spell rather than once per message: somebody writing three
+ * times at two in the morning is not told three times that the office is shut.
+ * The key is the operator's own local date, which is the cheapest thing that
+ * changes when a night ends.
+ */
+export async function noticeOutOfHours(
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  context: ConversationContext,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const hours = readServiceHours(context.operator.serviceHours)
+  if (isOpenAt(hours, now, context.operator.timezone)) return false
+
+  const localDate = formatCivil(civilDateIn(now, context.operator.timezone))
+  return sendWrittenMessage(
+    deps, context, 'out-of-hours', `out-of-hours:${context.conversation.id}:${localDate}`, now,
+  )
 }
 
 export type TurnDependencies = {

@@ -6,8 +6,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
 import { loadConversationContext, type ConversationContext } from '../src/context.ts'
 import {
-  acknowledgeWaiting, handleNonTextMessage, handleUrgentMessage, runConversationTurn,
+  acknowledgeWaiting, greetIfNew, handleNonTextMessage, handleUrgentMessage,
+  noticeOutOfHours, runConversationTurn,
 } from '../src/turn.ts'
+import { draftKnowledge, publishKnowledge } from '../../db/src/queries/knowledge.ts'
 import {
   acceptHandoff, raiseHandoff, resolveHandoff,
 } from '../../db/src/queries/handoff-queue.ts'
@@ -647,6 +649,125 @@ describe('a customer waiting on a person nobody has become', () => {
     const sent = await outbound()
     expect(sent).toHaveLength(2)
     expect(first).toBeTruthy()
+  })
+})
+
+/**
+ * The two messages the operator writes and the system sends on its own.
+ *
+ * Neither is composed, guessed or defaulted — the same rule as a policy
+ * answer, for the same reason: this is the operator's voice, and inventing it
+ * is the mistake that took a day to undo.
+ */
+describe('the operator\u2019s own automated messages', () => {
+  const publish = async (topic: string, answer: string) => {
+    const draft = await draftKnowledge(run, {
+      operatorId: OP, topic, answer,
+      confirmedBy: 'Owner', confirmedByMembershipId: MEMBER,
+    })
+    await publishKnowledge(transact, { operatorId: OP, entryId: draft.id, membershipId: MEMBER })
+    // Well before the pinned clocks below, which sit in September 2026 and are
+    // behind the wall clock these tests run at.
+    await run(
+      `update knowledge_entries set effective_from = timestamptz '2026-01-01' where id = $1`,
+      [draft.id],
+    )
+  }
+
+  const asking = async (body: string): Promise<ConversationContext> => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
+       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`],
+    )
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  const sent = async () =>
+    (await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'
+       order by created_at`, [CONV],
+    )).map((m) => String(m['body']))
+
+  const deps = () => ({ run, transact, destination: 'send' as const })
+
+  describe('the greeting', () => {
+    it('says nothing at all until somebody writes one', async () => {
+      expect(await greetIfNew(deps(), await asking('hello'))).toBe(false)
+      expect(await sent()).toEqual([])
+    })
+
+    it('sends the operator\u2019s words, whole', async () => {
+      await publish('greeting', 'Thanks for messaging Vyra Rentals.')
+      expect(await greetIfNew(deps(), await asking('hello'))).toBe(true)
+      expect(await sent()).toEqual(['Thanks for messaging Vyra Rentals.'])
+    })
+
+    /**
+     * Keyed on the contact, not the conversation: a conversation reopens for
+     * years, and being welcomed again in March is being told you are a
+     * stranger.
+     */
+    it('greets each person once, ever', async () => {
+      await publish('greeting', 'Thanks for messaging Vyra Rentals.')
+      await greetIfNew(deps(), await asking('hello'))
+      await greetIfNew(deps(), await asking('still there?'))
+      expect(await sent()).toHaveLength(1)
+    })
+  })
+
+  describe('the out-of-hours notice', () => {
+    /** 09:00 to 21:00 every day, Dubai. */
+    const nineToNine = JSON.stringify(Object.fromEntries(
+      [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { open: '09:00', close: '21:00' }]),
+    ))
+    const setHours = () =>
+      run(`update operators set service_hours = $2::jsonb where id = $1`, [OP, nineToNine])
+
+    const at = (local: string) => new Date(`${local}+04:00`)
+
+    it('says nothing when nobody has set any hours', async () => {
+      await publish('out-of-hours', 'We are away from the desk right now.')
+      expect(await noticeOutOfHours(deps(), await asking('hi'), at('2026-09-17T03:00'))).toBe(false)
+    })
+
+    it('says nothing while they are open', async () => {
+      await setHours()
+      await publish('out-of-hours', 'We are away from the desk right now.')
+      expect(await noticeOutOfHours(deps(), await asking('hi'), at('2026-09-17T14:00'))).toBe(false)
+    })
+
+    it('speaks at three in the morning', async () => {
+      await setHours()
+      await publish('out-of-hours', 'We are away from the desk right now.')
+      expect(await noticeOutOfHours(deps(), await asking('hi'), at('2026-09-17T03:00'))).toBe(true)
+      expect(await sent()).toEqual(['We are away from the desk right now.'])
+    })
+
+    /** Three messages at two in the morning is not three notices. */
+    it('says it once a night', async () => {
+      await setHours()
+      await publish('out-of-hours', 'We are away from the desk right now.')
+      for (const body of ['hi', 'hello?', 'anyone there']) {
+        await noticeOutOfHours(deps(), await asking(body), at('2026-09-17T03:00'))
+      }
+      expect(await sent()).toHaveLength(1)
+    })
+
+    it('speaks again the following night', async () => {
+      await setHours()
+      await publish('out-of-hours', 'We are away from the desk right now.')
+      await noticeOutOfHours(deps(), await asking('hi'), at('2026-09-17T03:00'))
+      await noticeOutOfHours(deps(), await asking('hi again'), at('2026-09-18T03:00'))
+      expect(await sent()).toHaveLength(2)
+    })
+
+    /** Closed is a claim about somebody else's business. */
+    it('stays quiet when the hours are set but the message is not', async () => {
+      await setHours()
+      expect(await noticeOutOfHours(deps(), await asking('hi'), at('2026-09-17T03:00'))).toBe(false)
+      expect(await sent()).toEqual([])
+    })
   })
 })
 
