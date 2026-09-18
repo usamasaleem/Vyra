@@ -57,36 +57,54 @@ export function isAutomatedMessage(value: string): value is AutomatedMessage {
   return (AUTOMATED_MESSAGES as readonly string[]).includes(value)
 }
 
-/** What the screen calls each one, and why an operator would write it. */
+/**
+ * What the screen calls each one, and why an operator would write it.
+ *
+ * `starter` is wording to begin from, not a default. Nothing sends it: it
+ * reaches a customer only once somebody has read it, put their name to it and
+ * pressed the button, which is the same bar every other published row clears.
+ * The distinction matters because a blank box asks an operator to compose in
+ * their own voice from nothing, and four of them stayed blank for the whole
+ * pilot. A draft to argue with is a far easier thing to face than an empty
+ * field, and arguing with it is how it stops being ours.
+ *
+ * So the wording here is deliberately plain and claims nothing — no price, no
+ * hour, no promise about what happens next. Published verbatim it is merely
+ * unremarkable, which is the worst it is allowed to be.
+ */
 export const AUTOMATED_MESSAGE_LABELS: Record<AutomatedMessage, {
   title: string
   why: string
-  placeholder: string
+  /** Given the operator's own name, because a greeting that names the wrong business is worse than none. */
+  starter: (business: string) => string
 }> = {
   greeting: {
     title: 'First message to a new customer',
     why: 'Sent once, before the agent answers their first message. Nobody is ever '
       + 'greeted twice, however long they have been away.',
-    placeholder: 'Thanks for getting in touch with Vyra Rentals — happy to help with '
-      + 'anything about the cars.',
+    starter: (business) => `Thanks for getting in touch with ${business}. Happy to help `
+      + `with anything about the cars — just say what you are looking for and when.`,
   },
   'out-of-hours': {
     title: 'When they write and nobody is in',
     why: 'The agent still answers at 3am. This is for what it cannot do without you — '
       + 'so say when somebody will pick it up, not that you are closed.',
-    placeholder: 'We are away from the desk right now, but I can still help. Anything '
-      + 'needing a colleague will be picked up when we open in the morning.',
+    starter: () => 'We are away from the desk right now, but I can still help with the '
+      + 'cars and your dates. Anything that needs one of the team will be picked up as '
+      + 'soon as we are back in.',
   },
   'follow-up-message': {
     title: 'Chasing a customer who went quiet',
     why: 'Sent word for word, once, after the gap set in Settings. Until it is written '
       + 'the chase becomes a task for one of your people instead.',
-    placeholder: 'Still thinking about those dates? Happy to help if you have any questions.',
+    starter: () => 'Still thinking it over? Happy to answer anything about the car or '
+      + 'the dates whenever you are ready.',
   },
   'follow-up-message-2': {
     title: 'And chasing a second time',
     why: 'It has to say something the first one did not. Reusing one wording is what '
       + 'sends the same sentence twice, half an hour apart, and reads as a machine.',
-    placeholder: 'No rush at all — just let me know if you would like me to hold anything.',
+    starter: () => 'No rush at all. I will leave it with you — just say the word if you '
+      + 'would like me to pick it back up.',
   },
 }

@@ -29,7 +29,7 @@ export default async function MessagesPage() {
   const [counts, entries, operator] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     listKnowledge(run, actor.operatorId),
-    run(`select service_hours from operators where id = $1`, [actor.operatorId]),
+    run(`select name, service_hours from operators where id = $1`, [actor.operatorId]),
   ]))
   const canEdit = permissions.canAdminister(actor)
 
@@ -43,6 +43,8 @@ export default async function MessagesPage() {
   }
 
   const hours = readServiceHours(operator[0]?.['service_hours'] ?? null)
+  /** Their name, so a greeting drafted for them does not greet somebody else. */
+  const business = (operator[0]?.['name'] as string | undefined) ?? 'us'
   const unwritten = AUTOMATED_MESSAGES.filter((topic) => !live.has(topic))
 
   return (
@@ -82,7 +84,7 @@ export default async function MessagesPage() {
 
               {canEdit ? (
                 <div style={{ marginTop: '0.9rem' }}>
-                  <MessageForm topic={topic} current={current} placeholder={meta.placeholder} />
+                  <MessageForm topic={topic} current={current} starter={meta.starter(business)} />
                 </div>
               ) : (
                 <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.85rem' }}>
