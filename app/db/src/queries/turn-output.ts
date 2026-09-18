@@ -192,6 +192,22 @@ export async function acceptTurnOutput(
      */
     if (input.answeringMessageId !== undefined) {
       const newer = await tx(
+        /**
+         * Strictly newer, and two messages stored in the same instant are not.
+         *
+         * A tie-break on id was tried and removed: the id is a random uuid, so
+         * it orders two simultaneous messages arbitrarily rather than by
+         * arrival, and the test asserting that the second supersedes the first
+         * passed or failed depending on which uuid came out larger. An
+         * arbitrary answer is worse than no answer when the thing being
+         * decided is which question the customer actually asked last.
+         *
+         * Simultaneous is covered anyway, one layer up: two messages in one
+         * webhook produce one job, because the relay keys the turn on the
+         * conversation and replaces it. This catches the sequence the window
+         * lets through — two webhooks a second and a half apart, which is what
+         * actually happened.
+         */
         `select 1 from messages m
          where m.conversation_id = $1 and m.operator_id = $2 and m.direction = 'inbound'
            and m.created_at > (

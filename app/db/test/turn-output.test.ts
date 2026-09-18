@@ -89,11 +89,20 @@ describe('accepting a turn', () => {
  * question".
  */
 describe('a turn overtaken before it began', () => {
+  /**
+   * Explicit, increasing timestamps, because that is what two webhooks a
+   * second and a half apart produce — and because inserts in the same instant
+   * share a created_at, which no comparison on time can separate. That case is
+   * covered one layer up: two messages in one webhook produce one job.
+   */
+  let arrival = 0
   const say = async (body: string) => {
+    arrival += 1
     const rows = await run(
-      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id)
-       values ($1, $2, 'inbound', 'text', $3, $4) returning id`,
-      [OP, CONV, body, `wamid.${Math.random()}`],
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id,
+                             created_at)
+       values ($1, $2, 'inbound', 'text', $3, $4, now() + make_interval(secs => $5)) returning id`,
+      [OP, CONV, body, `wamid.${Math.random()}`, arrival],
     )
     return rows[0]!['id'] as string
   }
