@@ -65,3 +65,80 @@ describe('releasing abandoned jobs', () => {
     expect(calls[0]![0]).toBe(60)
   })
 })
+
+/**
+ * A send stuck behind a deploy, and a turn that may legitimately be slow.
+ *
+ * Read live: a deploy landed while a turn was running, the worker was killed
+ * before it could finish, and the lock sat there. Jobs are serialised per
+ * conversation, so the customer's next message waited behind it — and the
+ * symptom, as always, was silence.
+ *
+ * The ten-minute threshold is sized for the slowest thing that can honestly
+ * still be running: four model rounds at a sixty-second timeout, plus thirty
+ * for a voice note. A send has no such ceiling to respect.
+ */
+describe('how long each kind of work is given', () => {
+  const capture = async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = []
+    const run: QueryRunner = async (text, params) => { calls.push({ text, params: params ?? [] }); return [] }
+    await releaseAbandonedJobs(run)
+    return calls[0]!
+  }
+
+  it('gives a send far less rope than a turn', async () => {
+    const { params } = await capture()
+    const [turnSeconds, sendSeconds] = params as number[]
+    expect(sendSeconds).toBeLessThan(turnSeconds as number)
+    expect(sendSeconds).toBe(90)
+    expect(turnSeconds).toBe(600)
+  })
+
+  /** Both timings are the caller's to override, which is what the tests need. */
+  it('lets both be set', async () => {
+    const calls: Array<unknown[]> = []
+    const run: QueryRunner = async (_t, params) => { calls.push(params ?? []); return [] }
+    await releaseAbandonedJobs(run, { abandonedAfterSeconds: 30, sendAbandonedAfterSeconds: 5 })
+    expect(calls[0]).toEqual([30, 5])
+  })
+
+  it('picks the threshold from the task rather than applying one to all', async () => {
+    const { text } = await capture()
+    expect(text).toMatch(/dispatch_outbound/)
+    expect(text).toMatch(/_private_tasks/)
+  })
+
+  /**
+   * The queue lock keeps the longer one on purpose: handing a queue out from
+   * under a turn that is still thinking is how a customer gets two answers.
+   */
+  it('never frees a queue on the shorter timing', async () => {
+    const { text } = await capture()
+    const queuePart = text.slice(text.indexOf('_private_job_queues'))
+    expect(queuePart).not.toMatch(/\$2/)
+  })
+})
+
+/**
+ * The sweep's own errors are logged and swallowed, so that one bad statement
+ * cannot stop the worker. That is right, and it means a broken statement here
+ * is invisible: it fails every ten seconds into a log nobody reads while jobs
+ * sit locked. It happened the moment the CASE above was added — a parameter
+ * used directly infers double precision from make_interval's signature, and
+ * inside a CASE infers from the branches instead, landing on text.
+ */
+describe('the statement itself', () => {
+  it('casts both timings, because a CASE cannot infer them', async () => {
+    const calls: string[] = []
+    const run: QueryRunner = async (text) => { calls.push(text); return [] }
+    await releaseAbandonedJobs(run)
+
+    const sql = calls[0]!
+    // Both timings are cast where they are used as seconds...
+    expect(sql).toMatch(/\$1::float/)
+    expect(sql).toMatch(/\$2::float/)
+    // ...and neither is ever handed to make_interval bare.
+    expect(sql).not.toMatch(/secs => \$\d(?!::)/)
+    expect(sql).not.toMatch(/then \$\d(?!::)/)
+  })
+})
