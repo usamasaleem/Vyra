@@ -144,6 +144,13 @@ export async function findDueFollowUps(
        and v.handler_mode = 'ai'
        and c.opted_out_at is null
        and v.sales_stage not in ('won', 'lost')
+       -- Live: "Still thinking it over? Happy to answer anything about the car
+       -- or the dates whenever you are ready" went to a customer six minutes
+       -- after they booked a Ferrari. Nothing here knew a booking existed,
+       -- because until this week there was no such thing. Someone waiting on
+       -- your team is worse still — they said yes and the chase asks whether
+       -- they have made up their mind.
+       and v.booking_status not in ('pending', 'confirmed')
      order by f.due_at
      limit $1`,
     [limit],
@@ -239,4 +246,26 @@ export async function listFollowUpsNeedingAttention(
     customerName: (r['display_name'] as string) ?? null,
     whatsappNumber: r['channel_identifier'] as string,
   }))
+}
+
+/**
+ * Letting go of a chase nobody is going to send.
+ *
+ * `needs_a_person` is a real outcome rather than a failure, but it had no way
+ * out: thirteen of them accumulated with no screen to see them on and no way
+ * to clear one. A queue you cannot empty stops being a queue and becomes
+ * wallpaper, and then the real one in it is invisible too.
+ */
+export async function dropFollowUp(
+  run: QueryRunner,
+  input: { followUpId: string; operatorId: string; reason: string },
+): Promise<{ dropped: boolean }> {
+  const rows = await run(
+    `update follow_ups
+     set state = 'cancelled', cancelled_reason = $3, cancelled_at = now(), updated_at = now()
+     where id = $1 and operator_id = $2 and state in ('needs_a_person', 'scheduled')
+     returning id`,
+    [input.followUpId, input.operatorId, input.reason],
+  )
+  return { dropped: rows.length > 0 }
 }

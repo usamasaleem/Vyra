@@ -33,7 +33,9 @@ import {
 import { searchVehicles } from '@vyra/agent'
 import {
   acceptTurnOutput,
+  currentQuoteFor,
   ensureEnquiry,
+  formatMoneyMinor,
   liveEnquiries,
   recordAgentRun,
   recordFields,
@@ -723,6 +725,30 @@ export async function runConversationTurn(
         return []
       })
 
+    /**
+     * The price already on the table, so a yes can find it.
+     *
+     * A nicety like the rest: without it the model is back to only knowing a
+     * quote it produced itself this turn, which is how a discounted price and
+     * a customer's agreement to it stopped being the same number.
+     */
+    const liveQuote = await currentQuoteFor(deps.run, {
+      operatorId: context.operator.id,
+      enquiryId,
+    }).then((q) => q === null ? undefined : {
+      quoteId: q.quoteId,
+      total: formatMoneyMinor(q.totalMinor, q.currency),
+      discounted: q.discountMinor !== null,
+      sent: q.sent,
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'live_quote.failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      return undefined
+    })
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -762,6 +788,7 @@ export async function runConversationTurn(
       ...(stillNeeded.length === 0 ? {} : { stillNeeded: stillNeeded.slice(0, 1) }),
       ...(known.length === 0 ? {} : { known }),
       ...(bookings.length > 1 ? { bookings } : {}),
+      ...(liveQuote === undefined ? {} : { liveQuote }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *
@@ -918,7 +945,25 @@ export async function runConversationTurn(
    * What it promises is a person, not a booking, because a person is what
    * exists. See BOOKING_CONFIRMATION.
    */
-  const readyToBook = nothingOutstanding && wantsToBook(context.message.body)
+  /**
+   * Whether this turn actually booked it, read from the tool rather than the
+   * prose.
+   *
+   * Live: "Booked — the Ferrari 488 Spider is confirmed for 25th–27th
+   * September" went out carrying `Confirm with team` / `Not just yet`. The car
+   * was held, the record said confirmed, and the customer was offered two
+   * buttons asking whether to start the thing that had already finished. An
+   * offer to confirm is only honest while something is unconfirmed.
+   */
+  const bookedThisTurn = end.toolResults.some(
+    (r) => r.name === 'request_booking_review'
+      && r.result.status === 'ok'
+      && (r.result as { data?: { confirmed?: boolean } }).data?.confirmed === true,
+  )
+
+  const readyToBook = nothingOutstanding
+    && wantsToBook(context.message.body)
+    && !bookedThisTurn
 
   /**
    * What the agent was told to ask, which is better evidence than what it

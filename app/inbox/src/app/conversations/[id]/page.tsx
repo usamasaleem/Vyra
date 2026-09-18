@@ -1,4 +1,5 @@
-import { getNavCounts, listMembers, listNotes, PRIORITIES } from '@vyra/db'
+import { getNavCounts, listMembers, listNotes, PRIORITIES, LOST_REASONS,
+} from '@vyra/db'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { assignTo, changePriority, handBackToAi, takeOver } from '@/app/actions'
@@ -9,6 +10,7 @@ import { actorReads } from '@/lib/db'
 import { getConversationThread } from '@/lib/queries/conversations'
 import { NoteForm } from './note-form'
 import { ReplyForm } from './reply-form'
+import { CloseLead } from './close-lead'
 
 export const dynamic = 'force-dynamic'
 
@@ -271,6 +273,15 @@ export default async function ConversationPage({
           <p className="notice">Your role cannot send customer replies, but you can leave a note.</p>
         )}
         <NoteForm conversationId={thread.id} />
+        <div className="card">
+          <CloseLead
+            conversationId={thread.id}
+            lostReasons={LOST_REASONS}
+            closed={thread.salesStage === 'won' || thread.salesStage === 'lost'
+              ? thread.salesStage
+              : null}
+          />
+        </div>
       </div>
     </main>
   )

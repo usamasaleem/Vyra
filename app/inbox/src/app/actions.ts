@@ -6,6 +6,7 @@ import {
   addNote,
   answerOperationsRequest,
   approveQuote,
+  closeLead,
   discountQuote,
   listDraftQuotes,
   renderQuoteMessage,
@@ -280,8 +281,45 @@ export async function answerOperations(
     checkedAt: new Date(Date.now() - Math.max(0, checkedMinutesAgo) * 60_000),
   })
 
-  revalidatePath('/operations')
   if (!result.answered) return { error: 'That request was already answered or cancelled.' }
+
+  /**
+   * And tell the customer, which nothing did.
+   *
+   * Seven of these were raised during the pilot. Every one recorded an answer
+   * on this screen and sent nothing: the customer asked whether the Ferrari
+   * was free on the 26th, somebody found out, wrote it down, and the person
+   * waiting on WhatsApp was never told. The queue emptied and the conversation
+   * did not move, which is indistinguishable from nobody having looked.
+   *
+   * Optional, because an answer is worth recording even when the salesperson
+   * would rather phrase it themselves in the thread — but it is right here, so
+   * the ordinary case is one action rather than two screens.
+   */
+  const reply = String(formData.get('reply') ?? '').trim()
+  if (reply !== '' && result.conversationId !== null) {
+    if (actor.displayName === null) {
+      return {
+        error: 'The answer was recorded, but your reply needs your name on it and you have '
+          + 'not set one. Add it on the Team page, then write to them from the conversation.',
+      }
+    }
+    try {
+      await queueOutboundText(actorRunner(actor), {
+        conversationId: result.conversationId,
+        operatorId: actor.operatorId,
+        body: reply,
+        idempotencyKey: `ops:${requestId}`,
+        sentByMembershipId: actor.membershipId,
+      })
+      revalidatePath(`/conversations/${result.conversationId}`)
+    } catch (error: unknown) {
+      if (!(error instanceof NoDisplayName)) throw error
+      return { error: 'Your name is not set, so the reply could not be sent.' }
+    }
+  }
+
+  revalidatePath('/operations')
   return { error: null }
 }
 
@@ -658,5 +696,60 @@ export async function discountAndSendQuote(
   }
 
   revalidatePath('/operations')
+  return { error: null }
+}
+
+/**
+ * Marking a lead won or lost, which nothing in the product could do.
+ *
+ * `closeLead` has existed since the reports did, is covered by its own tests,
+ * and was called from no screen — so `sales_stage` never reached won or lost.
+ * That made the conversion rate on the reports page structurally zero, left
+ * the inbox's stage filter with nothing to filter, and kept `findDueFollowUps`
+ * chasing customers whose lead had been settled weeks earlier.
+ *
+ * A confirmed booking now closes its own lead. This is for everything that
+ * ends some other way: they went elsewhere, they were not eligible, they
+ * stopped replying.
+ */
+export async function closeThisLead(
+  _previous: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const actor = await requireActor()
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'close a lead')
+  } catch {
+    return { error: 'Your role cannot close leads.' }
+  }
+
+  const conversationId = String(formData.get('conversationId') ?? '')
+  const outcome = String(formData.get('outcome') ?? '')
+  if (outcome !== 'won' && outcome !== 'lost') return { error: 'Choose won or lost.' }
+
+  const reason = String(formData.get('reason') ?? '').trim()
+  if (outcome === 'lost' && reason === '') {
+    return {
+      error: 'Say why it was lost. "Why did we lose it" is the question the reports exist to '
+        + 'answer, and an uncategorised loss answers nothing.',
+    }
+  }
+
+  const result = await closeLead(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    conversationId,
+    membershipId: actor.membershipId,
+    outcome,
+    reason: outcome === 'lost' ? (reason as never) : null,
+    note: String(formData.get('note') ?? '').trim() || null,
+  })
+
+  if (!result.closed) {
+    return { error: 'That lead is already closed. Reload to see where it stands.' }
+  }
+
+  revalidatePath(`/conversations/${conversationId}`)
+  revalidatePath('/reports')
   return { error: null }
 }

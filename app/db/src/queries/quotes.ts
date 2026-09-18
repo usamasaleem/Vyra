@@ -715,3 +715,58 @@ export async function setVehicleHighlight(
   )
   return { changed: true }
 }
+
+/**
+ * The price this rental currently stands at, whoever produced it.
+ *
+ * The model only ever knew a quote id it had just been handed by
+ * `prepare_quote` in the same turn. Any quote a person produced was invisible
+ * to it — and once a salesperson could discount, that became a way to lose
+ * money: they take five hundred off and send 9,500, the customer says "yes,
+ * book it", and the model has no id for the figure they agreed to. It either
+ * prices a fresh draft at the full 10,000 or passes something that is not an
+ * id at all, which is how a turn died at the moment of sale last night.
+ *
+ * So the turn reads the live one and tells the model, the same way it is told
+ * the dates and the car. Newest first: a discount supersedes what it replaced,
+ * so the top row is what the customer is holding.
+ */
+export type LiveQuote = {
+  quoteId: string
+  revision: number
+  currency: string
+  totalMinor: number
+  /** What a person took off, when somebody did. */
+  discountMinor: number | null
+  validUntil: Date | null
+  /** Whether the customer has actually been sent it. */
+  sent: boolean
+}
+
+export async function currentQuoteFor(
+  run: QueryRunner,
+  input: { operatorId: string; enquiryId: string },
+): Promise<LiveQuote | null> {
+  const rows = await run(
+    `select id, revision, currency, total_minor, discount_minor, valid_until,
+            state::text as state
+     from quotes
+     where operator_id = $1 and enquiry_id = $2
+       and state not in ('superseded', 'rejected', 'expired')
+     order by revision desc
+     limit 1`,
+    [input.operatorId, input.enquiryId],
+  )
+  const row = rows[0]
+  if (row === undefined) return null
+
+  return {
+    quoteId: row['id'] as string,
+    revision: Number(row['revision']),
+    currency: row['currency'] as string,
+    totalMinor: Number(row['total_minor']),
+    discountMinor: row['discount_minor'] == null ? null : Number(row['discount_minor']),
+    validUntil: row['valid_until'] == null ? null : new Date(row['valid_until'] as string),
+    sent: row['state'] === 'sent',
+  }
+}

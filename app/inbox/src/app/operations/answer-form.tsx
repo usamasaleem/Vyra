@@ -64,6 +64,24 @@ export function AnswerForm({ requestId }: { requestId: string }) {
         <input name="note" style={{ width: '100%', marginTop: '0.2rem' }} />
       </label>
 
+      {/*
+        * And what the customer is told, which nothing sent.
+        *
+        * Seven of these were answered during the pilot and not one reached the
+        * person waiting on WhatsApp: the queue emptied and the conversation did
+        * not move, which from the customer's side is the same as nobody having
+        * looked. Optional, because a salesperson may prefer to phrase it in the
+        * thread — but it is here, so the ordinary case is one action.
+        */}
+      <label style={{ display: 'block', marginTop: '0.6rem' }}>
+        Tell the customer (optional — sent as you, signed)
+        <textarea
+          className="input" name="reply" rows={2}
+          placeholder="Yes, that one is free for those dates."
+          style={{ width: '100%', marginTop: '0.2rem' }}
+        />
+      </label>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
         <button className="button" type="submit" disabled={pending}>
           {pending ? 'Saving…' : 'Record answer'}

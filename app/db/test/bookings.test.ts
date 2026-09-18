@@ -409,3 +409,60 @@ describe('confirming without asking anybody', () => {
     expect(block!['released_at']).not.toBeNull()
   })
 })
+
+/**
+ * What a confirmed booking has to stop, and what it has to start.
+ *
+ * All three of these were live at once in a single exchange: a customer booked
+ * a Ferrari, was offered two buttons asking whether to confirm the thing that
+ * had just been confirmed, and six minutes later got "Still thinking it over?"
+ */
+describe('everything downstream of a confirmation', () => {
+  const scheduleChase = () =>
+    run(
+      `insert into follow_ups (operator_id, conversation_id, attempt, reason, state, due_at)
+       values ($1, $2, 1, 'no_reply', 'scheduled', now() - interval '1 hour')
+       returning id`,
+      [OP, CONV],
+    )
+
+  const confirm = (bookingId: string) =>
+    decideBooking(transact, {
+      operatorId: OP, bookingId, membershipId: MEMBER, decision: 'confirmed',
+    })
+
+  const bookingFor = async () => {
+    const result = await request(await sentQuote())
+    return (result as { booking: { bookingId: string } }).booking.bookingId
+  }
+
+  it('stops chasing them the moment they say yes', async () => {
+    await scheduleChase()
+    await request(await sentQuote())
+
+    const [row] = await run(`select state::text as state, cancelled_reason from follow_ups`, [])
+    expect(row).toMatchObject({ state: 'cancelled', cancelled_reason: 'they said yes' })
+  })
+
+  it('marks the lead won, which nothing ever did', async () => {
+    await confirm(await bookingFor())
+    const [row] = await run(
+      `select sales_stage::text as stage from conversations where id = $1`, [CONV])
+    expect(row!['stage']).toBe('won')
+  })
+
+  it('records who won it, or that nobody did', async () => {
+    await confirm(await bookingFor())
+    const [event] = await run(
+      `select actor_type::text as actor, actor_id from audit_events where action = 'lead.won'`, [])
+    expect(event).toMatchObject({ actor: 'user', actor_id: MEMBER })
+  })
+
+  it('does not talk a person out of a lead they already closed', async () => {
+    await run(`update conversations set sales_stage = 'lost' where id = $1`, [CONV])
+    await confirm(await bookingFor())
+    const [row] = await run(
+      `select sales_stage::text as stage from conversations where id = $1`, [CONV])
+    expect(row!['stage']).toBe('lost')
+  })
+})

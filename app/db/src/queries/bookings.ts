@@ -227,6 +227,20 @@ export async function requestBooking(
     )
 
     /**
+     * And stop chasing them. `findDueFollowUps` re-checks this at dispatch
+     * too, which is the guarantee; this is so the row is gone rather than
+     * merely filtered, and so the reports do not count a chase that was never
+     * going to be appropriate.
+     */
+    await tx(
+      `update follow_ups
+       set state = 'cancelled', cancelled_reason = 'they said yes', cancelled_at = now(),
+           updated_at = now()
+       where operator_id = $1 and conversation_id = $2 and state = 'scheduled'`,
+      [input.operatorId, input.conversationId],
+    )
+
+    /**
      * And, if the operator allows it, answer them now.
      *
      * Section 18.8 put final booking confirmation with refunds and payment
@@ -349,8 +363,51 @@ async function autoConfirm(
      where id = $1 and operator_id = $2`,
     [input.conversationId, input.operatorId],
   )
+  await markWon(tx, {
+    operatorId: input.operatorId,
+    conversationId: input.conversationId,
+    membershipId: null,
+  })
 
   return true
+}
+
+
+/**
+ * A confirmed rental is a won lead, and nothing had ever said so.
+ *
+ * `closeLead` exists, is tested, and is called from no screen in the product,
+ * so `sales_stage` never reached 'won' — which made the conversion rate on the
+ * reports page structurally zero and left `findDueFollowUps` chasing customers
+ * whose rental was already on the books. A booking somebody confirmed is not
+ * an opinion about whether the lead was won; it is the lead being won.
+ *
+ * Forward only, and never out of a stage a person chose: a conversation
+ * already marked lost stays lost until somebody says otherwise.
+ */
+async function markWon(
+  tx: QueryRunner,
+  input: { operatorId: string; conversationId: string; membershipId: string | null },
+): Promise<void> {
+  const moved = await tx(
+    `update conversations set sales_stage = 'won', updated_at = now()
+     where id = $1 and operator_id = $2 and sales_stage not in ('won', 'lost')
+     returning id`,
+    [input.conversationId, input.operatorId],
+  )
+  if (moved.length === 0) return
+
+  await tx(
+    `insert into audit_events (operator_id, actor_type, actor_id, action, subject_type, subject_id, data)
+     values ($1, $2::actor_type, $3, 'lead.won', 'conversation', $4, $5::jsonb)`,
+    [
+      input.operatorId,
+      input.membershipId === null ? 'system' : 'user',
+      input.membershipId,
+      input.conversationId,
+      JSON.stringify({ reason: 'booking confirmed' }),
+    ],
+  )
 }
 
 export type PendingBooking = {
@@ -591,6 +648,14 @@ export async function decideBooking(
         input.decision === 'confirmed' ? 'confirmed' : 'none',
       ],
     )
+
+    if (input.decision === 'confirmed') {
+      await markWon(tx, {
+        operatorId: input.operatorId,
+        conversationId,
+        membershipId: input.membershipId,
+      })
+    }
 
     return { decided: true, conversationId }
   })

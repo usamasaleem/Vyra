@@ -35,11 +35,24 @@ function waitingFor(since: Date): string {
 
 export default async function BookingsPage() {
   const actor = await requireActor()
-  const [counts, waiting, onTheBooks] = await actorReads(actor, (run) => Promise.all([
+  const [counts, waiting, onTheBooks, operator] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     listBookingRequests(run, actor.operatorId),
     listConfirmedBookings(run, actor.operatorId),
+    run(`select auto_confirm_bookings, auto_confirm_limit_minor from operators where id = $1`,
+      [actor.operatorId]),
   ]))
+
+  /**
+   * What this page is depends on a setting, and saying the wrong one is worse
+   * than saying nothing. With the agent confirming, most rentals never appear
+   * in the top list at all — so a heading promising that nobody has been told
+   * anything is a lie about the common case.
+   */
+  const agentConfirms = operator[0]?.['auto_confirm_bookings'] === true
+  const ceilingMinor = operator[0]?.['auto_confirm_limit_minor'] == null
+    ? null
+    : Number(operator[0]!['auto_confirm_limit_minor'])
 
   const canAnswer = permissions.canReply(actor)
   const tz = 'Asia/Dubai'
@@ -47,17 +60,31 @@ export default async function BookingsPage() {
   return (
     <main className="shell">
       <SiteNav current="bookings" counts={counts} />
-      <h1>Bookings to confirm</h1>
+      <h1>Bookings</h1>
       <p className="muted">
-        Customers who agreed to a price. The agent records the yes and can go no further — it
-        cannot confirm a booking, and it has been told not to say anything is held. Until one of
-        your people answers here, nobody has told them anything.
+        {agentConfirms
+          ? 'The agent confirms a booking itself when it can prove the car is free, and those '
+            + 'go straight onto the books below. Anything it cannot prove — a car already held, '
+            + 'a conversation one of your people has taken over, an open handoff'
+          : 'Customers who agreed to a price. The agent records the yes and can go no further — '
+            + 'it cannot confirm a booking, and it has been told not to say anything is held'}
+        {agentConfirms && ceilingMinor !== null
+          ? `, or a total above ${formatMoney(ceilingMinor, 'AED')}`
+          : ''}
+        {agentConfirms
+          ? ' — waits for one of your people here.'
+          : '. Until one of your people answers here, nobody has told them anything.'}
       </p>
+
+      <h2 style={{ fontSize: '1.05rem', marginTop: '1.5rem' }}>Waiting for one of your people</h2>
 
       {waiting.length === 0 && (
         <p className="card">
-          Nobody is waiting. When a customer accepts a quote they appear here with the figures
-          they agreed to.
+          {agentConfirms
+            ? 'Nobody is waiting. Anything the agent could not confirm on its own appears here '
+              + 'with the figures the customer agreed to.'
+            : 'Nobody is waiting. When a customer accepts a quote they appear here with the '
+              + 'figures they agreed to.'}
         </p>
       )}
 

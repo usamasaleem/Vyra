@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v20'
+export const PROMPT_VERSION = 'sales-v21'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -360,6 +360,22 @@ export function systemPromptFor(input: {
    * The ids are here because `prepare_quote` needs one and there are now two.
    * A price for "the Cullinan and the Lamborghini" is not a price.
    */
+  /**
+   * The price this rental currently stands at, and its id.
+   *
+   * The model only ever knew a quote id it had been handed by prepare_quote in
+   * the same turn, so a quote a person sent was invisible to it. Once a
+   * salesperson could discount, that became a way to lose money: they send
+   * 9,500, the customer says yes, and the model has no id for the figure they
+   * agreed to — so it prices a fresh draft at the full amount, or passes
+   * something that is not an id and kills the turn.
+   */
+  liveQuote?: {
+    quoteId: string
+    total: string
+    discounted: boolean
+    sent: boolean
+  }
   bookings?: ReadonlyArray<{
     enquiryId: string
     vehicle: string | null
@@ -573,6 +589,20 @@ export function systemPromptFor(input: {
       + `they just mentioned; they asked for both.`
   })()
 
+  /**
+   * Deliberately states the id rather than describing how to get one. A model
+   * told "use the quote id" and given no id invents one out of whatever
+   * handles it has, which is exactly what happened.
+   */
+  const priced = input.liveQuote === undefined || !input.liveQuote.sent
+    ? ''
+    : `\n\nThis rental already has a price the customer has been sent: `
+      + `${input.liveQuote.total}${input.liveQuote.discounted
+        ? ', which a colleague reduced for them' : ''}. `
+      + `It is quoteId ${input.liveQuote.quoteId}. You do not need to price it again — say `
+      + `that figure if they ask, and if they accept it pass exactly that quoteId to `
+      + `request_booking_review. Only prepare a new quote if the car or the dates change.`
+
   const needed = (input.stillNeeded ?? [])
     .map((n) => {
       const what = NEEDS[n.field] ?? n.field
@@ -657,7 +687,7 @@ export function systemPromptFor(input: {
       + `is caught now rather than by a colleague on the phone. Then ask them to confirm. `
       + `You cannot book anything yourself and must not say it is booked.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${outstanding}${confirming}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${confirming}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   cancelFollowUps, findDueFollowUps, listFollowUpsNeedingAttention,
-  markFollowUpNeedsAPerson, markFollowUpSent, scheduleFollowUp,
+  dropFollowUp, markFollowUpNeedsAPerson, markFollowUpSent, scheduleFollowUp,
 } from '../src/queries/follow-ups.ts'
 import { recordOptOut } from '../src/queries/opt-out.ts'
 import { takeOverConversation } from '../src/queries/takeover.ts'
@@ -195,5 +195,77 @@ describe('recording the outcome', () => {
     })
     const [shown] = await listFollowUpsNeedingAttention(run, OP)
     expect(shown).toMatchObject({ state: 'needs_a_person' })
+  })
+})
+
+/**
+ * A chase that reached somebody who had already bought.
+ *
+ * Live: "Still thinking it over? Happy to answer anything about the car or the
+ * dates whenever you are ready" arrived six minutes after the customer booked
+ * a Ferrari. Nothing here knew a booking existed, because until that week
+ * there was no such thing to know about.
+ *
+ * Checked at dispatch rather than only cancelled at the moment of booking,
+ * which is this file's whole argument: hours pass between scheduling and
+ * sending, and everything that matters can change in them.
+ */
+describe('not chasing somebody who already said yes', () => {
+  const setBooking = (status: string) =>
+    run(`update conversations set booking_status = $2::booking_status where id = $1`, [CONV, status])
+
+  it('holds back once they are waiting on your team', async () => {
+    await schedule()
+    await makeDue()
+    await setBooking('pending')
+    expect(await findDueFollowUps(run)).toHaveLength(0)
+  })
+
+  it('holds back once it is confirmed', async () => {
+    await schedule()
+    await makeDue()
+    await setBooking('confirmed')
+    expect(await findDueFollowUps(run)).toHaveLength(0)
+  })
+
+  /** A rental that fell through is a lead again, and may be chased. */
+  it('chases again after a cancellation', async () => {
+    await schedule()
+    await makeDue()
+    await setBooking('cancelled')
+    expect(await findDueFollowUps(run)).toHaveLength(1)
+  })
+})
+
+/**
+ * `needs_a_person` had no way out. Thirteen accumulated with no screen to see
+ * them on and nothing that could clear one, and a queue you cannot empty stops
+ * being a queue — then the real item in it is invisible too.
+ */
+describe('letting a chase go', () => {
+  it('clears one that became a task', async () => {
+    const [f] = await schedule().then(() => run(`select id from follow_ups`, []))
+    await markFollowUpNeedsAPerson(run, {
+      followUpId: f!['id'] as string, operatorId: OP, reason: 'outside the window',
+    })
+
+    expect(await dropFollowUp(run, {
+      followUpId: f!['id'] as string, operatorId: OP, reason: 'dropped by a person',
+    })).toEqual({ dropped: true })
+
+    const [row] = await run(`select state::text as state from follow_ups`, [])
+    expect(row!['state']).toBe('cancelled')
+  })
+
+  it('will not touch one that has already been sent', async () => {
+    const [f] = await schedule().then(() => run(`select id from follow_ups`, []))
+    await markFollowUpSent(run, {
+      followUpId: f!['id'] as string, operatorId: OP,
+      body: 'Still thinking it over?', messageId: null,
+    })
+
+    expect(await dropFollowUp(run, {
+      followUpId: f!['id'] as string, operatorId: OP, reason: 'x',
+    })).toEqual({ dropped: false })
   })
 })

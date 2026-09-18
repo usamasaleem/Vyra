@@ -529,6 +529,65 @@ describe('the surface for the question the agent was told to ask', () => {
    * Everything on file but delivery, so `outstandingQuestions` returns exactly
    * that and the turn records it as the question asked.
    */
+  /**
+   * The offer has to be one the customer can still take up.
+   *
+   * Live: "Booked — the Ferrari 488 Spider is confirmed for 25th–27th
+   * September" went out carrying `Confirm with team` / `Not just yet`. The car
+   * was held and the record said confirmed, and underneath it were two buttons
+   * asking whether to begin the thing that had already finished.
+   */
+  it('does not offer to confirm a booking it has just confirmed', async () => {
+    await know([
+      { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
+      { field: 'start_at', value: '2026-09-25' },
+      { field: 'end_at', value: '2026-09-27' },
+      { field: 'delivery_preference', value: 'delivery' },
+    ])
+
+    /** A real quote, and an operator who lets the agent confirm one. */
+    const [car] = await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by)
+       values ($1,'Rolls-Royce','Cullinan',2023,'White','suv','D 3','VIN3',
+               'operator_confirmed','Owner')
+       returning id`, [OP],
+    )
+    const enquiryId = (await ensureEnquiry(run, OP, CONV))!
+    const [quote] = await run(
+      `insert into quotes (operator_id, conversation_id, enquiry_id, vehicle_id, revision,
+                           state, total_minor, lines, start_date, end_date, days, valid_until,
+                           approved_by_membership_id, approved_at)
+       values ($1,$2,$3,$4,1,'sent',800000,'[]'::jsonb,'2026-09-25','2026-09-27',2,
+               now() + interval '5 days', $5, now())
+       returning id`,
+      [OP, CONV, enquiryId, car!['id'], MEMBER],
+    )
+    await run(
+      `update operators set auto_confirm_bookings = true,
+         availability_calendar_complete = true where id = $1`, [OP],
+    )
+
+    const ctx = await asking('Yes, book it')
+    await turn([{
+      toolCalls: [{
+        id: 't1',
+        name: 'request_booking_review',
+        arguments: { quoteId: quote!['id'] },
+      }],
+      reply: null,
+    }, {
+      toolCalls: [],
+      reply: 'Booked — the Rolls-Royce Cullinan is confirmed for 25th–27th September.',
+    }], 'send', ctx)
+
+    const [sent] = await run(
+      `select reply_buttons from messages where direction = 'outbound'
+       and delivery_state = 'pending' order by created_at desc limit 1`, [],
+    )
+    expect(sent?.['reply_buttons'] ?? null).toBeNull()
+  })
+
   it('offers delivery buttons when delivery is the outstanding question', async () => {
     await know([
       { field: 'vehicle', value: 'Rolls-Royce Cullinan' },

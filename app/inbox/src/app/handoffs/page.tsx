@@ -1,9 +1,12 @@
 import Link from 'next/link'
 import { SiteNav } from '../site-nav'
-import { formatDuration, getNavCounts, listMembers, listOpenHandoffs } from '@vyra/db'
+import {
+  formatDuration, getNavCounts, listFollowUpsNeedingAttention, listMembers, listOpenHandoffs,
+} from '@vyra/db'
 import { requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { AcceptButton } from './accept-button'
+import { dismissFollowUp, finishHandoff } from './actions'
 
 /**
  * Build plan step 29's other half — the queue a person actually looks at.
@@ -48,10 +51,11 @@ export default async function HandoffsPage({
 }) {
   const actor = await requireActor()
   const filters = await searchParams
-  const [counts, handoffs, members] = await actorReads(actor, (run) => Promise.all([
+  const [counts, handoffs, members, chases] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     listOpenHandoffs(run, actor.operatorId, { unclaimedOnly: filters.mine !== 'all' }),
     listMembers(run, actor.operatorId),
+    listFollowUpsNeedingAttention(run, actor.operatorId),
   ]))
 
   /**
@@ -144,10 +148,66 @@ export default async function HandoffsPage({
                     Open conversation
                   </Link>
                 </div>
+
+                {/*
+                  * Closing it, which nothing in the product could do. An accepted
+                  * handoff had no end state reachable from any screen, so the queue
+                  * only ever grew. Available whether or not somebody claimed it:
+                  * insisting on Accept first is a second click on work already done.
+                  */}
+                <form
+                  action={finishHandoff}
+                  style={{ display: 'flex', gap: '0.4rem', marginTop: '0.6rem', flexWrap: 'wrap' }}
+                >
+                  <input type="hidden" name="conversationId" value={h.conversationId} />
+                  <input
+                    className="input" name="resolution"
+                    placeholder="What happened (for your records, never sent)"
+                    style={{ flex: '1 1 14rem' }}
+                  />
+                  <button className="button secondary" type="submit">Done — hand it back</button>
+                </form>
               </li>
             )
           })}
         </ul>
+      )}
+
+      {chases.length > 0 && (
+        <section style={{ marginTop: '2.5rem' }}>
+          <h2 style={{ fontSize: '1.05rem' }}>Chases nobody could send</h2>
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            A follow-up became a task instead of a message — usually because it fell outside the
+            24-hour window, or because the wording for that attempt was not written at the time.
+            Nothing is sent for these. Write to them yourself, or let it go.
+          </p>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0.8rem 0 0', display: 'grid', gap: '0.5rem' }}>
+            {chases.map((f) => (
+              <li
+                key={f.id}
+                className="card"
+                style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}
+              >
+                <span>
+                  <strong>{f.customerName ?? f.whatsappNumber}</strong>
+                  <span className="muted" style={{ fontSize: '0.8rem' }}>
+                    {' '}· {f.state === 'needs_a_person' ? 'needs a person' : 'overdue'}
+                    {f.minutesLate > 0 ? ` · ${formatDuration(f.minutesLate)} late` : ''}
+                  </span>
+                </span>
+                <span style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <Link className="button secondary" href={`/conversations/${f.conversationId}`}>
+                    Write to them
+                  </Link>
+                  <form action={dismissFollowUp}>
+                    <input type="hidden" name="followUpId" value={f.id} />
+                    <button className="button secondary" type="submit">Let it go</button>
+                  </form>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </main>
   )

@@ -149,7 +149,7 @@ export async function answerOperationsRequest(
     note?: string | null
     checkedAt?: Date
   },
-): Promise<{ answered: boolean; validUntil: Date | null }> {
+): Promise<{ answered: boolean; conversationId: string | null; validUntil: Date | null }> {
   const rows = await run(
     `with answered as (
        update operations_requests r
@@ -164,7 +164,7 @@ export async function answerOperationsRequest(
        from operators o
        where r.id = $1 and r.operator_id = $2 and o.id = r.operator_id
          and r.state = 'open'
-       returning r.id, r.operator_id, r.answer_valid_until
+       returning r.id, r.operator_id, r.conversation_id, r.answer_valid_until
      ),
      audited as (
        insert into audit_events (
@@ -176,6 +176,7 @@ export async function answerOperationsRequest(
        returning id
      )
      select (select id from answered) as id,
+            (select conversation_id from answered) as conversation_id,
             (select answer_valid_until from answered) as valid_until`,
     [
       input.requestId, input.operatorId, input.membershipId, input.answer,
@@ -186,6 +187,8 @@ export async function answerOperationsRequest(
   const answered = row?.['id'] != null
   return {
     answered,
+    /** So the person who answered can tell the customer in the same action. */
+    conversationId: (row?.['conversation_id'] as string) ?? null,
     validUntil: row?.['valid_until'] == null ? null : new Date(row['valid_until'] as string),
   }
 }

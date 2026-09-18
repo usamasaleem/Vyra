@@ -278,3 +278,46 @@ describe('two rentals in one thread', () => {
     expect(text).toContain('This enquiry already has:')
   })
 })
+
+/**
+ * The price already on the table, and whether a yes can find it.
+ *
+ * The model only ever knew a quote id it had been handed by prepare_quote in
+ * the same turn, so a quote a person sent was invisible to it. Once a
+ * salesperson could take five hundred off and send 9,500, that became a way to
+ * lose money: the customer says "yes, book it" and the model has no id for the
+ * figure they agreed to — so it prices a fresh draft at the full amount, or
+ * passes something that is not an id at all and kills the turn.
+ */
+describe('a price somebody else sent', () => {
+  const withQuote = (over: Partial<{ discounted: boolean; sent: boolean }> = {}) =>
+    systemPromptFor({
+      now,
+      timezone: 'Asia/Dubai',
+      enquiryId: 'e1',
+      liveQuote: {
+        quoteId: '2db2ffbc-172d-41b9-b127-207ff4ed113e',
+        total: 'AED 9,500',
+        discounted: over.discounted ?? true,
+        sent: over.sent ?? true,
+      },
+    })
+
+  it('states the id rather than describing how to find one', () => {
+    expect(withQuote()).toContain('2db2ffbc-172d-41b9-b127-207ff4ed113e')
+  })
+
+  it('carries the figure the customer is actually holding', () => {
+    expect(withQuote()).toContain('AED 9,500')
+  })
+
+  it('says a colleague reduced it, so it is not re-derived from the rate', () => {
+    expect(withQuote()).toContain('a colleague reduced')
+    expect(withQuote({ discounted: false })).not.toContain('a colleague reduced')
+  })
+
+  /** A draft nobody has sent is not a price the customer has been given. */
+  it('says nothing about a quote that has not gone out', () => {
+    expect(withQuote({ sent: false })).not.toContain('2db2ffbc')
+  })
+})
