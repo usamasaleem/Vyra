@@ -21,6 +21,7 @@ export type BookingRefusal =
   | { reason: 'wrong_enquiry'; detail: string }
   | { reason: 'superseded'; detail: string }
   | { reason: 'expired'; detail: string }
+  /** Turned down by somebody here, so not a price anyone may accept. */
   | { reason: 'not_sent'; detail: string }
 
 export type BookingRequest = {
@@ -103,13 +104,27 @@ export async function requestBooking(
       }
     }
 
-    if (state === 'draft' || state === 'approved') {
+    /**
+     * A draft is the ordinary case, not a mistake.
+     *
+     * `prepare_quote` writes a draft and hands the figures straight to the
+     * model — "you may state them exactly as written" — so by the time a
+     * customer says yes they have been told a price that has never been
+     * through the approval screen. Refusing a draft here would have refused
+     * nearly every real yes. What matters is not which state the row is in but
+     * whether these are still the figures they were given, which is what the
+     * revision and expiry checks above decide.
+     *
+     * Rejected is the exception and is somebody's decision: a quote a person
+     * has turned down is not one a customer can accept.
+     */
+    if (state === 'rejected') {
       return {
         ok: false as const,
         refusal: {
           reason: 'not_sent' as const,
-          detail: 'That quote has not been sent to the customer, so there is nothing they '
-            + 'can have agreed to.',
+          detail: 'Somebody here has rejected that quote, so it is not a price they can '
+            + 'accept. Prepare a fresh one before recording anything.',
         },
       }
     }

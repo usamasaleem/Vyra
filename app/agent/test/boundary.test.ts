@@ -964,9 +964,20 @@ describe('request_booking_review', () => {
     expect(await run(`select id from bookings where operator_id = $1`, [OP])).toHaveLength(0)
   })
 
-  it('refuses a quote the customer has never been shown', async () => {
-    const unsent = await sentQuote({ state: 'draft' })
-    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: unsent })
+  /**
+   * The ordinary case. prepare_quote writes a draft and hands the figures
+   * straight to the model to state, so a customer's yes almost always lands on
+   * a quote that has never been near the approval screen.
+   */
+  it('records a yes to a draft, which is what customers are actually quoted', async () => {
+    const draft = await sentQuote({ state: 'draft' })
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: draft })
+    expect(result).toMatchObject({ status: 'ok' })
+  })
+
+  it('refuses a quote somebody here has rejected', async () => {
+    const rejected = await sentQuote({ state: 'rejected' })
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: rejected })
     expect(result).toMatchObject({ status: 'refused' })
   })
 })
