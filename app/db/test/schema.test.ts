@@ -55,6 +55,7 @@ describe('schema v1 applies', () => {
       // cost. §18.6. Without it every question about live behaviour is a guess.
       'agent_runs',
       'audit_events',
+      'bookings',
       'contacts',
       // Internal notes live apart from messages on purpose: the dispatcher
       // only reads `messages`, so a note cannot reach a customer.

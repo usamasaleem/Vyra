@@ -16,6 +16,7 @@ import type { NavCounts } from '@vyra/db'
  */
 const DESTINATIONS = [
   { key: 'inbox', href: '/', label: 'Conversations' },
+  { key: 'bookings', href: '/bookings', label: 'Bookings' },
   { key: 'handoffs', href: '/handoffs', label: 'Handoffs' },
   { key: 'operations', href: '/operations', label: 'Operations' },
   { key: 'rates', href: '/rates', label: 'Rates' },
@@ -54,6 +55,7 @@ export function SiteNav({
   const badge = (key: NavKey): number | null => {
     // On Conversations, because that is where somebody goes to answer one.
     if (key === 'inbox' && counts.customersWaiting > 0) return counts.customersWaiting
+    if (key === 'bookings' && counts.bookingsToAnswer > 0) return counts.bookingsToAnswer
     if (key === 'handoffs' && counts.unclaimedHandoffs > 0) return counts.unclaimedHandoffs
     if (key === 'operations' && counts.openOperationsRequests > 0) return counts.openOperationsRequests
     return null

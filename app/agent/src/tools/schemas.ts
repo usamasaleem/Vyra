@@ -103,7 +103,11 @@ export const requestHandoffSchema = z.strictObject({
 })
 
 export const requestBookingReviewSchema = z.strictObject({
-  quoteId: z.string().describe('The quote the customer wants to proceed with.'),
+  quoteId: z.string().describe(
+    'The quote the customer wants to proceed with, as returned by prepare_quote. It must be '
+    + 'the quote for the car they are agreeing to and the current one — an older price, or one '
+    + 'belonging to their other rental, is refused rather than recorded.',
+  ),
 })
 
 /**
@@ -149,7 +153,10 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   request_handoff:
     'Hand this conversation to a person. Stops automated replies immediately.',
   request_booking_review:
-    'Ask a person to review a quote the customer wants to accept. Does not confirm a booking.',
+    'Record that the customer has agreed to a quote, so a person can confirm it. Call this the '
+    + 'moment they say yes to a price you have sent them — it is the only thing that puts their '
+    + 'agreement on anybody\'s screen. It does NOT confirm the booking and you must not tell them '
+    + 'it is booked, confirmed or held; say that you are passing it to a colleague to confirm.',
 }
 
 /**

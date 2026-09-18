@@ -65,6 +65,7 @@ describe('getNavCounts', () => {
       unclaimedHandoffs: 0,
       openOperationsRequests: 0,
       customersWaiting: 0,
+    bookingsToAnswer: 0,
     })
   })
 
@@ -77,6 +78,7 @@ describe('getNavCounts', () => {
       unclaimedHandoffs: 2,
       openOperationsRequests: 1,
       customersWaiting: 0,
+    bookingsToAnswer: 0,
     })
   })
 
@@ -158,6 +160,7 @@ describe('getNavCounts', () => {
       unclaimedHandoffs: 0,
       openOperationsRequests: 0,
       customersWaiting: 0,
+    bookingsToAnswer: 0,
     })
   })
 })

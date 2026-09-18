@@ -1,11 +1,12 @@
 import {
-  foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uuid,
+  foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { operators, memberships } from './operators.js'
 import { conversations } from './conversations.js'
 import { enquiries } from './enquiries.js'
 import { vehicles } from './fleet.js'
-import { fleetProvenance, quoteState } from './enums.js'
+import { bookingState, fleetProvenance, quoteState } from './enums.js'
 
 /**
  * What a car costs, per the operator.
@@ -154,5 +155,87 @@ export const quotes = pgTable(
     unique('quotes_id_operator_key').on(table.id, table.operatorId),
     index('quotes_operator_state_idx').on(table.operatorId, table.state, table.createdAt),
     index('quotes_conversation_idx').on(table.conversationId, table.revision),
+  ],
+)
+
+/**
+ * A customer said yes, and a person has to answer them.
+ *
+ * The funnel ended here and produced nothing. `request_booking_review` refused
+ * every call — "booking review is not connected yet" — so the most a customer
+ * saying "yes, book it" could achieve was a handoff, and `booking_status` sat
+ * at 'none' on every conversation in the database while three quotes had been
+ * sent. A system that can sell up to the moment of commitment and not record
+ * the commitment is a system that loses exactly the conversations it won.
+ *
+ * A booking is a quote somebody said yes to. Everything that makes it a
+ * rental — the car, the dates, the days, the total, the deposit, the rate it
+ * was worked out from — is already on the quote and is not copied here, so
+ * there is one set of figures and no second one to drift from it.
+ *
+ * What this is not is a confirmation. It records that a person was asked, and
+ * carries who answered and when. Until somebody does, it is a request.
+ */
+export const bookings = pgTable(
+  'bookings',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    conversationId: uuid().notNull(),
+    enquiryId: uuid(),
+    /** The figures the customer agreed to. Never re-derived, never copied. */
+    quoteId: uuid().notNull(),
+
+    state: bookingState().notNull().default('requested'),
+
+    /** The customer message that was their yes, so the agreement is evidenced. */
+    requestedFromMessageId: uuid(),
+    requestedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+
+    /** Who answered them. Null while it is still a request. */
+    decidedByMembershipId: uuid(),
+    decidedAt: timestamp({ withTimezone: true }),
+    /** Why, when the answer was no. For the person, not for the customer. */
+    decisionNote: text(),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId, table.operatorId],
+      foreignColumns: [conversations.id, conversations.operatorId],
+      name: 'bookings_conversation_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.quoteId, table.operatorId],
+      foreignColumns: [quotes.id, quotes.operatorId],
+      name: 'bookings_quote_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.enquiryId, table.operatorId],
+      foreignColumns: [enquiries.id, enquiries.operatorId],
+      name: 'bookings_enquiry_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.decidedByMembershipId, table.operatorId],
+      foreignColumns: [memberships.id, memberships.operatorId],
+      name: 'bookings_decider_operator_fkey',
+    }),
+    /**
+     * One live request per quote.
+     *
+     * A customer says yes twice — "yes", then "yes?" ten minutes later when
+     * nobody has replied — and that is one booking to answer, not two rows for
+     * two people to answer separately. A declined or cancelled one leaves the
+     * way clear for them to change their mind.
+     */
+    uniqueIndex('bookings_live_quote_key')
+      .on(table.quoteId)
+      .where(sql`state in ('requested', 'confirmed')`),
+    index('bookings_operator_state_idx').on(table.operatorId, table.state, table.requestedAt),
+    index('bookings_conversation_idx').on(table.conversationId),
   ],
 )

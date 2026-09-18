@@ -1,7 +1,7 @@
 import type { QueryRunner } from '../runner.js'
 
 /**
- * The two numbers the navigation carries on every page.
+ * The numbers the navigation carries on every page.
  *
  * Both queues are things a customer is waiting on, so they belong in front of
  * whoever is looking, not only on the page that lists them. A queue nobody can
@@ -24,6 +24,14 @@ export type NavCounts = {
    * answer it — so they get silence and nothing says so.
    */
   customersWaiting: number
+  /**
+   * Customers who said yes and are waiting to hear that they are booked.
+   *
+   * The most expensive queue in the product, and until bookings existed there
+   * was nothing to count: every one of these ended as a handoff with no
+   * figures attached, indistinguishable from somebody asking about parking.
+   */
+  bookingsToAnswer: number
 }
 
 export async function getNavCounts(run: QueryRunner, operatorId: string): Promise<NavCounts> {
@@ -43,13 +51,18 @@ export async function getNavCounts(run: QueryRunner, operatorId: string): Promis
            order by m.created_at desc limit 1
          ) last_in on true
         where v.operator_id = $1 and v.handler_mode = 'human'
-          and last_in.direction = 'inbound' and c.opted_out_at is null) as customers_waiting`,
+          and last_in.direction = 'inbound' and c.opted_out_at is null) as customers_waiting,
+       (select count(*) from bookings b
+         where b.operator_id = $1 and b.state = 'requested') as bookings_to_answer`,
     [operatorId],
   )
 
   const row = rows[0]
   if (row === undefined) {
-    return { unclaimedHandoffs: 0, openOperationsRequests: 0, customersWaiting: 0 }
+    return {
+      unclaimedHandoffs: 0, openOperationsRequests: 0, customersWaiting: 0,
+      bookingsToAnswer: 0,
+    }
   }
 
   // count(*) is bigint; postgres.js hands that back as a string, PGlite as a
@@ -59,5 +72,6 @@ export async function getNavCounts(run: QueryRunner, operatorId: string): Promis
     unclaimedHandoffs: Number(row['unclaimed_handoffs']),
     openOperationsRequests: Number(row['open_requests']),
     customersWaiting: Number(row['customers_waiting']),
+    bookingsToAnswer: Number(row['bookings_to_answer']),
   }
 }

@@ -32,6 +32,27 @@ export const bookingStatus = pgEnum('booking_status', [
   'cancelled',
 ])
 
+/**
+ * What happened to one customer's "yes".
+ *
+ * Distinct from `bookingStatus`, which says where a conversation stands.
+ * `declined` has no counterpart there and is the one the conversation column
+ * could never express: a request a person looked at and turned down is not the
+ * same as one nobody has reached, and a customer waiting on an answer deserves
+ * the difference to exist somewhere.
+ *
+ * Nothing here confirms anything on its own. Section 18.8 puts final booking
+ * confirmation alongside refunds and payment verification as work that is not
+ * an AI tool at all, so `requested` is the furthest the agent can move this
+ * and every step past it carries a person's membership id.
+ */
+export const bookingState = pgEnum('booking_state', [
+  'requested',
+  'confirmed',
+  'declined',
+  'cancelled',
+])
+
 export const priority = pgEnum('priority', ['low', 'normal', 'high', 'urgent'])
 
 export const membershipRole = pgEnum('membership_role', [

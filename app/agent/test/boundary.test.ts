@@ -865,11 +865,109 @@ describe('request_handoff', () => {
 })
 
 describe('request_booking_review', () => {
-  it('refuses, because confirming a booking is not a model decision', async () => {
-    const result = await createToolBoundary(ctx).call('request_booking_review', {
-      quoteId: '99999999-9999-9999-9999-999999999999',
+  /**
+   * The quote a customer agreed to, as it would be at the moment they say yes:
+   * sent to them, current, and still in date.
+   */
+  const sentQuote = async (over: Record<string, unknown> = {}) => {
+    const rows = await run(
+      // A sent quote carries its approver: quotes_approval_is_attributed.
+      `insert into quotes (operator_id, conversation_id, enquiry_id, revision, state,
+                           total_minor, lines, valid_until,
+                           approved_by_membership_id, approved_at)
+       values ($1, $2, $3, coalesce($4, 1), coalesce($5, 'sent')::quote_state, 500000,
+               '[]'::jsonb, coalesce($6, now() + interval '2 days'), $7, now())
+       returning id`,
+      [
+        OP, CONV, (over['enquiryId'] as string) ?? ctx.enquiryId,
+        over['revision'] ?? null, over['state'] ?? null, over['validUntil'] ?? null,
+        MEMBER,
+      ],
+    )
+    return rows[0]!['id'] as string
+  }
+
+  it('records the yes against the figures they agreed to', async () => {
+    const quoteId = await sentQuote()
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId })
+
+    expect(result).toMatchObject({ status: 'ok' })
+    const [booking] = await run(
+      `select state::text as state, quote_id, requested_from_message_id,
+              decided_by_membership_id
+       from bookings where operator_id = $1`,
+      [OP],
+    )
+    expect(booking).toMatchObject({
+      state: 'requested',
+      quote_id: quoteId,
+      // Evidenced by the message that was their yes, and decided by nobody.
+      requested_from_message_id: ctx.messageId,
+      decided_by_membership_id: null,
     })
-    expect(result).toMatchObject({ status: 'refused', reason: 'not_available_yet' })
+  })
+
+  /** The conversation column nothing had ever written. */
+  it('puts the conversation in front of a person', async () => {
+    await createToolBoundary(ctx).call('request_booking_review', { quoteId: await sentQuote() })
+    const [row] = await run(
+      `select booking_status::text as status from conversations where id = $1`, [CONV],
+    )
+    expect(row!['status']).toBe('pending')
+  })
+
+  /** Said twice because nobody answered. One booking, not two. */
+  it('does not open a second booking when they say yes again', async () => {
+    const quoteId = await sentQuote()
+    const boundary = createToolBoundary(ctx)
+    const first = await boundary.call('request_booking_review', { quoteId })
+    const again = await boundary.call('request_booking_review', { quoteId })
+
+    expect(again).toMatchObject({ status: 'ok', data: { alreadyRequested: true } })
+    expect((again as { data: { bookingId: string } }).data.bookingId)
+      .toBe((first as { data: { bookingId: string } }).data.bookingId)
+    const rows = await run(`select id from bookings where operator_id = $1`, [OP])
+    expect(rows).toHaveLength(1)
+  })
+
+  /**
+   * "Yes, the 4,500 one" after the rate moved is agreement to terms that no
+   * longer exist. Recording it would put the operator in front of somebody
+   * holding them to a price they had already withdrawn.
+   */
+  it('refuses a price that has been replaced', async () => {
+    const old = await sentQuote({ revision: 1 })
+    await sentQuote({ revision: 2 })
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: old })
+
+    expect(result).toMatchObject({ status: 'refused' })
+    expect(await run(`select id from bookings where operator_id = $1`, [OP])).toHaveLength(0)
+  })
+
+  it('refuses a price that has expired', async () => {
+    // Before ctx.now, which is what the tool checks against — not wall clock.
+    const stale = await sentQuote({ validUntil: new Date('2026-09-13T08:00:00Z') })
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: stale })
+    expect(result).toMatchObject({ status: 'refused' })
+  })
+
+  /** With two rentals in a thread, the wrong quote id is an ordinary mistake. */
+  it('refuses a quote belonging to their other rental', async () => {
+    const other = await run(
+      `insert into enquiries (operator_id, conversation_id) values ($1, $2) returning id`,
+      [OP, CONV],
+    )
+    const quoteId = await sentQuote({ enquiryId: other[0]!['id'] as string })
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId })
+
+    expect(result).toMatchObject({ status: 'refused' })
+    expect(await run(`select id from bookings where operator_id = $1`, [OP])).toHaveLength(0)
+  })
+
+  it('refuses a quote the customer has never been shown', async () => {
+    const unsent = await sentQuote({ state: 'draft' })
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: unsent })
+    expect(result).toMatchObject({ status: 'refused' })
   })
 })
 
