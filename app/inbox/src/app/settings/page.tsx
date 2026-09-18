@@ -1,4 +1,5 @@
-import { getNavCounts, getOperatorSettings, listTeam } from '@vyra/db'
+import { countExpiredConversations, getNavCounts, getOperatorSettings, listTeam,
+} from '@vyra/db'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SiteNav } from '../site-nav'
@@ -19,10 +20,11 @@ export const dynamic = 'force-dynamic'
  */
 export default async function SettingsPage() {
   const actor = await requireActor()
-  const [counts, settings, team] = await actorReads(actor, (run) => Promise.all([
+  const [counts, settings, team, retention] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     getOperatorSettings(run, actor.operatorId),
     listTeam(run, actor.operatorId),
+    countExpiredConversations(run, actor.operatorId),
   ]))
 
   if (settings === null) notFound()
@@ -56,6 +58,7 @@ export default async function SettingsPage() {
 
       <SettingsForm
         settings={settings}
+        retention={retention}
         owners={owners.map((m) => ({
           membershipId: m.membershipId,
           label: `${m.email ?? m.userId.slice(0, 8)} · ${m.role}`,

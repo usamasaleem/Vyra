@@ -6,6 +6,7 @@ import { dispatchMessage } from './dispatcher.js'
 import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
 import {
+  purgeExpiredConversations,
   escalateAbandonedConversations, escalateOverdueHandoffs, findSendingCredentials,
   resumeAbandonedConversations,
 } from '@vyra/db'
@@ -280,6 +281,24 @@ async function relayLoop(): Promise<void> {
         const chased = await sendDueFollowUps(query, log)
         if (chased.sent > 0 || chased.raisedForAPerson > 0 || chased.rescheduled > 0) {
           log({ event: 'followups.swept', ...chased })
+        }
+
+        /**
+         * And delete what the operator said to delete.
+         *
+         * retention_days has been on the settings page since the settings page
+         * existed, saying "Conversations, contacts and anything a customer
+         * sent", and nothing had ever removed a row. That is worse than a
+         * missing button: a missing button is visible the moment somebody
+         * looks for it, and this looked exactly like working software from
+         * every angle available to the person relying on it.
+         *
+         * Batched, on the same sweep as everything else here, and it never
+         * touches a conversation carrying a quote or a booking.
+         */
+        const purged = await purgeExpiredConversations(query)
+        if (purged.conversations > 0) {
+          log({ event: 'retention.purged', ...purged })
         }
 
         const abandoned = await releaseAbandonedJobs(query)

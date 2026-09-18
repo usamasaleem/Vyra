@@ -47,9 +47,18 @@ function Field({
 }
 
 export function SettingsForm({
+  retention,
   settings, owners, readOnly,
 }: {
   settings: Settings
+  /**
+   * What the retention number is actually doing, counted.
+   *
+   * "Shorter is kinder and harder to undo" is a sentence somebody should be
+   * able to check before they find out whether it was true — and for a long
+   * time it was not true at all, because nothing deleted anything.
+   */
+  retention: { expired: number; keptAsRecords: number }
   owners: Array<{ membershipId: string; label: string }>
   readOnly: boolean
 }) {
@@ -213,6 +222,20 @@ export function SettingsForm({
         >
           {number('retentionDays', settings.retentionDays)}
         </Field>
+        <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.6rem' }}>
+          {retention.expired === 0
+            ? 'Nothing is past this yet. When something is, it is deleted on its own — the '
+              + 'conversation, its messages, and the phone number once nothing else refers to it.'
+            : `${retention.expired} conversation${retention.expired === 1 ? ' is' : 's are'} past `
+              + 'this and will be deleted on the next sweep — messages, notes and the phone '
+              + 'number with them.'}
+          {retention.keptAsRecords > 0
+            ? ` ${retention.keptAsRecords} older ${retention.keptAsRecords === 1 ? 'one is' : 'ones are'} `
+              + 'kept regardless, because a quote or a booking is a record of a transaction '
+              + 'rather than a conversation.'
+            : ' A conversation that produced a quote or a booking is kept regardless: that is a '
+              + 'record of a transaction rather than a conversation.'}
+        </p>
       </section>
 
       {!readOnly && (
