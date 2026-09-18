@@ -753,6 +753,11 @@ export async function currentQuoteFor(
      from quotes
      where operator_id = $1 and enquiry_id = $2
        and state not in ('superseded', 'rejected', 'expired')
+       -- Nothing ever writes the 'expired' state: expiry is the timestamp, and
+       -- approveQuote and requestBooking both check it rather than a column.
+       -- So the state alone would hand the model a price that ran out
+       -- yesterday and tell it to say that figure.
+       and (valid_until is null or valid_until > now())
      order by revision desc
      limit 1`,
     [input.operatorId, input.enquiryId],
@@ -769,4 +774,50 @@ export async function currentQuoteFor(
     validUntil: row['valid_until'] == null ? null : new Date(row['valid_until'] as string),
     sent: row['state'] === 'sent',
   }
+}
+
+/**
+ * Turning a draft down, which nothing could do.
+ *
+ * The Operations screen offered "Approve and send" and nothing else, so a
+ * salesperson looking at a figure they did not want had no way to be rid of
+ * it — the draft stayed in the queue, and the only honest reading of the
+ * screen was that approving was the sole option. `rejected` has been in
+ * `quote_state` since the beginning and no code ever wrote it.
+ *
+ * Rejecting does not tell the customer anything. They were never sent this
+ * price; there is nothing to retract. It clears the queue and leaves a reason
+ * for whoever wonders later.
+ */
+export async function rejectQuote(
+  run: QueryRunner,
+  input: {
+    operatorId: string
+    quoteId: string
+    membershipId: string
+    revision: number
+    reason: string
+  },
+): Promise<{ rejected: boolean }> {
+  const rows = await run(
+    `with turned_down as (
+       update quotes
+       set state = 'rejected', updated_at = now()
+       where id = $1 and operator_id = $2 and state = 'draft' and revision = $4
+       returning id, operator_id, revision
+     ),
+     audited as (
+       insert into audit_events (
+         operator_id, actor_type, actor_id, action, subject_type, subject_id,
+         subject_version, data
+       )
+       select t.operator_id, 'user', $3, 'quote.rejected', 'quote', t.id, t.revision,
+              jsonb_build_object('reason', $5::text)
+       from turned_down t
+       returning id
+     )
+     select (select id from turned_down) as id`,
+    [input.quoteId, input.operatorId, input.membershipId, input.revision, input.reason],
+  )
+  return { rejected: rows[0]?.['id'] != null }
 }

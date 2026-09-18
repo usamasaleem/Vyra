@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react'
 import { useState } from 'react'
-import { approveAndSendQuote, discountAndSendQuote } from '../actions'
+import { approveAndSendQuote, discountAndSendQuote, rejectThisQuote } from '../actions'
 
 /**
  * Approving is the moment a figure becomes something the operator owes, so the
@@ -37,7 +37,54 @@ export function ApproveQuote({
         <span style={{ fontSize: '0.82rem' }}>{state.error}</span>
       )}
       <DiscountQuote quoteId={quoteId} revision={revision} currency={currency} />
+      <RejectQuote quoteId={quoteId} revision={revision} />
     </form>
+  )
+}
+
+/**
+ * The deny this screen implied and did not have.
+ *
+ * `rejected` has been a quote state since the beginning and nothing ever wrote
+ * it, so a draft somebody did not want stayed in the queue for good. Nothing
+ * is sent: the customer never saw this price, and telling them a figure was
+ * considered and dropped is worse than saying nothing.
+ */
+function RejectQuote({ quoteId, revision }: { quoteId: string; revision: number }) {
+  const [state, action, pending] = useActionState(rejectThisQuote, { error: null })
+  const [open, setOpen] = useState(false)
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          background: 'none', border: 'none', padding: 0, font: 'inherit',
+          color: 'var(--muted, #888)', textDecoration: 'underline', cursor: 'pointer',
+        }}
+      >
+        Don&rsquo;t send this
+      </button>
+    )
+  }
+
+  return (
+    <span style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+      <input
+        className="input" name="reason" placeholder="Why (for your records, never sent)"
+        style={{ flex: '1 1 12rem' }}
+      />
+      <button className="button secondary" type="submit" formAction={action} disabled={pending}>
+        {pending ? 'Rejecting…' : 'Reject it'}
+      </button>
+      <button className="button secondary" type="button" onClick={() => setOpen(false)}>
+        Keep it
+      </button>
+      {state.error !== null && (
+        <span style={{ fontSize: '0.82rem', flexBasis: '100%' }}>{state.error}</span>
+      )}
+    </span>
   )
 }
 

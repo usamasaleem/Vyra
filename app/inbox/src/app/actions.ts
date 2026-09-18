@@ -8,6 +8,8 @@ import {
   approveQuote,
   closeLead,
   discountQuote,
+  dismissOperationsRequest,
+  rejectQuote,
   listDraftQuotes,
   renderQuoteMessage,
   setVehicleRate,
@@ -752,4 +754,60 @@ export async function closeThisLead(
   revalidatePath(`/conversations/${conversationId}`)
   revalidatePath('/reports')
   return { error: null }
+}
+
+/**
+ * Turning a draft quote down.
+ *
+ * The screen offered Approve and send and nothing else, so a figure somebody
+ * did not want stayed in the queue for good — and the only honest reading of
+ * that screen was that approving was the sole option.
+ *
+ * Nothing is sent. The customer never saw this price; there is nothing to
+ * retract, and telling them a number was considered and dropped is worse than
+ * saying nothing.
+ */
+export async function rejectThisQuote(
+  _previous: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const actor = await requireActor()
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'reject a quote')
+  } catch {
+    return { error: 'Your role cannot change quotes.' }
+  }
+
+  const reason = String(formData.get('reason') ?? '').trim()
+  if (reason === '') return { error: 'Say why, so the next person reading this knows.' }
+
+  const result = await rejectQuote(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    quoteId: String(formData.get('quoteId') ?? ''),
+    membershipId: actor.membershipId,
+    revision: Number(formData.get('revision') ?? 0),
+    reason,
+  })
+
+  if (!result.rejected) {
+    return { error: 'That quote changed while you were reading it. Reload and check.' }
+  }
+
+  revalidatePath('/operations')
+  return { error: null }
+}
+
+/** Dropping an availability request nobody needs to answer any more. */
+export async function dismissRequest(formData: FormData): Promise<void> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canReply(actor), 'dismiss an Operations request')
+
+  await dismissOperationsRequest(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    requestId: String(formData.get('requestId') ?? ''),
+    membershipId: actor.membershipId,
+    reason: String(formData.get('reason') ?? '').trim() || 'No longer needed.',
+  })
+  revalidatePath('/operations')
 }

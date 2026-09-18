@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  approveQuote, calculateDraftQuote, discountQuote, formatMoney, listDraftQuotes, listRates,
+  approveQuote, calculateDraftQuote, currentQuoteFor, discountQuote, formatMoney,
+  listDraftQuotes, listRates, rejectQuote,
   renderQuoteMessage, setVehicleHighlight, setVehicleRate,
 } from '../src/queries/quotes.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
@@ -553,5 +554,108 @@ describe('discounting a quote', () => {
       `select discount_minor from quotes where id = $1`, [(twice as { quoteId: string }).quoteId])
     // And the record knows the whole of what was given away, not just the last bite.
     expect(row!['discount_minor']).toBe(75_000)
+  })
+})
+
+/**
+ * Turning a draft down, and never offering a price that has run out.
+ *
+ * The Operations screen offered "Approve and send" and nothing else, so a
+ * figure somebody did not want stayed in the queue for good — `rejected` has
+ * been a quote state since the beginning and no code ever wrote it.
+ */
+describe('a quote nobody is going to send', () => {
+  const draft = async () => {
+    await setRate()
+    const result = await calculateDraftQuote(run, {
+      operatorId: OP, conversationId: CONV, enquiryId: null, vehicleId,
+      startDate: '2026-09-25', endDate: '2026-09-27', duration: null,
+    })
+    if (!result.ok) throw new Error('fixture could not be priced: ' + result.refusal.reason)
+    return result.quote
+  }
+
+  it('can be turned down, with a reason on the record', async () => {
+    const q = await draft()
+    expect(await rejectQuote(run, {
+      operatorId: OP, quoteId: q.quoteId, membershipId: SARA,
+      revision: q.revision, reason: 'wrong car',
+    })).toEqual({ rejected: true })
+
+    const [row] = await run(`select state::text as state from quotes where id = $1`, [q.quoteId])
+    expect(row!['state']).toBe('rejected')
+
+    const [event] = await run(
+      `select actor_id, data from audit_events where action = 'quote.rejected'`, [])
+    expect(event!['actor_id']).toBe(SARA)
+    expect((event!['data'] as Record<string, unknown>)['reason']).toBe('wrong car')
+  })
+
+  /** The same guard as approving: numbers nobody read cannot be acted on. */
+  it('refuses when it was repriced while the page was open', async () => {
+    const q = await draft()
+    expect(await rejectQuote(run, {
+      operatorId: OP, quoteId: q.quoteId, membershipId: SARA,
+      revision: q.revision + 1, reason: 'x',
+    })).toEqual({ rejected: false })
+  })
+
+  it('will not turn down one already sent', async () => {
+    const q = await draft()
+    // A sent quote carries its approver: quotes_approval_is_attributed.
+    await run(
+      `update quotes set state = 'sent', approved_by_membership_id = $2, approved_at = now()
+       where id = $1`,
+      [q.quoteId, SARA],
+    )
+    expect(await rejectQuote(run, {
+      operatorId: OP, quoteId: q.quoteId, membershipId: SARA,
+      revision: q.revision, reason: 'x',
+    })).toEqual({ rejected: false })
+  })
+})
+
+/**
+ * Nothing ever writes the 'expired' state — expiry is the timestamp, and both
+ * approving and booking check that rather than a column. So the state alone
+ * would have handed the model a price that ran out yesterday, with an
+ * instruction to say that figure.
+ */
+describe('the price the agent is told about', () => {
+  let enquiryId: string
+
+  beforeEach(async () => {
+    const [e] = await run(
+      `insert into enquiries (operator_id, conversation_id) values ($1, $2) returning id`,
+      [OP, CONV],
+    )
+    enquiryId = e!['id'] as string
+  })
+
+  const quoteFor = async (validUntil: string | null, state = 'sent') => {
+    const [q] = await run(
+      `insert into quotes (operator_id, conversation_id, enquiry_id, revision, state,
+                           total_minor, lines, valid_until, approved_by_membership_id, approved_at)
+       values ($1, $2, $3, 1, $4::quote_state, 500000, '[]'::jsonb, $5::timestamptz, $6, now())
+       returning id`,
+      [OP, CONV, enquiryId, state, validUntil, SARA],
+    )
+    return q!['id'] as string
+  }
+
+  it('is the one they were sent', async () => {
+    const id = await quoteFor(new Date(Date.now() + 86_400_000).toISOString())
+    expect(await currentQuoteFor(run, { operatorId: OP, enquiryId }))
+      .toMatchObject({ quoteId: id, sent: true })
+  })
+
+  it('is nothing once the price has run out', async () => {
+    await quoteFor(new Date(Date.now() - 86_400_000).toISOString())
+    expect(await currentQuoteFor(run, { operatorId: OP, enquiryId })).toBeNull()
+  })
+
+  it('is nothing when a person turned it down', async () => {
+    await quoteFor(null, 'rejected')
+    expect(await currentQuoteFor(run, { operatorId: OP, enquiryId })).toBeNull()
   })
 })

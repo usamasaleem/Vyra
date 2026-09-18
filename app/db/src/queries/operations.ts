@@ -258,3 +258,27 @@ export async function listOpenOperationsRequests(
     whatsappNumber: (r['channel_identifier'] as string) ?? null,
   }))
 }
+
+/**
+ * Dropping a request nobody needs to answer.
+ *
+ * `cancelled` has been in `operations_request_state` since the table existed
+ * and nothing ever wrote it, so a request raised about a car the customer then
+ * changed their mind about stayed open for good. Six of them had to be closed
+ * by hand in the database, which is the plainest statement that the control
+ * was missing.
+ */
+export async function dismissOperationsRequest(
+  run: QueryRunner,
+  input: { operatorId: string; requestId: string; membershipId: string; reason: string },
+): Promise<{ dismissed: boolean }> {
+  const rows = await run(
+    `update operations_requests
+     set state = 'cancelled', answer_note = $4, answered_by_membership_id = $3,
+         updated_at = now()
+     where id = $1 and operator_id = $2 and state = 'open'
+     returning id`,
+    [input.requestId, input.operatorId, input.membershipId, input.reason],
+  )
+  return { dismissed: rows.length > 0 }
+}

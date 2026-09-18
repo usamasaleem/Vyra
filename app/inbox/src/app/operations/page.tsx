@@ -6,6 +6,7 @@ import {
 import { requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { AnswerForm } from './answer-form'
+import { dismissRequest } from '../actions'
 import { ApproveQuote } from './approve-quote'
 
 /**
@@ -126,6 +127,21 @@ export default async function OperationsPage() {
               </div>
 
               <AnswerForm requestId={r.id} />
+              {/*
+                * Dropping one nobody needs to answer. `cancelled` has been a
+                * state since the table existed and nothing ever wrote it, so a
+                * request about a car the customer then changed their mind
+                * about stayed open for good.
+                */}
+              <form action={dismissRequest} style={{ marginTop: '0.5rem' }}>
+                <input type="hidden" name="requestId" value={r.id} />
+                <input
+                  className="input" name="reason"
+                  placeholder="Why it can be dropped (never sent)"
+                  style={{ maxWidth: '18rem', marginRight: '0.4rem' }}
+                />
+                <button className="button secondary" type="submit">No longer needed</button>
+              </form>
 
               {r.conversationId !== null && (
                 <p style={{ margin: '0.7rem 0 0' }}>
