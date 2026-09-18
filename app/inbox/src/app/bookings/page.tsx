@@ -1,9 +1,12 @@
 import { formatDateForMessage } from '@vyra/contracts'
-import { formatMoney, getNavCounts, listBookingRequests } from '@vyra/db'
+import {
+  formatMoney, getNavCounts, listBookingRequests, listConfirmedBookings,
+} from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { SiteNav } from '../site-nav'
 import { BookingForm } from './booking-form'
+import { CancelForm } from './cancel-form'
 
 /**
  * The people who said yes.
@@ -32,9 +35,10 @@ function waitingFor(since: Date): string {
 
 export default async function BookingsPage() {
   const actor = await requireActor()
-  const [counts, waiting] = await actorReads(actor, (run) => Promise.all([
+  const [counts, waiting, onTheBooks] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     listBookingRequests(run, actor.operatorId),
+    listConfirmedBookings(run, actor.operatorId),
   ]))
 
   const canAnswer = permissions.canReply(actor)
@@ -101,6 +105,14 @@ export default async function BookingsPage() {
                     {b.validUntil !== null && b.validUntil < new Date()
                       && ' · this price has expired since they agreed to it'}
                   </div>
+                  {b.heldAlready !== null && (
+                    <p className="notice" style={{ margin: '0.6rem 0 0' }}>
+                      This car is already held from {b.heldAlready.startDate} to{' '}
+                      {b.heldAlready.endDate} ({b.heldAlready.reason}), which overlaps these
+                      dates. Confirming is refused until that is released — check the diary
+                      below before you answer them.
+                    </p>
+                  )}
                 </div>
                 <a className="button secondary" href={`/conversations/${b.conversationId}`}>
                   Read the conversation
@@ -122,6 +134,42 @@ export default async function BookingsPage() {
           )
         })}
       </ul>
+
+      <section style={{ marginTop: '2.5rem' }}>
+        <h2 style={{ fontSize: '1.05rem' }}>On the books</h2>
+        <p className="muted" style={{ fontSize: '0.85rem' }}>
+          Confirmed rentals, soonest first. Each one holds its car for those dates, so the agent
+          will not offer it to somebody else and a second confirmation is refused. Cancelling
+          gives the car back.
+        </p>
+
+        {onTheBooks.length === 0 ? (
+          <p className="card" style={{ marginTop: '0.8rem' }}>Nothing confirmed yet.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0.8rem 0 0', display: 'grid', gap: '0.6rem' }}>
+            {onTheBooks.map((b) => (
+              <li key={b.bookingId} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{b.vehicle ?? 'Car not recorded'}</strong>
+                    <div className="muted" style={{ fontSize: '0.88rem' }}>
+                      {b.startDate}
+                      {b.endDate !== null && b.endDate !== b.startDate ? ` to ${b.endDate}` : ''}
+                      {' · '}{b.customerName ?? b.customer}
+                      {' · '}{formatMoney(b.totalMinor, b.currency)}
+                      {b.confirmedBy === null ? '' : ` · confirmed by ${b.confirmedBy}`}
+                    </div>
+                  </div>
+                  <a className="button secondary" href={`/conversations/${b.conversationId}`}>
+                    Read the conversation
+                  </a>
+                </div>
+                {canAnswer && <div style={{ marginTop: '0.7rem' }}><CancelForm bookingId={b.bookingId} /></div>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   )
 }

@@ -1,6 +1,8 @@
 import {
-  boolean, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uuid,
+  boolean, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique,
+  uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { operators } from './operators.js'
 import { memberships } from './operators.js'
 import { vehicleCategory, fleetProvenance } from './enums.js'
@@ -183,6 +185,17 @@ export const vehicleAvailability = pgTable(
     recordedByMembershipId: uuid(),
 
     /**
+     * The booking this block holds the car for, when it came from one.
+     *
+     * Null for a block somebody entered by hand — maintenance, a car away for
+     * detailing. Set for one the system wrote on confirming a rental, and it
+     * is what lets that block be released again if the booking is cancelled.
+     * Without the link a cancelled rental leaves the car unsellable and
+     * nobody can tell why.
+     */
+    bookingId: uuid(),
+
+    /**
      * Cleared rather than deleted, so a cancelled booking that cost an enquiry
      * can still be explained afterwards.
      */
@@ -200,5 +213,13 @@ export const vehicleAvailability = pgTable(
     }),
     index('vehicle_availability_lookup_idx')
       .on(table.operatorId, table.vehicleId, table.startDate, table.endDate),
+    /**
+     * One live block per booking. Confirming is guarded against being run
+     * twice by the booking's own state, and this is the second line: a
+     * booking holds a car once or not at all.
+     */
+    uniqueIndex('vehicle_availability_live_booking_key')
+      .on(table.bookingId)
+      .where(sql`booking_id is not null and released_at is null`),
   ],
 )

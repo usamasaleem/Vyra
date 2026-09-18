@@ -1,0 +1,2 @@
+ALTER TABLE "vehicle_availability" ADD COLUMN "booking_id" uuid;--> statement-breakpoint
+CREATE UNIQUE INDEX "vehicle_availability_live_booking_key" ON "vehicle_availability" USING btree ("booking_id") WHERE booking_id is not null and released_at is null;

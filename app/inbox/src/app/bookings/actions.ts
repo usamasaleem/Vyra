@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { decideBooking, NoDisplayName, queueOutboundText } from '@vyra/db'
+import { cancelBooking, decideBooking, NoDisplayName, queueOutboundText } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
 
@@ -58,6 +58,15 @@ export async function answerBooking(
     note: String(formData.get('note') ?? '').trim() || null,
   })
 
+  if (decided.conflict !== undefined) {
+    const c = decided.conflict
+    return {
+      error: `Not confirmed — the ${c.vehicle} is already held from ${c.startDate} to `
+        + `${c.endDate} (${c.reason}), which overlaps these dates. Nothing was sent. `
+        + 'Check the diary before you answer them.',
+    }
+  }
+
   if (!decided.decided || decided.conversationId === null) {
     return {
       error: 'Somebody else answered this one first. Reload to see what they said.',
@@ -82,5 +91,70 @@ export async function answerBooking(
 
   revalidatePath('/bookings')
   revalidatePath(`/conversations/${decided.conversationId}`)
+  return { error: null, answered: bookingId }
+}
+
+/**
+ * Letting a confirmed rental go.
+ *
+ * The car comes back on the same action, because a cancellation that releases
+ * nothing leaves a vehicle nobody can sell and nobody can explain — quieter
+ * than a double booking and longer-lived.
+ *
+ * The customer is told by whoever cancels it, in their own words, like every
+ * other message from a person. There is no wording for this that we could
+ * write for them: the reasons range from a car off the road to a customer who
+ * rang up and changed their mind.
+ */
+export async function cancelConfirmedBooking(
+  _previous: DecisionState,
+  formData: FormData,
+): Promise<DecisionState> {
+  const actor = await requireActor()
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'cancel a booking')
+  } catch {
+    return { error: 'Your role cannot cancel bookings.' }
+  }
+
+  const bookingId = String(formData.get('bookingId') ?? '')
+  const message = String(formData.get('message') ?? '').trim()
+  if (message === '') return { error: 'Write what the customer should be told.' }
+  if (actor.displayName === null) {
+    return {
+      error: 'This message goes out signed with your name, and you have not set one yet. '
+        + 'Add it on the Team page and try again.',
+    }
+  }
+
+  const cancelled = await cancelBooking(actorTransactor(actor), {
+    operatorId: actor.operatorId,
+    bookingId,
+    membershipId: actor.membershipId,
+    note: String(formData.get('note') ?? '').trim() || null,
+  })
+
+  if (!cancelled.cancelled || cancelled.conversationId === null) {
+    return { error: 'That booking is not confirmed any more. Reload to see where it stands.' }
+  }
+
+  try {
+    await queueOutboundText(actorRunner(actor), {
+      conversationId: cancelled.conversationId,
+      operatorId: actor.operatorId,
+      body: message,
+      idempotencyKey: `booking:${bookingId}:cancelled`,
+      sentByMembershipId: actor.membershipId,
+    })
+  } catch (error: unknown) {
+    if (error instanceof NoDisplayName) {
+      return { error: 'Your name is not set, so the message could not be sent.' }
+    }
+    throw error
+  }
+
+  revalidatePath('/bookings')
+  revalidatePath(`/conversations/${cancelled.conversationId}`)
   return { error: null, answered: bookingId }
 }

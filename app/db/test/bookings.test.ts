@@ -3,7 +3,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { decideBooking, listBookingRequests, requestBooking } from '../src/queries/bookings.ts'
+import {
+  cancelBooking, decideBooking, listBookingRequests, listConfirmedBookings, requestBooking,
+} from '../src/queries/bookings.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
 /**
@@ -20,6 +22,7 @@ const OP = '11111111-1111-1111-1111-111111111111'
 const CONTACT = '55555555-5555-5555-5555-555555555555'
 const CONV = '66666666-6666-6666-6666-666666666666'
 const MEMBER = '88888888-8888-8888-8888-888888888888'
+const CAR = '44444444-4444-4444-4444-444444444444'
 
 let db: PGlite
 let run: QueryRunner
@@ -51,6 +54,10 @@ beforeEach(async () => {
     values ('${CONTACT}', '${OP}', '971500000001', 'Umer');
     insert into conversations (id, operator_id, contact_id, whatsapp_account_id)
     values ('${CONV}', '${OP}', '${CONTACT}', '33333333-3333-3333-3333-333333333333');
+    insert into vehicles (id, operator_id, make, model, variant, year, colour, category,
+                          plate, chassis_number, provenance, confirmed_by)
+    values ('${CAR}', '${OP}', 'Ferrari', '488', 'Spider', 2022, 'Giallo', 'exotic',
+            'D 2', 'V2', 'operator_confirmed', 'Owner');
   `)
   const e = await run(
     `insert into enquiries (operator_id, conversation_id) values ($1, $2) returning id`, [OP, CONV])
@@ -59,15 +66,18 @@ beforeEach(async () => {
 
 const sentQuote = async (over: Record<string, unknown> = {}) => {
   const rows = await run(
-    `insert into quotes (operator_id, conversation_id, enquiry_id, revision, state,
+    `insert into quotes (operator_id, conversation_id, enquiry_id, vehicle_id, revision, state,
                          total_minor, deposit_minor, lines, start_date, end_date, days,
                          valid_until, approved_by_membership_id, approved_at)
-     values ($1, $2, $3, coalesce($4, 1), 'sent', 500000, 300000, '[]'::jsonb,
-             '2026-09-20', '2026-09-21', 1, $5, $6, now())
+     values ($1, $2, $3, $7, coalesce($4, 1), 'sent', 500000, 300000, '[]'::jsonb,
+             coalesce($8::timestamptz, '2026-09-20'), coalesce($9::timestamptz, '2026-09-21'),
+             1, $5, $6, now())
      returning id`,
     [
       OP, CONV, (over['enquiryId'] as string) ?? enquiryId, over['revision'] ?? null,
       (over['validUntil'] as Date) ?? new Date('2026-09-25T00:00:00Z'), MEMBER,
+      (over['vehicleId'] as string) ?? CAR,
+      (over['startDate'] as string) ?? null, (over['endDate'] as string) ?? null,
     ],
   )
   return rows[0]!['id'] as string
@@ -171,5 +181,126 @@ describe('answering them', () => {
 
     const again = await request(quoteId)
     expect(again).toMatchObject({ ok: true, booking: { alreadyRequested: false } })
+  })
+})
+
+/**
+ * The hole the booking path opened.
+ *
+ * Confirming wrote nothing to the calendar: `vehicle_availability` had no
+ * rows, every availability check answered 'unknown', and the same Ferrari
+ * could be quoted, agreed and confirmed twice for the same weekend with
+ * nothing anywhere noticing. Latent while nothing could be booked, live the
+ * moment bookings were.
+ */
+describe('a confirmed booking holds the car', () => {
+  const confirm = (bookingId: string) =>
+    decideBooking(transact, {
+      operatorId: OP, bookingId, membershipId: MEMBER, decision: 'confirmed',
+    })
+
+  const bookingFor = async (over: Record<string, unknown> = {}) => {
+    const result = await request(await sentQuote(over))
+    return (result as { booking: { bookingId: string } }).booking.bookingId
+  }
+
+  it('blocks the dates on the calendar', async () => {
+    await confirm(await bookingFor())
+
+    const [block] = await run(
+      `select vehicle_id, start_date, end_date, reason, booking_id, released_at
+       from vehicle_availability where operator_id = $1`, [OP])
+    expect(block).toMatchObject({
+      vehicle_id: CAR,
+      start_date: '2026-09-20',
+      // Inclusive: a car back on the 21st is not free to somebody else that
+      // morning, and over-holding costs a lead where under-holding costs a car.
+      end_date: '2026-09-21',
+      reason: 'booked',
+      released_at: null,
+    })
+    expect(block!['booking_id']).not.toBeNull()
+  })
+
+  /** The disaster this exists to prevent: two people, one car, one weekend. */
+  it('refuses a second confirmation for overlapping dates', async () => {
+    await confirm(await bookingFor({ revision: 1 }))
+
+    const second = await bookingFor({
+      revision: 2, startDate: '2026-09-21', endDate: '2026-09-23',
+    })
+    const result = await decideBooking(transact, {
+      operatorId: OP, bookingId: second, membershipId: MEMBER, decision: 'confirmed',
+    })
+
+    expect(result.decided).toBe(false)
+    expect(result.conflict).toMatchObject({ startDate: '2026-09-20', endDate: '2026-09-21' })
+
+    // Nothing moved: the customer has not been told anything either way.
+    const [row] = await run(`select state::text as state from bookings where id = $1`, [second])
+    expect(row!['state']).toBe('requested')
+  })
+
+  it('allows a booking that starts after the hold ends', async () => {
+    await confirm(await bookingFor({ revision: 1 }))
+    const later = await bookingFor({
+      revision: 2, startDate: '2026-09-22', endDate: '2026-09-23',
+    })
+    expect(await confirm(later)).toMatchObject({ decided: true })
+  })
+
+  /** Declining must not hold anything — they were told no. */
+  it('holds nothing when the answer is no', async () => {
+    await decideBooking(transact, {
+      operatorId: OP, bookingId: await bookingFor(), membershipId: MEMBER, decision: 'declined',
+    })
+    expect(await run(`select id from vehicle_availability`, [])).toEqual([])
+  })
+
+  it('warns in the queue before anybody presses confirm', async () => {
+    await confirm(await bookingFor({ revision: 1 }))
+    await bookingFor({ revision: 2, startDate: '2026-09-21', endDate: '2026-09-23' })
+
+    const [waiting] = await listBookingRequests(run, OP)
+    expect(waiting!.heldAlready).toMatchObject({
+      startDate: '2026-09-20', endDate: '2026-09-21', reason: 'booked',
+    })
+  })
+
+  /**
+   * A block with no way to release it makes a cancelled rental into a car
+   * nobody can sell and nobody can explain.
+   */
+  it('gives the car back when the booking is cancelled', async () => {
+    const id = await bookingFor()
+    await confirm(id)
+
+    expect(await cancelBooking(transact, {
+      operatorId: OP, bookingId: id, membershipId: MEMBER,
+    })).toMatchObject({ cancelled: true })
+
+    const [block] = await run(
+      `select released_at, released_by from vehicle_availability where booking_id = $1`, [id])
+    expect(block!['released_at']).not.toBeNull()
+    expect(block!['released_by']).toBe('booking cancelled')
+
+    // And the car is sellable again.
+    const next = await bookingFor({ revision: 2 })
+    expect(await confirm(next)).toMatchObject({ decided: true })
+  })
+
+  it('shows what is on the books, soonest first', async () => {
+    await confirm(await bookingFor({ revision: 1, startDate: '2026-09-24', endDate: '2026-09-25' }))
+    await confirm(await bookingFor({ revision: 2, startDate: '2026-09-20', endDate: '2026-09-21' }))
+
+    const diary = await listConfirmedBookings(run, OP)
+    expect(diary.map((b) => b.startDate)).toEqual(['2026-09-20', '2026-09-24'])
+    expect(diary[0]).toMatchObject({ vehicle: 'Ferrari 488 Spider', confirmedBy: 'Ahmed' })
+  })
+
+  it('refuses to cancel something that was never confirmed', async () => {
+    expect(await cancelBooking(transact, {
+      operatorId: OP, bookingId: await bookingFor(), membershipId: MEMBER,
+    })).toMatchObject({ cancelled: false })
   })
 })

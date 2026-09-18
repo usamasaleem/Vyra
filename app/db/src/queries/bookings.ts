@@ -211,6 +211,13 @@ export type PendingBooking = {
   totalMinor: number
   depositMinor: number | null
   validUntil: Date | null
+  /**
+   * The car is already held for dates that overlap these.
+   *
+   * Shown before anybody presses anything, because finding out at the moment
+   * of confirming means a person has already decided what to tell somebody.
+   */
+  heldAlready: { startDate: string; endDate: string; reason: string } | null
 }
 
 /**
@@ -230,12 +237,22 @@ export async function listBookingRequests(
             ct.channel_identifier, ct.display_name,
             trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle,
             q.start_date, q.end_date, q.days, q.currency, q.total_minor, q.deposit_minor,
-            q.valid_until
+            q.valid_until,
+            held.start_date as held_from, held.end_date as held_to, held.reason as held_reason
      from bookings b
      join conversations c on c.id = b.conversation_id and c.operator_id = b.operator_id
      join contacts ct on ct.id = c.contact_id
      join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
      left join vehicles v on v.id = q.vehicle_id
+     left join lateral (
+       select a.start_date, a.end_date, a.reason
+       from vehicle_availability a
+       where a.operator_id = b.operator_id and a.vehicle_id = q.vehicle_id
+         and a.released_at is null and a.booking_id is distinct from b.id
+         and a.start_date <= coalesce(q.end_date, q.start_date)::date::text
+         and a.end_date >= q.start_date::date::text
+       limit 1
+     ) held on true
      where b.operator_id = $1 and b.state = 'requested'
      order by b.requested_at asc`,
     [operatorId],
@@ -256,7 +273,34 @@ export async function listBookingRequests(
     totalMinor: Number(r['total_minor']),
     depositMinor: r['deposit_minor'] == null ? null : Number(r['deposit_minor']),
     validUntil: r['valid_until'] == null ? null : new Date(r['valid_until'] as string),
+    heldAlready: r['held_from'] == null ? null : {
+      startDate: r['held_from'] as string,
+      endDate: r['held_to'] as string,
+      reason: r['held_reason'] as string,
+    },
   }))
+}
+
+export type BookingConflict = {
+  /** The car, as a person would name it. */
+  vehicle: string
+  /** The dates already spoken for, inclusive. */
+  startDate: string
+  endDate: string
+  reason: string
+}
+
+export type BookingDecision = {
+  decided: boolean
+  conversationId: string | null
+  /**
+   * Why it could not be confirmed: the car is already held for these dates.
+   *
+   * Returned rather than thrown because it is not an error — it is the answer,
+   * and the person needs to see which dates and why before they tell a
+   * customer anything.
+   */
+  conflict?: BookingConflict
 }
 
 /**
@@ -266,6 +310,20 @@ export async function listBookingRequests(
  * the same queue cannot both decide it — the second gets `decided: false` and
  * a screen that has already moved on, rather than silently overwriting a
  * colleague's answer.
+ *
+ * Confirming holds the car. Until it did, a confirmed booking wrote nothing to
+ * the calendar: `vehicle_availability` had no rows, every `check_availability`
+ * answered 'unknown', and the same Ferrari could be quoted, agreed and
+ * confirmed twice for the same weekend with nothing anywhere noticing. That
+ * was latent while nothing could be booked and went live the moment bookings
+ * did — it is the one failure here that costs a car and a reputation rather
+ * than a lead.
+ *
+ * The overlap check runs inside this transaction behind a lock on the vehicle
+ * row, so two people confirming the same car at the same moment cannot both
+ * succeed. An exclusion constraint would be the stronger version and is not
+ * available: `btree_gist` does not exist in PGlite, so it would pass in
+ * production and fail every test, which is a guarantee nobody can verify.
  *
  * It does not send anything. What the customer is told is a message somebody
  * wrote, through the one path that sends, signed with their name.
@@ -279,8 +337,63 @@ export async function decideBooking(
     decision: 'confirmed' | 'declined'
     note?: string | null
   },
-): Promise<{ decided: boolean; conversationId: string | null }> {
+): Promise<BookingDecision> {
   return transact(async (tx) => {
+    /**
+     * Read the booking and its figures first, and take the lock before the
+     * write. The dates and the car come from the quote the customer agreed
+     * to — never retyped, so the hold cannot disagree with the rental.
+     */
+    const [target] = await tx(
+      `select b.conversation_id, q.vehicle_id,
+              q.start_date::date::text as start_date,
+              coalesce(q.end_date, q.start_date)::date::text as end_date
+       from bookings b
+       join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
+       where b.id = $1 and b.operator_id = $2 and b.state = 'requested'`,
+      [input.bookingId, input.operatorId],
+    )
+    if (target === undefined) return { decided: false, conversationId: null }
+
+    const vehicleId = (target['vehicle_id'] as string) ?? null
+    const startDate = (target['start_date'] as string) ?? null
+    const endDate = (target['end_date'] as string) ?? null
+
+    if (input.decision === 'confirmed' && vehicleId !== null && startDate !== null) {
+      // Serialise every confirmation of this car behind one lock.
+      await tx(`select id from vehicles where id = $1 and operator_id = $2 for update`,
+        [vehicleId, input.operatorId])
+
+      const [clash] = await tx(
+        `select a.start_date, a.end_date, a.reason,
+                trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle
+         from vehicle_availability a
+         join vehicles v on v.id = a.vehicle_id and v.operator_id = a.operator_id
+         where a.operator_id = $1 and a.vehicle_id = $2 and a.released_at is null
+           and a.booking_id is distinct from $5
+           -- Overlap, not containment. Inclusive of the end date: a car coming
+           -- back on the 27th is not reliably free to somebody else that
+           -- morning, and over-holding costs a lead where under-holding costs
+           -- the car.
+           and a.start_date <= $4 and a.end_date >= $3
+         limit 1`,
+        [input.operatorId, vehicleId, startDate, endDate ?? startDate, input.bookingId],
+      )
+
+      if (clash !== undefined) {
+        return {
+          decided: false,
+          conversationId: null,
+          conflict: {
+            vehicle: clash['vehicle'] as string,
+            startDate: clash['start_date'] as string,
+            endDate: clash['end_date'] as string,
+            reason: clash['reason'] as string,
+          },
+        }
+      }
+    }
+
     const rows = await tx(
       `update bookings
        set state = $4::booking_state, decided_by_membership_id = $3, decided_at = now(),
@@ -294,6 +407,19 @@ export async function decideBooking(
     )
     const conversationId = (rows[0]?.['conversation_id'] as string) ?? null
     if (conversationId === null) return { decided: false, conversationId: null }
+
+    if (input.decision === 'confirmed' && vehicleId !== null && startDate !== null) {
+      await tx(
+        `insert into vehicle_availability
+           (operator_id, vehicle_id, start_date, end_date, reason, recorded_by,
+            recorded_by_membership_id, booking_id)
+         values ($1, $2, $3, $4, 'booked', 'booking confirmed', $5, $6)`,
+        [
+          input.operatorId, vehicleId, startDate, endDate ?? startDate,
+          input.membershipId, input.bookingId,
+        ],
+      )
+    }
 
     /**
      * A declined booking returns the conversation to 'none' rather than
@@ -311,4 +437,110 @@ export async function decideBooking(
 
     return { decided: true, conversationId }
   })
+}
+
+/**
+ * Letting a confirmed rental go, and giving the car back.
+ *
+ * Required by the hold rather than a nicety beside it. A block with no way to
+ * release it makes a cancelled rental into a car nobody can sell and nobody
+ * can explain — the failure is quieter than a double booking and lasts longer.
+ *
+ * The block is released, not deleted, like every other one: a cancellation
+ * that cost somebody an enquiry should still be answerable next week.
+ */
+export async function cancelBooking(
+  transact: Transactor,
+  input: {
+    operatorId: string
+    bookingId: string
+    membershipId: string
+    note?: string | null
+  },
+): Promise<{ cancelled: boolean; conversationId: string | null }> {
+  return transact(async (tx) => {
+    const rows = await tx(
+      `update bookings
+       set state = 'cancelled', decided_by_membership_id = $3, decided_at = now(),
+           decision_note = coalesce($4, decision_note), updated_at = now()
+       where id = $1 and operator_id = $2 and state = 'confirmed'
+       returning conversation_id`,
+      [input.bookingId, input.operatorId, input.membershipId, input.note ?? null],
+    )
+    const conversationId = (rows[0]?.['conversation_id'] as string) ?? null
+    if (conversationId === null) return { cancelled: false, conversationId: null }
+
+    await tx(
+      `update vehicle_availability
+       set released_at = now(), released_by = 'booking cancelled', updated_at = now()
+       where operator_id = $1 and booking_id = $2 and released_at is null`,
+      [input.operatorId, input.bookingId],
+    )
+
+    await tx(
+      `update conversations set booking_status = 'cancelled', updated_at = now()
+       where id = $1 and operator_id = $2`,
+      [conversationId, input.operatorId],
+    )
+
+    return { cancelled: true, conversationId }
+  })
+}
+
+export type ConfirmedBooking = {
+  bookingId: string
+  conversationId: string
+  customer: string
+  customerName: string | null
+  vehicle: string | null
+  startDate: string | null
+  endDate: string | null
+  currency: string
+  totalMinor: number
+  confirmedAt: Date
+  confirmedBy: string | null
+}
+
+/**
+ * What is actually on the books, soonest first.
+ *
+ * Soonest rather than newest, because this is a diary: the rental starting
+ * tomorrow is the one somebody needs to see, whenever it was agreed.
+ */
+export async function listConfirmedBookings(
+  run: QueryRunner,
+  operatorId: string,
+): Promise<ConfirmedBooking[]> {
+  const rows = await run(
+    `select b.id, b.conversation_id, b.decided_at,
+            ct.channel_identifier, ct.display_name,
+            m.display_name as confirmed_by,
+            trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle,
+            q.start_date::date::text as start_date,
+            coalesce(q.end_date, q.start_date)::date::text as end_date,
+            q.currency, q.total_minor
+     from bookings b
+     join conversations c on c.id = b.conversation_id and c.operator_id = b.operator_id
+     join contacts ct on ct.id = c.contact_id
+     join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
+     left join vehicles v on v.id = q.vehicle_id
+     left join memberships m on m.id = b.decided_by_membership_id
+     where b.operator_id = $1 and b.state = 'confirmed'
+     order by q.start_date asc nulls last`,
+    [operatorId],
+  )
+
+  return rows.map((r) => ({
+    bookingId: r['id'] as string,
+    conversationId: r['conversation_id'] as string,
+    customer: r['channel_identifier'] as string,
+    customerName: (r['display_name'] as string) ?? null,
+    vehicle: (r['vehicle'] as string) ?? null,
+    startDate: (r['start_date'] as string) ?? null,
+    endDate: (r['end_date'] as string) ?? null,
+    currency: r['currency'] as string,
+    totalMinor: Number(r['total_minor']),
+    confirmedAt: new Date(r['decided_at'] as string),
+    confirmedBy: (r['confirmed_by'] as string) ?? null,
+  }))
 }
