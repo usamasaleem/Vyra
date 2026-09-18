@@ -61,6 +61,32 @@ export async function requestBooking(
     now?: Date
   },
 ): Promise<RequestBookingResult> {
+  /**
+   * A quote id that is not an id at all.
+   *
+   * Read live: the model passed "401767f8-fe6a-4b16-8b55-c50bafef8ebd-r9",
+   * the enquiry id with the revision appended, because prepare_quote returned
+   * no id and that was the nearest handle it had. Postgres refused the cast,
+   * the error left this function as a database failure rather than a refusal,
+   * and the boundary rethrew it — correctly, since an infrastructure failure
+   * must not be disguised as a refusal. The turn died and the customer got
+   * silence.
+   *
+   * So the shape is checked here, where every caller passes through, and a
+   * malformed id is what it plainly is: a quote that does not exist.
+   */
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!UUID.test(input.quoteId.trim())) {
+    return {
+      ok: false,
+      refusal: {
+        reason: 'quote_not_found',
+        detail: 'That is not a quote id. Use the quoteId returned by prepare_quote, exactly '
+          + 'as given — if you do not have one, prepare a quote first.',
+      },
+    }
+  }
+
   return transact(async (tx) => {
     const [quote] = await tx(
       `select q.id, q.enquiry_id, q.state::text as state, q.revision, q.valid_until,

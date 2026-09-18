@@ -1243,3 +1243,58 @@ describe('a tool withheld because its answer is already in the prompt', () => {
     expect(createToolBoundary(ctx).definitions).toHaveLength(TOOL_NAMES.length)
   })
 })
+
+/**
+ * A tool that requires an id nothing hands out cannot be called correctly.
+ *
+ * Read live, at the moment of sale. prepare_quote returned figures and no id;
+ * request_booking_review asks for one. So when the customer said yes the model
+ * built a quote id out of the two handles it had — the enquiry id with the
+ * revision appended, "401767f8-…-r9" — Postgres refused the cast, the boundary
+ * rethrew it as an infrastructure failure, and the turn died. The customer got
+ * silence and the salesperson got "AI unavailable — reply manually".
+ */
+describe('the id that ties a quote to a yes', () => {
+  it('hands the quote id back so it can be booked', async () => {
+    const [car] = await run(
+      `insert into vehicles (operator_id, make, model, variant, year, colour, category,
+                             plate, chassis_number, active, provenance, confirmed_by)
+       values ($1,'Ferrari','488','Spider',2022,'Giallo','exotic','D 9','V9',true,
+               'operator_confirmed','Owner')
+       returning id`,
+      [OP],
+    )
+    await run(
+      `insert into vehicle_rates (operator_id, vehicle_id, currency, daily_rate_minor,
+                                  minimum_days, provenance, confirmed_by, confirmed_at)
+       values ($1, $2, 'AED', 500000, 1, 'operator_confirmed', 'Owner', now())`,
+      [OP, car!['id']],
+    )
+    const boundary = createToolBoundary(ctx)
+    await boundary.call('record_enquiry_fields', {
+      forVehicle: null,
+      fields: [
+        { field: 'vehicle', value: 'Ferrari 488 Spider', originalWording: null },
+        { field: 'start_at', value: '2026-09-25', originalWording: null },
+        { field: 'end_at', value: '2026-09-27', originalWording: null },
+      ],
+    })
+
+    const quote = await boundary.call('prepare_quote', { enquiryId: ctx.enquiryId })
+    expect(quote).toMatchObject({ status: 'ok' })
+    const quoteId = (quote as { data: { quoteId: string } }).data.quoteId
+    expect(quoteId).toMatch(/^[0-9a-f-]{36}$/i)
+
+    // And it is the id the booking tool accepts, which is the whole point.
+    expect(await boundary.call('request_booking_review', { quoteId }))
+      .toMatchObject({ status: 'ok' })
+  })
+
+  /** The invented id, exactly as it arrived. A refusal, never a crash. */
+  it('refuses an id that is not one instead of killing the turn', async () => {
+    const result = await createToolBoundary(ctx).call('request_booking_review', {
+      quoteId: `${ctx.enquiryId}-r9`,
+    })
+    expect(result).toMatchObject({ status: 'refused' })
+  })
+})

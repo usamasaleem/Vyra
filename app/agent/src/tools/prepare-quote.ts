@@ -29,6 +29,19 @@ import type { z } from 'zod'
  */
 export type QuoteRequested = {
   quoteRequested: true
+  /**
+   * The draft these figures belong to, which `request_booking_review` needs.
+   *
+   * It was not returned, and the booking tool asks for it — so when a customer
+   * said yes the model had no id to give and made one up out of the two
+   * handles it did have: the enquiry id with the revision stuck on the end,
+   * "401767f8-…-r9". That is not a uuid, Postgres refused to cast it, and the
+   * whole turn died as a provider error. The customer got silence and a
+   * salesperson got "AI unavailable — reply manually" at the moment of sale.
+   *
+   * A tool that requires an id nothing hands out cannot be called correctly.
+   */
+  quoteId: string
   /** So a salesperson and the agent are talking about the same draft. */
   revision: number
   days: number
@@ -141,6 +154,7 @@ export async function prepareQuote(
   return ok(
     {
       quoteRequested: true,
+      quoteId: quote.quoteId,
       revision: quote.revision,
       days: quote.days,
       total: money(quote.totalMinor),
@@ -151,7 +165,7 @@ export async function prepareQuote(
       lines: quote.lines.map((l) => ({ label: l.label, amount: money(l.amountMinor) })),
       validUntil: quote.validUntil.toISOString(),
       guidance:
-        'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. A price is not availability: unless you have separately been told the car is free on these dates, do not say it is.',
+        'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. A price is not availability: unless you have separately been told the car is free on these dates, do not say it is. If they accept this price, pass quoteId to request_booking_review exactly as given here — never build one out of anything else.',
     },
     'approve or reject a draft quote',
   )
