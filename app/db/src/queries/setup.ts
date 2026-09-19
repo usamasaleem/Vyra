@@ -51,8 +51,12 @@ const SURVEY_SQL = `
         and jsonb_array_length(v.photo_urls) > 0)                                 as cars_with_photos,
     (select count(distinct r.vehicle_id)::int from vehicle_rates r
       where r.operator_id = $1 and r.effective_to is null)                        as priced,
+    -- Only the policy topics. Counting every published topic meant the four
+    -- automated messages read as four answered policy questions, so a pilot
+    -- with none of the six answered was told it had four of them.
     (select count(distinct k.topic)::int from knowledge_entries k
       where k.operator_id = $1 and k.published_at is not null
+        and k.topic = any($2::text[])
         and k.effective_from <= now()
         and (k.effective_to is null or k.effective_to > now()))                   as answered,
     (select count(distinct k.confirmed_by)::int from knowledge_entries k
@@ -62,6 +66,19 @@ const SURVEY_SQL = `
       where k.operator_id = $1 and k.published_at is not null
         and k.topic in ('follow-up-message', 'follow-up-message-2')
         and (k.effective_to is null or k.effective_to > now()))                   as follow_up_wordings,
+    (select count(distinct k.topic)::int from knowledge_entries k
+      where k.operator_id = $1 and k.published_at is not null
+        and k.topic in ('greeting', 'out-of-hours')
+        and (k.effective_to is null or k.effective_to > now()))                   as sent_on_its_own,
+    -- Anybody whose role replies to customers and has no name to sign with.
+    -- They cannot send at all: the send path refuses rather than going out
+    -- unsigned, which is right and invisible until somebody tries.
+    (select count(*)::int from memberships m
+      where m.operator_id = $1 and m.active
+        and m.role in ('admin', 'manager', 'salesperson')
+        and (m.display_name is null or btrim(m.display_name) = ''))               as unnamed_people,
+    o.service_hours is not null                                                   as hours_set,
+    o.availability_calendar_complete,
     o.ai_sending_enabled,
     o.fallback_owner_membership_id
   from operators o
@@ -76,7 +93,7 @@ export async function getSetupState(
   run: QueryRunner,
   operatorId: string,
 ): Promise<SetupState> {
-  const [row] = await run(SURVEY_SQL, [operatorId])
+  const [row] = await run(SURVEY_SQL, [operatorId, POLICY_TOPICS as unknown as string[]])
   const n = (key: string): number => Number(row?.[key] ?? 0)
 
   const topics = POLICY_TOPICS.length
@@ -120,6 +137,48 @@ export async function getSetupState(
       detail: `${answered} of ${topics} answered.`,
       href: '/knowledge',
       blocking: true,
+    },
+    {
+      key: 'names',
+      title: 'Put a name to everybody who replies',
+      why: 'Every message a person sends is signed with their name, which is the only way somebody on WhatsApp can tell a colleague from the assistant. Nobody without one can send at all — the path refuses rather than going out unsigned — and they find that out the moment they try to answer a customer.',
+      done: n('unnamed_people') === 0,
+      detail: n('unnamed_people') === 0
+        ? 'Everyone who replies has one.'
+        : `${count(n('unnamed_people'), 'person', 'people')} cannot reply yet.`,
+      href: '/team',
+      blocking: true,
+    },
+    {
+      key: 'automated-messages',
+      title: 'Write the greeting and the out-of-hours reply',
+      why: 'Both go out with nobody watching, in your words and only your words. An unwritten one is not sent at all, so a first-time customer gets no welcome and somebody writing at 3am is told nothing about when a person will see it.',
+      done: n('sent_on_its_own') >= 2,
+      detail: n('sent_on_its_own') >= 2
+        ? 'Both written.'
+        : `${n('sent_on_its_own')} of 2 written.`,
+      href: '/messages',
+      blocking: false,
+    },
+    {
+      key: 'hours',
+      title: 'Say when somebody is at the desk',
+      why: 'Without hours the out-of-hours reply never fires, however well it is written — nothing knows the desk is empty. The agent answers around the clock either way; this is about your people.',
+      done: row?.['hours_set'] === true,
+      detail: row?.['hours_set'] === true ? 'Set.' : 'Not set, so the out-of-hours reply never sends.',
+      href: '/messages',
+      blocking: false,
+    },
+    {
+      key: 'calendar',
+      title: 'Say whether you keep the calendar current',
+      why: 'Until you do, an empty calendar means "nobody knows" rather than "free", and every question about a date goes to one of your people. Say it and the agent answers availability itself — but only say it if every car going off the road really does land on that calendar.',
+      done: row?.['availability_calendar_complete'] === true,
+      detail: row?.['availability_calendar_complete'] === true
+        ? 'The agent can answer availability itself.'
+        : 'Every availability question becomes a task for a person.',
+      href: '/availability',
+      blocking: false,
     },
     {
       key: 'follow-up-wording',

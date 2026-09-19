@@ -56,7 +56,7 @@ describe('a brand new operator', () => {
 
     expect(setup.blocked).toBeGreaterThan(0)
     expect(setup.steps.filter((s) => s.blocking && !s.done).map((s) => s.key))
-      .toEqual(['whatsapp', 'fleet', 'rates', 'answers'])
+      .toEqual(['whatsapp', 'fleet', 'rates', 'answers', 'names'])
   })
 
   /**
@@ -66,7 +66,10 @@ describe('a brand new operator', () => {
   it('separates what stops it working from what makes it better', async () => {
     const setup = await getSetupState(run, OP)
     expect(setup.steps.filter((s) => !s.blocking).map((s) => s.key))
-      .toEqual(['follow-up-wording', 'photos', 'fallback', 'autosend'])
+      .toEqual([
+        'automated-messages', 'hours', 'calendar', 'follow-up-wording',
+        'photos', 'fallback', 'autosend',
+      ])
   })
 
   /** Switching it on with nothing behind it is how an operator decides this does not work. */
@@ -161,5 +164,85 @@ describe('who confirmed the answers', () => {
 
   it('has nothing to report before anything is published', async () => {
     expect(await whoConfirmedTheAnswers(run, OP)).toEqual([])
+  })
+})
+
+/**
+ * The checklist counted every published topic as a policy answer, so the four
+ * automated messages read as four answered policy questions. A pilot with
+ * none of the six answered was told on its own setup page that it had four —
+ * which is the worst direction for this particular screen to be wrong in,
+ * because the whole point of it is telling somebody what is left.
+ */
+describe('what counts as an answered policy question', () => {
+  const publish = async (topic: string) => {
+    const [e] = await run(
+      // A published row carries the accounts behind it:
+      // knowledge_published_requires_a_real_person.
+      `insert into knowledge_entries (operator_id, topic, answer, provenance, confirmed_by,
+                                      confirmed_at, version, published_at, effective_from,
+                                      confirmed_by_membership_id, published_by_membership_id)
+       values ($1, $2, 'something', 'operator_confirmed', 'Owner', now(), 1, now(), now(),
+               $3, $3) returning id`,
+      [OP, topic, MEMBER],
+    )
+    return e!['id'] as string
+  }
+
+  const answersStep = async () =>
+    (await getSetupState(run, OP)).steps.find((s) => s.key === 'answers')!
+
+  it('does not count an automated message as one', async () => {
+    await publish('greeting')
+    await publish('out-of-hours')
+    const step = await answersStep()
+    expect(step.done).toBe(false)
+    expect(step.detail).toBe('0 of 6 answered.')
+  })
+
+  it('counts a real one', async () => {
+    await publish('deposit')
+    expect((await answersStep()).detail).toBe('1 of 6 answered.')
+  })
+
+  /** And the messages have a step of their own, which they did not. */
+  it('counts them under the messages step instead', async () => {
+    await publish('greeting')
+    await publish('out-of-hours')
+    const step = (await getSetupState(run, OP)).steps.find((s) => s.key === 'automated-messages')!
+    expect(step.done).toBe(true)
+  })
+})
+
+/**
+ * Nobody without a name can send at all — the path refuses rather than going
+ * out unsigned — and they find that out the moment they try to answer a
+ * customer. That belongs on the list of things stopping the agent selling.
+ */
+describe('people who cannot reply yet', () => {
+  it('blocks while somebody who replies has no name', async () => {
+    const step = (await getSetupState(run, OP)).steps.find((s) => s.key === 'names')!
+    expect(step).toMatchObject({ done: false, blocking: true })
+  })
+
+  it('clears once they all have one', async () => {
+    await run(
+      `update memberships set display_name = 'Ahmed'
+       where operator_id = $1 and role in ('admin','manager','salesperson')`, [OP],
+    )
+    expect((await getSetupState(run, OP)).steps.find((s) => s.key === 'names')!.done).toBe(true)
+  })
+
+  /** Operations never replies to a customer, so a missing name stops nothing. */
+  it('ignores a role that does not reply', async () => {
+    await run(
+      `update memberships set display_name = 'Ahmed'
+       where operator_id = $1 and role in ('admin','manager','salesperson')`, [OP],
+    )
+    await run(
+      `insert into memberships (operator_id, user_id, role, active)
+       values ($1, '10000000-0000-0000-0000-0000000000ff', 'operations', true)`, [OP],
+    )
+    expect((await getSetupState(run, OP)).steps.find((s) => s.key === 'names')!.done).toBe(true)
   })
 })
