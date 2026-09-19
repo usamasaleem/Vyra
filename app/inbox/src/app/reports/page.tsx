@@ -131,7 +131,7 @@ export default async function ReportsPage({
         />
         <Measure
           label="DISCOUNTED"
-          value={formatMoney(m.discountedMinor, 'AED')}
+          value={formatMoney(m.discountedMinor, m.discountedCurrency)}
           note="given away by your people"
         />
         <Measure label="WON" value={String(m.won)} />

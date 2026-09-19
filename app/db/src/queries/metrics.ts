@@ -49,6 +49,14 @@ export type Metrics = {
   confirmedByAgent: number
   /** What was given away, in minor units. The question a jsonb array answers badly. */
   discountedMinor: number
+  /**
+   * The currency it was given away in.
+   *
+   * Returned rather than assumed. The reports page printed AED because the
+   * pilot quotes in AED, which would have shown every later operator their
+   * own discounts in somebody else's money.
+   */
+  discountedCurrency: string
   lostReasons: Array<{ reason: string; count: number }>
   /** Flagged by a person as untrue. Nothing else can detect one. */
   incorrectAnswers: number
@@ -147,6 +155,8 @@ select
   (select coalesce(sum(q.discount_minor), 0)::bigint from quotes q, window_bounds w
    where q.operator_id = $1 and q.discount_minor is not null
      and q.approved_at >= w.from_at and q.approved_at <= w.to_at) as discounted_minor,
+  (select q.currency from quotes q
+   where q.operator_id = $1 order by q.created_at desc limit 1) as discounted_currency,
   (select count(*)::int from audit_events a, window_bounds w
    where a.operator_id = $1 and a.action = 'answer.flagged_incorrect'
      and a.created_at >= w.from_at and a.created_at < w.to_at) as incorrect_answers,
@@ -195,6 +205,7 @@ export async function getMetrics(
     bookingsConfirmed: Number(row?.['bookings_confirmed'] ?? 0),
     confirmedByAgent: Number(row?.['confirmed_by_agent'] ?? 0),
     discountedMinor: Number(row?.['discounted_minor'] ?? 0),
+    discountedCurrency: (row?.['discounted_currency'] as string) ?? 'AED',
     lostReasons: reasons.map((r) => ({
       reason: r['reason'] as string,
       count: Number(r['n']),

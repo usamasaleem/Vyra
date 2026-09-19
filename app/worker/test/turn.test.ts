@@ -2148,13 +2148,22 @@ describe('chasing what the enquiry still needs', () => {
     /**
      * A stored date is 2026-09-19, and a model handed that says it back. That
      * is how an ISO date ended up in a quote reading like a receipt.
+     *
+     * Asserted on the clause we inject rather than on the whole prompt, which
+     * legitimately carries today's date in ISO two lines from the end. Written
+     * against the whole prompt it passed for months and then failed on one
+     * particular morning — the one where the wall clock reached the date the
+     * test had hardcoded.
      */
     it('renders a date the way a person says it', async () => {
       await remember([{ field: 'start_at', value: '2026-09-19' }])
 
       const system = await systemFor()
-      expect(system).toContain('19 September')
-      expect(system).not.toContain('2026-09-19')
+      const from = system.indexOf('This enquiry already has:')
+      const clause = from === -1 ? '' : system.slice(from, system.indexOf('.', from))
+
+      expect(clause).toContain('19 September')
+      expect(clause).not.toContain('2026-09-19')
     })
 
     it('passes through a value that is not a date', async () => {

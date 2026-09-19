@@ -39,7 +39,8 @@ export default async function BookingsPage() {
     getNavCounts(run, actor.operatorId),
     listBookingRequests(run, actor.operatorId),
     listConfirmedBookings(run, actor.operatorId),
-    run(`select auto_confirm_bookings, auto_confirm_limit_minor from operators where id = $1`,
+    run(`select auto_confirm_bookings, auto_confirm_limit_minor, timezone from operators
+         where id = $1`,
       [actor.operatorId]),
   ]))
 
@@ -50,12 +51,23 @@ export default async function BookingsPage() {
    * anything is a lie about the common case.
    */
   const agentConfirms = operator[0]?.['auto_confirm_bookings'] === true
+  /**
+   * Theirs, not the pilot's. Written as a constant when there was one operator
+   * and every date on this page would have read in Dubai time for everybody
+   * who came after them.
+   */
+  const tz = (operator[0]?.['timezone'] as string | undefined) ?? 'UTC'
   const ceilingMinor = operator[0]?.['auto_confirm_limit_minor'] == null
     ? null
     : Number(operator[0]!['auto_confirm_limit_minor'])
+  /**
+   * The currency the operator actually quotes in. Written as 'AED' when there
+   * was one operator, which would have shown every later one their own
+   * ceiling in somebody else's money.
+   */
+  const ceilingCurrency = waiting[0]?.currency ?? onTheBooks[0]?.currency ?? 'AED'
 
   const canAnswer = permissions.canReply(actor)
-  const tz = 'Asia/Dubai'
 
   return (
     <main className="shell">
@@ -69,7 +81,7 @@ export default async function BookingsPage() {
           : 'Customers who agreed to a price. The agent records the yes and can go no further — '
             + 'it cannot confirm a booking, and it has been told not to say anything is held'}
         {agentConfirms && ceilingMinor !== null
-          ? `, or a total above ${formatMoney(ceilingMinor, 'AED')}`
+          ? `, or a total above ${formatMoney(ceilingMinor, ceilingCurrency)}`
           : ''}
         {agentConfirms
           ? ' — waits for one of your people here.'
