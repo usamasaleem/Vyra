@@ -51,7 +51,7 @@ export function AnswerForm({
 
       {blank && starter != null && starter !== '' && (
         <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-          The rules here are the law rather than your policy, so there is{' '}
+          There is{' '}
           <button
             type="button"
             onClick={() => {
@@ -68,8 +68,9 @@ export function AnswerForm({
             }}
           >
             wording to start from
-          </button>. Fill in the blanks and check it before you publish — nothing is quoted to
-          anybody until you do.
+          </button>. Fill in every <code>___</code> and check the rest before you publish —
+          it will not save with a blank left in it, and nothing is quoted to anybody until
+          you publish.
         </p>
       )}
 

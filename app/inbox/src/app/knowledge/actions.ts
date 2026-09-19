@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { isPolicyTopic } from '@vyra/contracts'
+import { hasUnfilledBlank, isPolicyTopic } from '@vyra/contracts'
 import { draftKnowledge, publishKnowledge } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
@@ -38,6 +38,17 @@ export async function saveAnswer(
   // filed under a subject nothing will ever ask for.
   if (!isPolicyTopic(topic)) return { error: 'That is not a topic the agent can be asked about.' }
   if (answer === '') return { error: 'Write the answer before saving it.' }
+  /**
+   * A starter arrives with blanks in it on purpose. Publishing one unfinished
+   * would put "The security deposit is ___" in front of a customer, which is
+   * worse than the empty field it replaced.
+   */
+  if (hasUnfilledBlank(answer)) {
+    return {
+      error: 'There is still a ___ in there. Fill in every blank before publishing — the '
+        + 'agent quotes this to customers exactly as written.',
+    }
+  }
   if (confirmedBy === '') {
     return { error: 'Say who confirmed this. A published answer binds the business.' }
   }

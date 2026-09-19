@@ -31,14 +31,21 @@ export const dynamic = 'force-dynamic'
  * from a country the UAE recognises — and an operator retyping it from memory
  * is more likely to be wrong than a draft is.
  *
- * Deposit, kilometres, delivery areas and hours have none, and never will.
- * Those are this operator's own figures, and a plausible invented deposit is
- * the single failure this whole system was built to prevent.
+ * The rest are the operator's own figures, and a plausible invented deposit is
+ * the single failure this whole system was built to prevent. So those starters
+ * carry no numbers at all — they are the shape of the sentence with the
+ * numbers left out, which turns "write six policy answers from scratch" into
+ * "fill in six forms" without anybody inventing anything.
  *
- * A starter is not a default: nothing is sent until somebody reads it, puts
- * their name to it and publishes it. The age thresholds are deliberately left
- * as a blank for the operator, because 21, 23 and 25 are all real answers in
- * this market and only they know which is theirs.
+ * Every blank is `___`, and `saveAnswer` refuses to publish an answer that
+ * still contains one. That is what makes this safe to offer: the worst case
+ * is not a wrong figure reaching a customer, it is somebody being told to
+ * finish the sentence.
+ *
+ * A starter is not a default either. Nothing is sent until somebody reads it,
+ * puts their name to it and publishes it. The age thresholds are left blank
+ * for the same reason as the money: 21, 23 and 25 are all real answers in
+ * this market and only the operator knows which is theirs.
  */
 const STARTERS: Record<string, string> = {
   'driver-requirements-visitor':
@@ -47,6 +54,18 @@ const STARTERS: Record<string, string> = {
     + 'South Korea are accepted on their own if they are in English or Arabic; otherwise bring '
     + 'an International Driving Permit alongside your licence. Minimum age for this car is ___, '
     + 'and we take the security deposit on a credit card in the driver\u2019s own name.',
+  deposit:
+    'The security deposit is ___, held on a credit card in the driver\u2019s own name and '
+    + 'released ___ after the car comes back. It is separate from the rental price. ___',
+  'included-kilometres':
+    '___ kilometres a day are included. Beyond that it is ___ per extra kilometre, '
+    + 'charged when the car comes back.',
+  'delivery-areas':
+    'We deliver anywhere in ___ for ___, and collect from the same place at the end. '
+    + 'Outside that, ___. The car may not be taken ___.',
+  'business-hours':
+    'Somebody is at the desk ___, and delivery is possible ___. Outside those hours the '
+    + 'assistant still answers, and anything needing one of us is picked up ___.',
   'driver-requirements-resident':
     'You will need your Emirates ID and your UAE driving licence, both in the driver\u2019s own '
     + 'name. Minimum age for this car is ___, and the licence must have been held for at least '

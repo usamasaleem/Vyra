@@ -39,3 +39,22 @@ export type PolicyTopic = (typeof POLICY_TOPICS)[number]
 export function isPolicyTopic(value: string): value is PolicyTopic {
   return (POLICY_TOPICS as readonly string[]).includes(value)
 }
+
+/**
+ * The blank in a starter answer, and the thing that makes offering one safe.
+ *
+ * Four of the six policy answers are the operator's own figures, and a
+ * plausible invented deposit is the single failure this system was built to
+ * prevent. So their starters carry the shape of the sentence with the numbers
+ * left out — which turns "write six policy answers from scratch" into "fill
+ * in six forms" without anybody inventing anything.
+ *
+ * That trade only works if a blank cannot reach a customer. It is checked
+ * where the answer is published rather than where it is typed, because the
+ * publish is the moment it becomes something the agent will quote.
+ */
+export const UNFILLED_BLANK = '___'
+
+export function hasUnfilledBlank(answer: string): boolean {
+  return answer.includes(UNFILLED_BLANK)
+}
