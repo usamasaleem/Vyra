@@ -118,6 +118,9 @@ export function vehicleList(
  */
 const ASKS_WHICH_CAR: RegExp[] = [
   /\bwhich (?:car|model|of (?:them|these))\b/i,
+  // Arabic: "which car / which model / any of these"
+  /(?:أي|اي)\s*(?:سيارة|سياره|موديل|واحدة|وحدة)/,
+  /(?:تفضل|تحب|ترغب)\s*(?:أي|اي)?\s*(?:سيارة|سياره|واحدة)/,
   /\b(?:any|either) of (?:them|these)\b/i,
   /\blet me know which\b/i,
   /\btake your pick\b/i,
@@ -155,7 +158,7 @@ export function invitesACarChoice(reply: string | null): boolean {
    * list beside it answers the wrong one — the customer picks a car and the
    * date question goes unanswered, which is worse than having typed.
    */
-  if ((reply.match(/\?/g) ?? []).length > 1) return false
+  if ((reply.match(/[?؟]/g) ?? []).length > 1) return false
 
   if (ASKS_WHICH_CAR.some((p) => p.test(reply))) return true
   if (!AMBIGUOUS_WHICH.test(reply)) return false
@@ -196,7 +199,9 @@ export function surfaceForAsking(
 
   // One question per message, the same rule the patterns below follow: a reply
   // asking two things cannot be answered by one tap.
-  if ((reply.match(/\?/g) ?? []).length > 1) return null
+  // Arabic ends a question with ؟, so counting only ASCII marks read a
+  // two-question Arabic reply as having none and attached buttons to it.
+  if ((reply.match(/[?؟]/g) ?? []).length > 1) return null
 
   if (askedFor === 'delivery_preference' && MENTIONS_DELIVERY.test(reply)) return 'delivery_choice'
   if (askedFor === 'vehicle' && MENTIONS_A_CHOICE.test(reply)) return 'car_list'
@@ -264,15 +269,35 @@ const DATE_CONFIRMATION_PATTERNS: RegExp[] = [
   /\bstill work(?:s|ing)?\b[^?]{0,20}\?/i,
   /\b(?:is|are) (?:that|those|these) (?:your|the)\b[^?]{0,30}\?/i,
   /\bkeep(?:ing)? (?:it|that|those|you down for)\b[^?]{0,40}\?/i,
+  // Arabic: "still …?", "is that right?", "shall I keep …?"
+  /(?:لا يزال|مازال|ما زال|لسه)[^؟]{0,40}؟/,
+  /(?:صحيح|صح|مضبوط|تمام)\s*؟/,
+  /(?:أثبت|اثبت|أسجل|اسجل|نخليها)[^؟]{0,40}؟/,
 ]
 
 /** Month names, so a confirmation is only offered when a date is actually on the table. */
+/** Arabic month names and the shapes a date is said in. */
+const NAMES_A_DATE_AR =
+  /(?:يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر|بكرة|بكره|غدا|غداً|الويكند|نهاية الأسبوع|\d{1,2}\s*(?:إلى|الى|-|–)\s*\d{1,2})/
+
 const NAMES_A_DATE =
   /\b(?:\d{1,2}(?:st|nd|rd|th)?\s*(?:to|-|–|until)\s*\d{1,2}|\d{1,2}(?:st|nd|rd|th)|january|february|march|april|may|june|july|august|september|october|november|december|tomorrow|weekend)\b/i
 
 const DELIVERY_PATTERNS: RegExp[] = [
   /\bdeliver(?:y|ed)?\b[^?]{0,30}\bor\b[^?]{0,30}\b(?:collect|pick)/i,
   /\b(?:collect(?:ing|ion)?|pick(?:ing)? (?:it )?up)\b[^?]{0,30}\bor\b[^?]{0,30}\bdeliver/i,
+  /**
+   * The model answers in whatever language it was written to, so a customer
+   * writing Arabic gets an Arabic reply — and every matcher in this file looks
+   * at the reply. Without these, an Arabic conversation loses every button and
+   * every list it has, which is what happens today.
+   *
+   * ⚠️ Model-written, wanting a native speaker's eye. A wrong match here puts
+   * two buttons under a sentence they do not answer; a miss leaves the plain
+   * text that is already the only outcome available.
+   */
+  /(?:توصيل|نوصلها|نوصله)[^؟?]{0,30}(?:أم|او|أو)[^؟?]{0,30}(?:تستلم|استلام|تاخذها|تأخذها)/,
+  /(?:تستلم|استلام|تاخذها|تأخذها)[^؟?]{0,30}(?:أم|او|أو)[^؟?]{0,30}(?:توصيل|نوصلها)/,
 ]
 
 /**
@@ -286,11 +311,14 @@ export function buttonsFor(reply: string | null): ReplyButton[] | null {
 
   // One question per message. A reply that asks two things cannot be answered
   // by one tap, and attaching buttons to it would answer the wrong one.
-  if ((reply.match(/\?/g) ?? []).length > 1) return null
+  // Arabic ends a question with ؟, so counting only ASCII marks read a
+  // two-question Arabic reply as having none and attached buttons to it.
+  if ((reply.match(/[?؟]/g) ?? []).length > 1) return null
 
   if (DELIVERY_PATTERNS.some((p) => p.test(reply))) return DELIVERY_CHOICE
 
-  if (NAMES_A_DATE.test(reply) && DATE_CONFIRMATION_PATTERNS.some((p) => p.test(reply))) {
+  if ((NAMES_A_DATE.test(reply) || NAMES_A_DATE_AR.test(reply))
+    && DATE_CONFIRMATION_PATTERNS.some((p) => p.test(reply))) {
     return DATE_CONFIRMATION
   }
 
@@ -314,7 +342,13 @@ export function buttonsFor(reply: string | null): ReplyButton[] | null {
  * confirmation prompt ends in a question mark too, so punctuation alone
  * cannot tell them apart — the choice is what distinguishes them.
  */
-const OFFERS_A_CHOICE = /\b(?:or)\b[^?]{0,60}\?/i
+/**
+ * `\b` is defined on [A-Za-z0-9_], so Arabic letters are non-word characters
+ * and a boundary between a space and أ never matches. Anchored on whitespace
+ * instead, which is what `\b` was doing for the English half anyway.
+ */
+const OFFERS_A_CHOICE =
+  /(?:\b(?:or)\b[^?]{0,60}\?|(?:^|\s)(?:أم|أو|او)(?:\s)[^؟]{0,60}؟)/i
 
 export function offersAChoice(reply: string | null): boolean {
   if (reply === null || reply.trim() === '') return false

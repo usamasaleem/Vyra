@@ -17,7 +17,24 @@
 /**
  * Asking for pictures by name. Unambiguous, and nothing overrides these.
  */
+/**
+ * ⚠️ The Arabic patterns below are model-written and want a native speaker's
+ * eye, the same caveat `opt-out.ts` carries. The stakes are far lower here.
+ * An opt-out matched wrongly silences a customer who is still trying to rent
+ * a car; one of these matched wrongly offers a photograph nobody asked for,
+ * or a list of cars beside an answer about something else. A miss costs the
+ * thing not happening, which is exactly what happens today for every Arabic
+ * message. So these lean generous where opt-out leans literal.
+ */
 const EXPLICIT: RegExp[] = [
+  // Arabic. صورة/صور photo(s), أرسل/ابعت send, أشوف/شوف see, شكلها "what does
+  // it look like", من الداخل "inside".
+  /(?:صور|صورة|صوره)/,
+  /(?:أرسل|ارسل|ابعت|ابعثل?ي|شارك)[^.?!]{0,20}(?:صور|صورة)/,
+  /(?:أشوف|اشوف|شوف|أرى|ارى|نشوف)[^.?!]{0,20}(?:صور|صورة|السيارة|شكل)/,
+  /شكل(?:ها|ه|هم)|كيف تبدو|وش شكل/,
+  /من\s*الداخل|الداخلية|المقصورة/,
+
   /**
    * The verb in every form somebody writes it.
    *

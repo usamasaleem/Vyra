@@ -18,7 +18,23 @@
  * this project treats as expensive.
  */
 
+/**
+ * ⚠️ The Arabic patterns below are model-written and want a native speaker's
+ * eye, the same caveat `opt-out.ts` carries. The stakes are far lower here.
+ * An opt-out matched wrongly silences a customer who is still trying to rent
+ * a car; one of these matched wrongly offers a photograph nobody asked for,
+ * or a list of cars beside an answer about something else. A miss costs the
+ * thing not happening, which is exactly what happens today for every Arabic
+ * message. So these lean generous where opt-out leans literal.
+ */
 const ABOUT_THE_FLEET: RegExp[] = [
+  // Arabic. سيارة/سيارات car(s), أسعار prices, كم السعر how much, إيجار/تأجير
+  // rental, متوفر/متاح available, موديل model, عندكم/لديكم "do you have".
+  /سيار(?:ة|ات)|مركب(?:ة|ات)|أسطول/,
+  /إيجار|ايجار|تأجير|استئجار|حجز/,
+  /سعر|أسعار|اسعار|كم\s*(?:السعر|التكلفة|يكلف)|التكلفة|باليوم|في\s*اليوم|أرخص|ارخص/,
+  /متوفر|متاح|متوفرة|متاحة|عندكم|لديكم|عندك/,
+
   // What is on offer at all.
   /\b(?:car|cars|vehicle|vehicles|fleet|range|models?)\b/i,
   // Renting one.

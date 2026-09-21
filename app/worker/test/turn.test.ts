@@ -2048,11 +2048,18 @@ describe('what a turn remembers about the enquiry', () => {
  */
 const soon = (days = 20) => {
   const at = new Date(Date.now() + days * 86_400_000)
+  /**
+   * Both derived from the operator's calendar, not one from it and one from
+   * UTC. Dubai is four hours ahead, so after 20:00 UTC the two disagree about
+   * what day it is and the test fails for an hour a day — which is a worse
+   * kind of flake than the pinned dates this replaced.
+   */
+  const on = (options: Intl.DateTimeFormatOptions, locale = 'en-GB') =>
+    new Intl.DateTimeFormat(locale, { ...options, timeZone: 'Asia/Dubai' }).format(at)
+
   return {
-    iso: at.toISOString().slice(0, 10),
-    spoken: new Intl.DateTimeFormat('en-GB', {
-      day: 'numeric', month: 'long', timeZone: 'Asia/Dubai',
-    }).format(at),
+    iso: on({ year: 'numeric', month: '2-digit', day: '2-digit' }, 'en-CA'),
+    spoken: on({ day: 'numeric', month: 'long' }),
   }
 }
 

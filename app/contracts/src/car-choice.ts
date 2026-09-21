@@ -132,12 +132,34 @@ const READY = [
   /\b(?:please |pls )?(?:book|reserve) me\b/i,
   /\bgo ahead\b/i,
   /\b(?:confirm|confirmed) (?:it|this|the booking)\b/i,
+
+  /**
+   * ⚠️ Model-written Arabic, wanting a native speaker's eye — the caveat
+   * `opt-out.ts` carries. The stakes here are the opposite way round: a wrong
+   * match offers two buttons to somebody who was not ready, and a miss means
+   * an Arabic-speaking customer gets no confirmation summary and no buttons
+   * at the moment they commit, which is what happens today for every one of
+   * them.
+   *
+   * احجز/احجزلي book it, أبغى/أبي/أريد want, خلاص/تمام "done, go ahead",
+   * موافق agreed, ثبت الحجز confirm the booking.
+   */
+  /(?:أحجز|احجز|احجزلي|أحجزها|احجزها|احجزه)/,
+  /(?:أبغى|ابغى|أبي|ابي|أريد|اريد|بدي)\s*(?:أحجز|احجز|الحجز|احجزها|حجز)/,
+  /(?:ثبت|أكد|اكد)\s*(?:الحجز|الطلب|الحجزية)?/,
+  /(?:تمام|خلاص|موافق|ماشي)\s*(?:احجز|أحجز|اكد|أكد)?$/,
+  /خذها|ناخذها|نأخذها/,
 ]
 
 export function wantsToBook(message: string | null): boolean {
   if (message === null || message.trim() === '') return false
   // A question about booking is not a booking. "How do I book?" needs an
-  // answer, not two buttons.
-  if (/\?\s*$/.test(message.trim()) && !/\b(?:yes|yeah|ok|okay)\b/i.test(message)) return false
+  // answer, not two buttons. The Arabic agreements are here for the same
+  // reason the English ones are: "نعم، احجزها؟" is somebody saying yes.
+  // Arabic ends a question with ؟. Without it "كيف أحجز؟" — "how do I book?" —
+  // read as somebody booking.
+  if (/[?؟]\s*$/.test(message.trim())
+    && !/\b(?:yes|yeah|ok|okay)\b/i.test(message)
+    && !/(?:نعم|أيوه|ايوه|أجل|تمام|موافق)/.test(message)) return false
   return READY.some((pattern) => pattern.test(message))
 }
