@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v21'
+export const PROMPT_VERSION = 'sales-v22'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -370,6 +370,21 @@ export function systemPromptFor(input: {
    * agreed to — so it prices a fresh draft at the full amount, or passes
    * something that is not an id and kills the turn.
    */
+  /**
+   * What the customer has to bring, in the operator's own published words.
+   *
+   * Only set on the turn that confirms a booking. "Booked — someone from the
+   * team will be in touch with the remaining details" is where the product
+   * stopped: a customer who has just committed money is told, in effect, to
+   * wait for a phone call. The requirements are already a published policy
+   * answer; this is the moment they are worth the most and the only moment
+   * nothing was reaching for them.
+   *
+   * Absent when the operator has not published one, and then the reply says
+   * what it said before. An invented list of documents at the moment somebody
+   * commits is worse than a vague one.
+   */
+  bringWithYou?: string
   liveQuote?: {
     quoteId: string
     total: string
@@ -603,6 +618,22 @@ export function systemPromptFor(input: {
       + `that figure if they ask, and if they accept it pass exactly that quoteId to `
       + `request_booking_review. Only prepare a new quote if the car or the dates change.`
 
+  /**
+   * Conditional, because the turn cannot know in advance that it is about to
+   * confirm anything — whether the booking lands is decided inside the tool,
+   * partway through. So this arrives whenever somebody is at the point of
+   * committing, and the model uses it only if the tool comes back confirmed.
+   */
+  const bring = input.bringWithYou === undefined || input.bringWithYou.trim() === ''
+    ? ''
+    : `\n\nIf this reply confirms their booking, tell them what to bring as well. These are `
+      + `the operator's own published words — say them as written, shortened if the message is `
+      + `getting long, and never add a document or a rule that is not in here:\n`
+      + `"${input.bringWithYou}"\n\nSay it as the next thing that happens rather than as a `
+      + `policy read out: one short paragraph after the confirmation, not a list. If two sets `
+      + `are given below and you do not know which they are, ask whether they live here or are `
+      + `visiting rather than reciting both.`
+
   const needed = (input.stillNeeded ?? [])
     .map((n) => {
       const what = NEEDS[n.field] ?? n.field
@@ -687,7 +718,7 @@ export function systemPromptFor(input: {
       + `is caught now rather than by a colleague on the phone. Then ask them to confirm. `
       + `You cannot book anything yourself and must not say it is booked.`
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${confirming}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

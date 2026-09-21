@@ -75,6 +75,7 @@ export type RunTurnOptions = {
   /** What the enquiry still needs and may be asked about. See systemPromptFor. */
   stillNeeded?: ReadonlyArray<{ field: string; timesAsked: number; vehicle?: string | null }>
   liveQuote?: { quoteId: string; total: string; discounted: boolean; sent: boolean }
+  bringWithYou?: string
   bookings?: ReadonlyArray<{
     enquiryId: string
     vehicle: string | null
@@ -147,6 +148,7 @@ export async function runTurn(
           ...(options.stillNeeded === undefined ? {} : { stillNeeded: options.stillNeeded }),
           ...(options.bookings === undefined ? {} : { bookings: options.bookings }),
           ...(options.liveQuote === undefined ? {} : { liveQuote: options.liveQuote }),
+          ...(options.bringWithYou === undefined ? {} : { bringWithYou: options.bringWithYou }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),

@@ -2036,6 +2036,26 @@ describe('what a turn remembers about the enquiry', () => {
  * back. Nine exchanges qualified nothing, because nothing told it there was
  * anything outstanding.
  */
+/**
+ * A date that has not happened yet, as YYYY-MM-DD, with the way a person says
+ * it alongside.
+ *
+ * `ensureEnquiry` treats an enquiry whose dates have passed as spent and opens
+ * a fresh one, so a test pinned to a literal date stops exercising anything
+ * the moment that date goes by — it keeps running, against an empty enquiry,
+ * and asserts the prompt contains a clause that is correctly absent. These
+ * two passed for three days and then failed every run.
+ */
+const soon = (days = 20) => {
+  const at = new Date(Date.now() + days * 86_400_000)
+  return {
+    iso: at.toISOString().slice(0, 10),
+    spoken: new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric', month: 'long', timeZone: 'Asia/Dubai',
+    }).format(at),
+  }
+}
+
 describe('chasing what the enquiry still needs', () => {
   const systemFor = async () => {
     let system: string | undefined
@@ -2136,8 +2156,8 @@ describe('chasing what the enquiry still needs', () => {
      */
     it('leaves no room for "I have no record of the dates"', async () => {
       await remember([
-        { field: 'start_at', value: '2026-09-19' },
-        { field: 'duration', value: '2 days' },
+        { field: 'start_at', value: soon().iso },
+        { field: 'delivery_preference', value: 'delivery' },
       ])
 
       const system = await systemFor()
@@ -2156,14 +2176,15 @@ describe('chasing what the enquiry still needs', () => {
      * test had hardcoded.
      */
     it('renders a date the way a person says it', async () => {
-      await remember([{ field: 'start_at', value: '2026-09-19' }])
+      const when = soon()
+      await remember([{ field: 'start_at', value: when.iso }])
 
       const system = await systemFor()
       const from = system.indexOf('This enquiry already has:')
       const clause = from === -1 ? '' : system.slice(from, system.indexOf('.', from))
 
-      expect(clause).toContain('19 September')
-      expect(clause).not.toContain('2026-09-19')
+      expect(clause).toContain(when.spoken)
+      expect(clause).not.toContain(when.iso)
     })
 
     it('passes through a value that is not a date', async () => {

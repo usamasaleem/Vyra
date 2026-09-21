@@ -50,6 +50,17 @@ beforeEach(async () => {
   enquiryId = (await ensureEnquiry(run, OP, CONV))!
 })
 
+/**
+ * A date that has not happened yet, as YYYY-MM-DD.
+ *
+ * `liveEnquiries` treats an enquiry whose dates have passed as spent, which
+ * is correct and makes any test pinned to a literal date a test with a
+ * shelf life. One written against 2026-09-20 passed for three days and then
+ * started failing every run, for the only reason it could.
+ */
+const inDays = (days: number): string =>
+  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+
 describe('creating the enquiry', () => {
   it('creates one for a conversation and reuses it', async () => {
     expect(enquiryId).toBeTruthy()
@@ -381,13 +392,16 @@ describe('a second car alongside the first', () => {
     const lambo = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: HURACAN })
     const rolls = await enquiryForVehicle(transact, { operatorId: OP, conversationId: CONV, vehicle: CULLINAN })
 
+    const sunday = inDays(3)
+    const tuesday = inDays(5)
+
     await recordFields(transact, {
       operatorId: OP, enquiryId: lambo.enquiryId,
-      observations: [{ field: 'start_at', value: '2026-09-20' }, { field: 'end_at', value: '2026-09-20' }],
+      observations: [{ field: 'start_at', value: sunday }, { field: 'end_at', value: sunday }],
     })
     await recordFields(transact, {
       operatorId: OP, enquiryId: rolls.enquiryId,
-      observations: [{ field: 'start_at', value: '2026-09-22' }],
+      observations: [{ field: 'start_at', value: tuesday }],
     })
 
     const bookings = await liveEnquiries(run, OP, CONV)
@@ -395,8 +409,8 @@ describe('a second car alongside the first', () => {
       .find((b) => b.vehicle === vehicle)!.fields
       .find((f) => f.field === 'start_at')!.value
 
-    expect(dateFor(HURACAN)).toBe('2026-09-20')
-    expect(dateFor(CULLINAN)).toBe('2026-09-22')
+    expect(dateFor(HURACAN)).toBe(sunday)
+    expect(dateFor(CULLINAN)).toBe(tuesday)
   })
 
   /**
@@ -410,13 +424,13 @@ describe('a second car alongside the first', () => {
     await recordFields(transact, {
       operatorId: OP, enquiryId: lambo.enquiryId,
       observations: [
-        { field: 'start_at', value: '2026-09-20' }, { field: 'end_at', value: '2026-09-20' },
+        { field: 'start_at', value: inDays(3) }, { field: 'end_at', value: inDays(3) },
         { field: 'delivery_preference', value: 'delivery' },
       ],
     })
     await recordFields(transact, {
       operatorId: OP, enquiryId: rolls.enquiryId,
-      observations: [{ field: 'start_at', value: '2026-09-22' }],
+      observations: [{ field: 'start_at', value: inDays(5) }],
     })
 
     const out = await outstandingQuestions(run, { operatorId: OP, conversationId: CONV })
@@ -487,8 +501,8 @@ describe('outstandingQuestions', () => {
       operatorId: OP, enquiryId,
       observations: [
         { field: 'vehicle', value: 'Ferrari 488' },
-        { field: 'start_at', value: '2026-09-25' },
-        { field: 'end_at', value: '2026-09-28' },
+        { field: 'start_at', value: inDays(8) },
+        { field: 'end_at', value: inDays(11) },
         { field: 'delivery_preference', value: 'delivery' },
       ],
     })
@@ -559,22 +573,22 @@ describe('the order the questions come in', () => {
 
   it('wants how long before it wants delivered or collected', async () => {
     await know('vehicle', 'Ferrari 488')
-    await know('start_at', '2026-09-18')
+    await know('start_at', inDays(1))
     expect(await missing()).toEqual(['end_at', 'delivery_preference'])
   })
 
   /** A duration answers the same question as an end date. */
   it('stops asking when they said how many days instead', async () => {
     await know('vehicle', 'Ferrari 488')
-    await know('start_at', '2026-09-18')
+    await know('start_at', inDays(1))
     await know('duration', '2 days')
     expect(await missing()).toEqual(['delivery_preference'])
   })
 
   it('has nothing left once the enquiry is whole', async () => {
     for (const [field, value] of [
-      ['vehicle', 'Ferrari 488'], ['start_at', '2026-09-18'],
-      ['end_at', '2026-09-20'], ['delivery_preference', 'delivery'],
+      ['vehicle', 'Ferrari 488'], ['start_at', inDays(1)],
+      ['end_at', inDays(3)], ['delivery_preference', 'delivery'],
     ]) await know(field!, value!)
     expect(await missing()).toEqual([])
   })
@@ -644,38 +658,38 @@ describe('an end date and a duration are the same fact', () => {
 
   it('drops a duration derived from dates recorded in the same breath', async () => {
     await record([
-      { field: 'start_at', value: '2026-09-25' },
-      { field: 'end_at', value: '2026-09-27' },
+      { field: 'start_at', value: inDays(8) },
+      { field: 'end_at', value: inDays(10) },
       { field: 'duration', value: '3 days' },
     ])
 
     const fields = await live()
-    expect(fields['end_at']).toBe('2026-09-27')
+    expect(fields['end_at']).toBe(inDays(10))
     expect(fields['duration']).toBeUndefined()
   })
 
   it('retires one already on file when the end date arrives', async () => {
-    await record([{ field: 'start_at', value: '2026-09-25' }, { field: 'duration', value: '3 days' }])
+    await record([{ field: 'start_at', value: inDays(8) }, { field: 'duration', value: '3 days' }])
     expect((await live())['duration']).toBe('3 days')
 
-    await record([{ field: 'end_at', value: '2026-09-27' }])
+    await record([{ field: 'end_at', value: inDays(10) }])
     expect((await live())['duration']).toBeUndefined()
   })
 
   /** "Three days from Friday" is a real thing to say, and the only fact there. */
   it('keeps a duration while the end is unknown', async () => {
-    await record([{ field: 'start_at', value: '2026-09-25' }, { field: 'duration', value: '3 days' }])
+    await record([{ field: 'start_at', value: inDays(8) }, { field: 'duration', value: '3 days' }])
     expect((await live())['duration']).toBe('3 days')
   })
 
   it('ignores a later duration that would contradict the dates', async () => {
     await record([
-      { field: 'start_at', value: '2026-09-25' },
-      { field: 'end_at', value: '2026-09-27' },
+      { field: 'start_at', value: inDays(8) },
+      { field: 'end_at', value: inDays(10) },
     ])
     await record([{ field: 'duration', value: '5 days' }])
 
     expect((await live())['duration']).toBeUndefined()
-    expect((await live())['end_at']).toBe('2026-09-27')
+    expect((await live())['end_at']).toBe(inDays(10))
   })
 })

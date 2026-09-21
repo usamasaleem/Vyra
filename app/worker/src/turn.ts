@@ -749,6 +749,50 @@ export async function runConversationTurn(
       return undefined
     })
 
+    /**
+     * What they have to bring, for the moment they commit.
+     *
+     * "Booked — someone from the team will be in touch with the remaining
+     * details" is where this product stopped: a customer who has just agreed
+     * to pay is told, in effect, to wait for a phone call. The requirements
+     * have been a publishable policy answer all along and nothing ever
+     * reached for them.
+     *
+     * Fetched when somebody is at the point of committing rather than after,
+     * because whether the booking lands is decided inside the tool partway
+     * through the turn — by then the prompt is already written.
+     *
+     * Which one depends on where they live, which the enquiry records when
+     * they have said. When they have not, both go over and the model asks —
+     * one short question at the point of sale is what a salesperson does, and
+     * it beats reciting a visitor's paperwork to a resident.
+     */
+    const aboutToCommit = wantsToBook(context.message.body)
+      || context.conversation.bookingStatus === 'pending'
+
+    const bringWithYou = !aboutToCommit ? undefined : await (async () => {
+      const residency = known.find((k) => k.field === 'residency')?.value?.toLowerCase() ?? null
+      const wanted = residency === null
+        ? (['driver-requirements-resident', 'driver-requirements-visitor'] as const)
+        : residency.includes('resident')
+          ? (['driver-requirements-resident'] as const)
+          : (['driver-requirements-visitor'] as const)
+
+      const answers = await Promise.all(wanted.map((topic) =>
+        getApprovedAnswer(deps.run, context.operator.id, topic, deps.now?.() ?? new Date())))
+      const found = answers.filter((a) => a !== null)
+      if (found.length === 0) return undefined
+      if (found.length === 1) return found[0]!.answer
+      return `If they live here: ${found[0]!.answer}\n\nIf they are visiting: ${found[1]!.answer}`
+    })().catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'requirements.lookup_failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      return undefined
+    })
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -789,6 +833,7 @@ export async function runConversationTurn(
       ...(known.length === 0 ? {} : { known }),
       ...(bookings.length > 1 ? { bookings } : {}),
       ...(liveQuote === undefined ? {} : { liveQuote }),
+      ...(bringWithYou === undefined ? {} : { bringWithYou }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *
