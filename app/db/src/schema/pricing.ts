@@ -6,7 +6,9 @@ import { operators, memberships } from './operators.js'
 import { conversations } from './conversations.js'
 import { enquiries } from './enquiries.js'
 import { vehicles } from './fleet.js'
-import { bookingState, fleetProvenance, quoteState } from './enums.js'
+import {
+  bookingState, fleetProvenance, paymentKind, paymentMethod, paymentState, quoteState,
+} from './enums.js'
 
 /**
  * What a car costs, per the operator.
@@ -269,7 +271,97 @@ export const bookings = pgTable(
     uniqueIndex('bookings_live_quote_key')
       .on(table.quoteId)
       .where(sql`state in ('requested', 'confirmed')`),
+    /**
+     * Target for tenant-consistent composite foreign keys, the same one every
+     * other table here carries. Without it a child row can name a booking and
+     * an operator that do not belong together, which is the whole reason these
+     * keys are on the pair rather than the id.
+     */
+    unique('bookings_id_operator_key').on(table.id, table.operatorId),
     index('bookings_operator_state_idx').on(table.operatorId, table.state, table.requestedAt),
     index('bookings_conversation_idx').on(table.conversationId),
+  ],
+)
+
+/**
+ * What the customer owes, taken or not.
+ *
+ * `bookings` had no payment state at all: a car could be confirmed, held and
+ * handed over with nothing anywhere recording whether a dirham had moved. The
+ * deposit was the sharper half of that — it flows from the rate into the quote
+ * and onto the screen, is quoted to customers, and has never been taken or
+ * given back by anything.
+ *
+ * One row per thing owed, rather than a column on the booking, because a
+ * rental and its deposit have separate lives: the rental is earned on the day
+ * and the deposit is held and returned a week later, often by a different
+ * person. Two states on one row cannot say that.
+ *
+ * No provider is wired. `providerRef` and `linkUrl` are here because the shape
+ * of this table decides how hard that is later, and because an operator can
+ * paste a link from whatever they already use today and have it work. What is
+ * built now is the record and the human path — which is what a Dubai luxury
+ * rental runs on anyway, where the deposit usually arrives as a bank transfer.
+ */
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    bookingId: uuid().notNull(),
+    conversationId: uuid().notNull(),
+
+    kind: paymentKind().notNull(),
+    state: paymentState().notNull().default('due'),
+
+    /** Integer minor units, like every other amount here. */
+    amountMinor: integer().notNull(),
+    currency: text().notNull().default('AED'),
+
+    /** Null until it is taken. A due payment has no method yet. */
+    method: paymentMethod(),
+    /** Whatever the operator already uses. Null when nothing was sent. */
+    linkUrl: text(),
+    /** The provider's own id, for the day one is wired. */
+    provider: text(),
+    providerRef: text(),
+
+    /** Who recorded it, when a person did rather than a webhook. */
+    recordedByMembershipId: uuid(),
+    /** Their own reference — a transfer number, a receipt. Never sent. */
+    reference: text(),
+
+    paidAt: timestamp({ withTimezone: true }),
+    refundedAt: timestamp({ withTimezone: true }),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.bookingId, table.operatorId],
+      foreignColumns: [bookings.id, bookings.operatorId],
+      name: 'payments_booking_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.conversationId, table.operatorId],
+      foreignColumns: [conversations.id, conversations.operatorId],
+      name: 'payments_conversation_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.recordedByMembershipId, table.operatorId],
+      foreignColumns: [memberships.id, memberships.operatorId],
+      name: 'payments_recorder_operator_fkey',
+    }),
+    /**
+     * One live row per booking per kind. Confirming twice, or a sweep running
+     * twice, must not ask a customer for the same deposit two ways.
+     */
+    uniqueIndex('payments_live_kind_key')
+      .on(table.bookingId, table.kind)
+      .where(sql`state in ('due', 'paid')`),
+    index('payments_operator_state_idx').on(table.operatorId, table.state, table.createdAt),
   ],
 )

@@ -1,3 +1,4 @@
+import { raiseWhatIsOwed } from './payments.js'
 import type { QueryRunner, Transactor } from '../runner.js'
 
 /**
@@ -368,6 +369,10 @@ async function autoConfirm(
     conversationId: input.conversationId,
     membershipId: null,
   })
+  await raiseWhatIsOwed(tx, {
+    operatorId: input.operatorId,
+    bookingId: input.bookingId,
+  })
 
   return true
 }
@@ -654,6 +659,15 @@ export async function decideBooking(
         operatorId: input.operatorId,
         conversationId,
         membershipId: input.membershipId,
+      })
+      /**
+       * And what they owe, from the quote they agreed to. Raised on
+       * confirmation rather than on request, because until somebody has
+       * committed the car there is nothing to owe.
+       */
+      await raiseWhatIsOwed(tx, {
+        operatorId: input.operatorId,
+        bookingId: input.bookingId,
       })
     }
 

@@ -1,11 +1,16 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { cancelBooking, decideBooking, NoDisplayName, queueOutboundText } from '@vyra/db'
+import {
+  attachPaymentLink, cancelBooking, decideBooking, NoDisplayName, queueOutboundText,
+  recordPayment, refundPayment,
+} from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
 
 export type DecisionState = { error: string | null; answered?: string }
+
+export type MoneyState = { error: string | null }
 
 /**
  * Answering somebody who said yes.
@@ -157,4 +162,75 @@ export async function cancelConfirmedBooking(
   revalidatePath('/bookings')
   revalidatePath(`/conversations/${cancelled.conversationId}`)
   return { error: null, answered: bookingId }
+}
+
+/**
+ * Taking the money, giving a deposit back, or attaching a link.
+ *
+ * One action for the three, because they are the same row in three states and
+ * splitting them would mean three imports on a form that is already the
+ * smallest thing on the page.
+ *
+ * Nothing here tells the customer anything. A payment arriving is not news to
+ * the person who sent it, and a deposit going back is worth a sentence
+ * somebody writes rather than one this generates.
+ */
+export async function recordMoney(
+  _previous: MoneyState,
+  formData: FormData,
+): Promise<MoneyState> {
+  const actor = await requireActor()
+
+  try {
+    assertPermitted(permissions.canReply(actor), 'record a payment')
+  } catch {
+    return { error: 'Your role cannot record payments.' }
+  }
+
+  const paymentId = String(formData.get('paymentId') ?? '')
+  const what = String(formData.get('what') ?? '')
+  const reference = String(formData.get('reference') ?? '').trim() || null
+  const run = actorRunner(actor)
+
+  if (what === 'link') {
+    const linkUrl = String(formData.get('linkUrl') ?? '').trim()
+    if (linkUrl === '') return { error: 'Paste the link first.' }
+    if (!/^https:\/\//i.test(linkUrl)) {
+      return { error: 'A payment link has to be https. Anything else is not going to a customer.' }
+    }
+    const attached = await attachPaymentLink(run, {
+      operatorId: actor.operatorId, paymentId, linkUrl,
+    })
+    if (!attached.attached) return { error: 'That one has already been taken.' }
+    revalidatePath('/bookings')
+    return { error: null }
+  }
+
+  if (what === 'refund') {
+    const refunded = await refundPayment(run, {
+      operatorId: actor.operatorId, paymentId, membershipId: actor.membershipId, reference,
+    })
+    if (!refunded.refunded) {
+      return { error: 'That one cannot be given back — it was never taken, or already was.' }
+    }
+    revalidatePath('/bookings')
+    return { error: null }
+  }
+
+  const method = String(formData.get('method') ?? '')
+  if (!['link', 'bank_transfer', 'cash', 'card_in_person'].includes(method)) {
+    return { error: 'Say how it arrived. A payment nobody can account for is not a record.' }
+  }
+
+  const recorded = await recordPayment(run, {
+    operatorId: actor.operatorId,
+    paymentId,
+    membershipId: actor.membershipId,
+    method: method as 'link' | 'bank_transfer' | 'cash' | 'card_in_person',
+    reference,
+  })
+  if (!recorded.recorded) return { error: 'That one has already been taken. Reload to see it.' }
+
+  revalidatePath('/bookings')
+  return { error: null }
 }

@@ -53,6 +53,46 @@ export const bookingState = pgEnum('booking_state', [
   'cancelled',
 ])
 
+/**
+ * What a customer owes, and what it is for.
+ *
+ * The deposit is its own kind rather than a line on the rental, because the
+ * two behave nothing alike: one is earned and one is held and given back. A
+ * refund against a rental is an argument; a refund against a deposit is
+ * Tuesday.
+ */
+export const paymentKind = pgEnum('payment_kind', ['rental', 'deposit'])
+
+/**
+ * Deliberately small, and deliberately without 'pending'.
+ *
+ * A payment is owed, taken, given back, or written off. "Pending" is what a
+ * provider calls the seconds between a customer pressing pay and the webhook
+ * arriving, and modelling it here would mean this table had opinions about a
+ * provider that is not wired yet.
+ */
+export const paymentState = pgEnum('payment_state', [
+  'due',
+  'paid',
+  'refunded',
+  'cancelled',
+])
+
+/**
+ * How it was taken, which in this market is mostly not a card.
+ *
+ * Bank transfer and cash are how a Dubai luxury rental deposit actually
+ * moves, so they are first-class rather than an "other" somebody types into
+ * a note. 'link' is for when a provider is wired and the customer pays
+ * online.
+ */
+export const paymentMethod = pgEnum('payment_method', [
+  'link',
+  'bank_transfer',
+  'cash',
+  'card_in_person',
+])
+
 export const priority = pgEnum('priority', ['low', 'normal', 'high', 'urgent'])
 
 export const membershipRole = pgEnum('membership_role', [

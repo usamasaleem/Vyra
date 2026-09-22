@@ -1,3 +1,4 @@
+import { raiseWhatIsOwed } from './payments.js'
 import { calculateDraftQuote } from './quotes.js'
 import type { QueryRunner, Transactor } from '../runner.js'
 
@@ -297,6 +298,16 @@ async function settleExtension(
      where id = $1 and state = 'requested'`,
     [input.bookingId, input.membershipId, !byAPerson],
   )
+
+  /**
+   * The extra days are owed like any other rental. No second deposit: they
+   * already have the car and the one held against it.
+   */
+  await raiseWhatIsOwed(tx, {
+    operatorId: input.operatorId,
+    bookingId: input.bookingId,
+    only: ['rental'],
+  })
 
   await tx(
     `insert into vehicle_availability

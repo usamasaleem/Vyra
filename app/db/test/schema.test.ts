@@ -78,6 +78,7 @@ describe('schema v1 applies', () => {
       'operator_invitations',
       'operators',
       'outbox',
+      'payments',
       'quotes',
       // When each car is taken, recorded once rather than asked every time.
       'vehicle_availability',

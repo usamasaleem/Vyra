@@ -1,12 +1,13 @@
 import { formatDateForMessage } from '@vyra/contracts'
 import {
-  formatMoney, getNavCounts, listBookingRequests, listConfirmedBookings,
+  formatMoney, getNavCounts, listBookingRequests, listConfirmedBookings, whatIsOwed,
 } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { SiteNav } from '../site-nav'
 import { BookingForm } from './booking-form'
 import { CancelForm } from './cancel-form'
+import { PaymentForm } from './payment-form'
 
 /**
  * The people who said yes.
@@ -38,7 +39,13 @@ export default async function BookingsPage() {
   const [counts, waiting, onTheBooks, operator] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     listBookingRequests(run, actor.operatorId),
-    listConfirmedBookings(run, actor.operatorId),
+    listConfirmedBookings(run, actor.operatorId)
+      .then(async (all) => Promise.all(all.map(async (b) => ({
+        ...b,
+        // What each one owes, so the diary answers "has this been paid" —
+        // which is the question somebody actually has when a car is going out.
+        owed: await whatIsOwed(run, { operatorId: actor.operatorId, bookingId: b.bookingId }),
+      })))),
     run(`select auto_confirm_bookings, auto_confirm_limit_minor, timezone from operators
          where id = $1`,
       [actor.operatorId]),
@@ -205,6 +212,27 @@ export default async function BookingsPage() {
                     Read the conversation
                   </a>
                 </div>
+                {b.owed.length > 0 && (
+                  <div className="stack" style={{ gap: '0.5rem', marginTop: '0.7rem' }}>
+                    {b.owed.map((o) => (
+                      canAnswer ? (
+                        <PaymentForm
+                          key={o.paymentId}
+                          paymentId={o.paymentId}
+                          kind={o.kind}
+                          amount={formatMoney(o.amountMinor, o.currency)}
+                          state={o.state}
+                          linkUrl={o.linkUrl}
+                        />
+                      ) : (
+                        <span key={o.paymentId} className="muted" style={{ fontSize: '0.88rem' }}>
+                          {o.kind === 'deposit' ? 'Deposit' : 'Rental'}{' '}
+                          {formatMoney(o.amountMinor, o.currency)} · {o.state}
+                        </span>
+                      )
+                    ))}
+                  </div>
+                )}
                 {canAnswer && <div style={{ marginTop: '0.7rem' }}><CancelForm bookingId={b.bookingId} /></div>}
               </li>
             ))}
