@@ -73,7 +73,12 @@ export async function requestBookingReview(
     quoteId: result.booking.quoteId,
     alreadyRequested: result.booking.alreadyRequested,
     confirmed: result.booking.confirmed,
-    guidance: result.booking.confirmed
+    guidance: result.booking.alreadyRequested && result.booking.confirmed
+      ? 'They ALREADY have this booked — the car is held for them and was before this message. '
+        + 'Say so as a reminder rather than as news, and do not imply anything has just changed '
+        + 'or that a colleague is still to do something. If they are asking because they never '
+        + 'heard back, apologise briefly for that and confirm the details.'
+      : result.booking.confirmed
       ? 'This is CONFIRMED. The car is held for those dates and nobody else can be given '
         + 'it. Tell them plainly that it is booked, say the car and the dates back once, and '
         + 'say somebody will be in touch about the details. Do not say it is pending or that '

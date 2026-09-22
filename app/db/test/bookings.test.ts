@@ -111,7 +111,11 @@ describe('somebody said yes', () => {
     const first = await request(await sentQuote({ revision: 1 }))
     await run(`update bookings set requested_at = now() - interval '2 hours' where id = $1`,
       [(first as { booking: { bookingId: string } }).booking.bookingId])
-    await request(await sentQuote({ revision: 2 }))
+    // A genuinely different rental. Same car and dates in the same thread is
+    // now the one they already have rather than a second thing to answer.
+    await request(await sentQuote({
+      revision: 2, startDate: '2026-10-10', endDate: '2026-10-12',
+    }))
 
     const queue = await listBookingRequests(run, OP)
     expect(queue).toHaveLength(2)
@@ -464,5 +468,68 @@ describe('everything downstream of a confirmation', () => {
     const [row] = await run(
       `select sales_stage::text as stage from conversations where id = $1`, [CONV])
     expect(row!['stage']).toBe('lost')
+  })
+})
+
+/**
+ * Three bookings for one Ferrari on one weekend.
+ *
+ * Read live. A turn confirmed a booking and timed out before replying, so the
+ * customer never heard and asked again. The agent re-quoted — a new quote id,
+ * a new revision — and made a second booking against it. Then a third. One of
+ * the three was already holding the car.
+ *
+ * The unique index is per quote, which catches the same yes arriving twice
+ * and nothing else. The question a person would ask is not "is this quote
+ * already agreed" but "do they already have this car for these days".
+ */
+describe('a rental they already have', () => {
+  const quoteFor = async (revision: number) => sentQuote({ revision })
+
+  it('hands back the booking they already have rather than making another', async () => {
+    const first = await request(await quoteFor(1))
+    const again = await request(await quoteFor(2))
+
+    expect(again).toMatchObject({ ok: true, booking: { alreadyRequested: true } })
+    expect((again as { booking: { bookingId: string } }).booking.bookingId)
+      .toBe((first as { booking: { bookingId: string } }).booking.bookingId)
+    expect(await run(`select id from bookings where operator_id = $1`, [OP])).toHaveLength(1)
+  })
+
+  /** And says it is confirmed, which is what the customer needs to hear. */
+  it('says so when the one they have is already confirmed', async () => {
+    const first = await request(await quoteFor(1))
+    await decideBooking(transact, {
+      operatorId: OP,
+      bookingId: (first as { booking: { bookingId: string } }).booking.bookingId,
+      membershipId: MEMBER,
+      decision: 'confirmed',
+    })
+
+    expect(await request(await quoteFor(2)))
+      .toMatchObject({ ok: true, booking: { alreadyRequested: true, confirmed: true } })
+  })
+
+  /** A different car in the same thread is a second rental, not a duplicate. */
+  it('still opens one for a different car', async () => {
+    await request(await quoteFor(1))
+
+    const [other] = await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by)
+       values ($1,'Rolls-Royce','Cullinan',2023,'White','suv','D 7','V7',
+               'operator_confirmed','Owner') returning id`, [OP])
+    const quoteId = await sentQuote({ revision: 2, vehicleId: other!['id'] })
+
+    expect(await request(quoteId)).toMatchObject({ ok: true, booking: { alreadyRequested: false } })
+    expect(await run(`select id from bookings where operator_id = $1`, [OP])).toHaveLength(2)
+  })
+
+  /** And different dates for the same car is a second rental too. */
+  it('still opens one for different dates', async () => {
+    await request(await quoteFor(1))
+    const later = await sentQuote({ revision: 2, startDate: '2026-10-10', endDate: '2026-10-12' })
+
+    expect(await request(later)).toMatchObject({ ok: true, booking: { alreadyRequested: false } })
   })
 })

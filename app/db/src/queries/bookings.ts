@@ -178,6 +178,49 @@ export async function requestBooking(
     }
 
     /**
+     * They may already have this rental, under a different quote.
+     *
+     * The index below is per quote, which catches the same yes arriving
+     * twice and nothing else. Read live: a turn confirmed a booking and then
+     * timed out before replying, so the customer never heard. He asked again,
+     * the agent re-quoted — a new quote id, a new revision — and made a second
+     * booking. Then a third. Three rows for one Ferrari on one weekend, one of
+     * them already holding the car.
+     *
+     * So the question is not "is this quote already agreed" but "do they
+     * already have this car for these days", which is what a person would
+     * ask. Returned rather than refused: they are trying to book, and the
+     * honest answer is that they have.
+     */
+    const [existing] = await tx(
+      `select b.id, b.state::text as state
+       from bookings b
+       join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
+       where b.operator_id = $1 and b.conversation_id = $2
+         and b.state in ('requested', 'confirmed')
+         and q.vehicle_id is not distinct from (
+           select vehicle_id from quotes where id = $3 and operator_id = $1
+         )
+         and q.start_date::date = (
+           select start_date::date from quotes where id = $3 and operator_id = $1
+         )
+       order by case b.state when 'confirmed' then 0 else 1 end
+       limit 1`,
+      [input.operatorId, input.conversationId, input.quoteId],
+    )
+    if (existing !== undefined) {
+      return {
+        ok: true as const,
+        booking: {
+          bookingId: existing['id'] as string,
+          quoteId: input.quoteId,
+          alreadyRequested: true,
+          confirmed: existing['state'] === 'confirmed',
+        },
+      }
+    }
+
+    /**
      * One live request per quote, enforced by the index rather than by this
      * read. A customer says yes, then says "yes?" again ten minutes later
      * because nobody has answered — that is one booking for one person to
