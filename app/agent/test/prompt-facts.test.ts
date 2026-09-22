@@ -321,3 +321,43 @@ describe('a price somebody else sent', () => {
     expect(withQuote({ sent: false })).not.toContain('2db2ffbc')
   })
 })
+
+/**
+ * Read live, and the round trip the setting exists to remove.
+ *
+ * "The Ferrari 488 Spider is free for 25th–27th September — 2 days at AED
+ * 10,000, with a AED 5,000 deposit. Would you like me to send it to the team
+ * for confirmation?" — and then it booked it itself a minute later. The
+ * customer had already said book it. The instruction said "you cannot book
+ * anything yourself", which was true of everybody when it was written and is
+ * false for an operator who has switched auto-confirm on.
+ */
+describe('when the agent may settle a booking itself', () => {
+  const atTheDecision = (mayConfirmBookings: boolean) =>
+    systemPromptFor({
+      now, timezone: 'Asia/Dubai', enquiryId: 'e1',
+      readyToConfirm: true,
+      mayConfirmBookings,
+    })
+
+  it('tells it to book rather than ask permission', () => {
+    const text = atTheDecision(true)
+    expect(text).toContain('Then book it')
+    expect(text).toContain('do not ask whether they would like you to send it')
+    expect(text).not.toContain('You cannot book anything yourself')
+  })
+
+  /** Unchanged for an operator who has not switched it on, which is most. */
+  it('keeps the old rule when it may not', () => {
+    const text = atTheDecision(false)
+    expect(text).toContain('You cannot book anything yourself')
+    expect(text).not.toContain('Then book it')
+  })
+
+  it('says nothing either way until they are at the decision', () => {
+    const text = systemPromptFor({
+      now, timezone: 'Asia/Dubai', enquiryId: 'e1', mayConfirmBookings: true,
+    })
+    expect(text).not.toContain('Then book it')
+  })
+})

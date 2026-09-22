@@ -234,6 +234,19 @@ export const BOOKING_CONFIRMATION: ReplyButton[] = [
   { id: 'booking_wait', title: 'Not just yet' },
 ]
 
+/**
+ * The same offer, for an operator whose agent settles bookings itself.
+ *
+ * "Confirm with team" promises a person who is not coming. When the agent can
+ * prove the car is free it holds it on the spot, and a button describing a
+ * hand-off the customer will never experience is a worse lie than a vague
+ * one — it invites them to wait.
+ */
+export const BOOKING_NOW: ReplyButton[] = [
+  { id: 'booking_confirm', title: 'Yes, book it' },
+  { id: 'booking_wait', title: 'Not just yet' },
+]
+
 export const DELIVERY_CHOICE: ReplyButton[] = [
   { id: 'prefers_delivery', title: 'Delivery' },
   { id: 'prefers_collection', title: 'Collection' },
@@ -368,7 +381,7 @@ const BUTTON_MEANINGS: Record<string, string> = {
   dates_wrong: 'No, those dates are wrong.',
   prefers_delivery: 'Delivery, please.',
   prefers_collection: "I'll collect it.",
-  booking_confirm: 'Yes — please have someone confirm this booking.',
+  booking_confirm: 'Yes — please confirm this booking.',
   booking_wait: 'Not just yet.',
 }
 

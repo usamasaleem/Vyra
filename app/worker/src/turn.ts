@@ -1,6 +1,7 @@
 import {
   asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  type AutomatedMessage, BOOKING_CONFIRMATION, carChosenIn, civilDateIn, DELIVERY_CHOICE,
+  type AutomatedMessage, BOOKING_CONFIRMATION, BOOKING_NOW, carChosenIn, civilDateIn,
+  DELIVERY_CHOICE,
   formatCivil, surfaceForAsking,
   FULL_RANGE_LABEL, isOpenAt, readServiceHours, type StopCode, mightNeedAvailability,
   wantsToBook, invitesACarChoice, mightNeedTheFleet, offersAChoice, offersTheFullRange,
@@ -834,6 +835,7 @@ export async function runConversationTurn(
       ...(bookings.length > 1 ? { bookings } : {}),
       ...(liveQuote === undefined ? {} : { liveQuote }),
       ...(bringWithYou === undefined ? {} : { bringWithYou }),
+      mayConfirmBookings: context.operator.mayConfirmBookings,
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *
@@ -1038,7 +1040,9 @@ export async function runConversationTurn(
       : fromQuestion === 'delivery_choice'
       ? DELIVERY_CHOICE
       : readyToBook && !offersAChoice(end.reply)
-      ? BOOKING_CONFIRMATION
+      // "Confirm with team" promises a person who is not coming when the
+      // agent settles bookings itself.
+      ? (context.operator.mayConfirmBookings ? BOOKING_NOW : BOOKING_CONFIRMATION)
       : null,
     list: fromQuestion === 'car_list' || invitesACarChoice(end.reply)
       ? vehicleList(fleet)

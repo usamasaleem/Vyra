@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOOKING_CONFIRMATION, DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor,
-  invitesACarChoice, meaningOfButton, offersAChoice, surfaceForAsking, vehicleList,
+  BOOKING_NOW, invitesACarChoice, meaningOfButton, offersAChoice, surfaceForAsking,
+  vehicleList,
 } from '../src/confirmations.ts'
 
 describe("Meta's limits", () => {
@@ -265,10 +266,32 @@ describe('the booking buttons', () => {
     expect(button.title.length).toBeLessThanOrEqual(20)
   })
 
+  /**
+   * The same tap means the same thing whichever label it carried, because the
+   * id is what travels. "Please have someone confirm this" was the old
+   * wording and describes a hand-off that does not happen when the agent
+   * settles the booking itself.
+   */
   it('turns a tap into words the conversation can carry', () => {
     expect(meaningOfButton('booking_confirm', 'Confirm with team'))
-      .toBe('Yes — please have someone confirm this booking.')
+      .toBe('Yes — please confirm this booking.')
+    expect(meaningOfButton('booking_confirm', 'Yes, book it'))
+      .toBe('Yes — please confirm this booking.')
     expect(meaningOfButton('booking_wait', 'Not just yet')).toBe('Not just yet.')
+  })
+
+  /**
+   * "Confirm with team" promises a person who is not coming when the operator
+   * has switched auto-confirm on, and a button describing a hand-off the
+   * customer will never experience invites them to wait for it.
+   */
+  it.each(BOOKING_NOW)('$title fits in a WhatsApp button', (button) => {
+    expect(button.title.length).toBeLessThanOrEqual(20)
+  })
+
+  it('offers the same ids either way, so the turn reads one thing', () => {
+    expect(BOOKING_NOW.map((b) => b.id)).toEqual(BOOKING_CONFIRMATION.map((b) => b.id))
+    expect(BOOKING_NOW[0]!.title).not.toBe(BOOKING_CONFIRMATION[0]!.title)
   })
 })
 

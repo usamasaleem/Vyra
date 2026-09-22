@@ -76,6 +76,7 @@ export type RunTurnOptions = {
   stillNeeded?: ReadonlyArray<{ field: string; timesAsked: number; vehicle?: string | null }>
   liveQuote?: { quoteId: string; total: string; discounted: boolean; sent: boolean }
   bringWithYou?: string
+  mayConfirmBookings?: boolean
   bookings?: ReadonlyArray<{
     enquiryId: string
     vehicle: string | null
@@ -149,6 +150,9 @@ export async function runTurn(
           ...(options.bookings === undefined ? {} : { bookings: options.bookings }),
           ...(options.liveQuote === undefined ? {} : { liveQuote: options.liveQuote }),
           ...(options.bringWithYou === undefined ? {} : { bringWithYou: options.bringWithYou }),
+          ...(options.mayConfirmBookings === undefined
+            ? {}
+            : { mayConfirmBookings: options.mayConfirmBookings }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),

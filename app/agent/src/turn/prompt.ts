@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v22'
+export const PROMPT_VERSION = 'sales-v23'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -385,6 +385,18 @@ export function systemPromptFor(input: {
    * commits is worse than a vague one.
    */
   bringWithYou?: string
+  /**
+   * Whether the agent may settle a booking itself.
+   *
+   * The instruction below said "you cannot book anything yourself" flatly,
+   * which was true of everybody when it was written and is false for an
+   * operator who has switched auto-confirm on. Read live: the customer said
+   * "book it", the agent replied "would you like me to send it to the team
+   * for confirmation?", and then booked it itself a minute later. That
+   * question is the round trip the setting exists to remove, and it was the
+   * prompt asking for it.
+   */
+  mayConfirmBookings?: boolean
   liveQuote?: {
     quoteId: string
     total: string
@@ -715,8 +727,14 @@ export function systemPromptFor(input: {
     : `\n\nThey have said they want it and the enquiry has everything. Say the whole `
       + `arrangement back in one short line before anything else — the car, the dates, `
       + `delivery or collection, and the total if you have quoted one — so a wrong detail `
-      + `is caught now rather than by a colleague on the phone. Then ask them to confirm. `
-      + `You cannot book anything yourself and must not say it is booked.`
+      + `is caught now rather than by a colleague on the phone. `
+      + (input.mayConfirmBookings === true
+        ? `Then book it, with request_booking_review. You can: do not ask whether they would `
+          + `like you to send it to anybody, and do not offer to pass it on. They have already `
+          + `said they want it, and asking permission to do the thing you are about to do is a `
+          + `message they have to answer for nothing.`
+        : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
+          + `booked.`)
 
   return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${confirming}${bring}
 

@@ -25,6 +25,20 @@ export type ConversationContext = {
     /** Where the whole fleet can be seen, for a customer the thread cannot hold. */
     websiteUrl: string | null
     aiSendingEnabled: boolean
+    /**
+     * Whether the agent may settle a booking itself.
+     *
+     * The prompt used to say "you cannot book anything yourself" flatly, and
+     * the buttons offered "Confirm with team", both written when that was
+     * true of everybody. An operator who has switched auto-confirm on is
+     * then read a rule that no longer applies: the agent asks permission to
+     * do the thing it is about to do, which is the round trip the setting
+     * exists to remove.
+     *
+     * Both halves, because confirming without a calendar the operator vouches
+     * for is the one case the booking path refuses anyway.
+     */
+    mayConfirmBookings: boolean
     policyVersion: number
   }
   conversation: {
@@ -66,6 +80,7 @@ const CONTEXT_SQL = `
   select
     o.id as operator_id, o.name as operator_name, o.timezone, o.website_url, o.service_hours,
     o.response_expectation, o.ai_sending_enabled, o.policy_version,
+    o.auto_confirm_bookings, o.availability_calendar_complete,
     v.id as conversation_id, v.revision, v.handler_mode, v.sales_stage,
     v.summary, v.summary_through_count,
     v.waiting_reason, v.booking_status, v.owner_membership_id,
@@ -121,6 +136,8 @@ export async function loadConversationContext(
       websiteUrl: (row['website_url'] as string) ?? null,
       responseExpectation: (row['response_expectation'] as string) ?? null,
       aiSendingEnabled: row['ai_sending_enabled'] === true,
+      mayConfirmBookings: row['auto_confirm_bookings'] === true
+        && row['availability_calendar_complete'] === true,
       policyVersion: Number(row['policy_version']),
     },
     conversation: {
