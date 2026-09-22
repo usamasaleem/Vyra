@@ -1,4 +1,6 @@
-import { calculateDraftQuote, formatMoneyMinor, getEnquiryFields } from '@vyra/db'
+import {
+  calculateDraftQuote, checkCalendar, formatMoneyMinor, getEnquiryFields,
+} from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { prepareQuoteSchema } from './schemas.js'
@@ -29,6 +31,21 @@ import type { z } from 'zod'
  */
 export type QuoteRequested = {
   quoteRequested: true
+  /**
+   * Whether the car is free, when the operator's calendar can say.
+   *
+   * Read live: "The Ferrari 488 Spider from 25th to 27th September is AED
+   * 10,000 for 2 days... Availability still needs to be confirmed." The
+   * calendar was complete, the car was free, and the system held it forty
+   * seconds later without checking anything. Nobody was wrong — this tool
+   * priced from the rate and never looked, so its own guidance correctly told
+   * the model not to claim availability it had not been given. The
+   * information simply never travelled.
+   *
+   * It costs nothing to look. The vehicle and the dates are already resolved
+   * here, which is exactly what the calendar needs.
+   */
+  availability: 'free' | 'taken' | 'unknown'
   /**
    * The draft these figures belong to, which `request_booking_review` needs.
    *
@@ -151,9 +168,25 @@ export async function prepareQuote(
   const { quote } = result
   const money = (minor: number) => formatMoneyMinor(minor, quote.currency)
 
+  /**
+   * A nicety, like everything else that makes a reply better rather than
+   * correct: if this fails the price still goes, one fact poorer.
+   */
+  const calendar = await checkCalendar(ctx.run, {
+    operatorId: ctx.operatorId,
+    vehicleId: vehicleRows[0]!['id'] as string,
+    startDate: value('start_at') ?? '',
+    endDate: value('end_at'),
+  }).catch(() => ({ state: 'unknown' as const }))
+
+  const availability = calendar.state === 'booked'
+    ? ('taken' as const)
+    : calendar.state === 'free' ? ('free' as const) : ('unknown' as const)
+
   return ok(
     {
       quoteRequested: true,
+      availability,
       quoteId: quote.quoteId,
       revision: quote.revision,
       days: quote.days,
@@ -165,7 +198,12 @@ export async function prepareQuote(
       lines: quote.lines.map((l) => ({ label: l.label, amount: money(l.amountMinor) })),
       validUntil: quote.validUntil.toISOString(),
       guidance:
-        'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. A price is not availability: unless you have separately been told the car is free on these dates, do not say it is. If they accept this price, pass quoteId to request_booking_review exactly as given here — never build one out of anything else.',
+        'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. If they accept this price, pass quoteId to request_booking_review exactly as given here — never build one out of anything else. '
+        + (availability === 'free'
+          ? 'The car IS free for these dates, from the operator\'s own calendar. Say so plainly and do not tell them availability needs confirming — it has been confirmed.'
+          : availability === 'taken'
+            ? 'The car is NOT free for these dates. Say so, and offer other dates or another car rather than a price they cannot use.'
+            : 'Availability is not known for these dates, so do not say the car is free. Say you are checking.'),
     },
     'approve or reject a draft quote',
   )

@@ -587,6 +587,7 @@ describe('prepare_quote', () => {
                 ($1,$2,'end_at','2026-09-23',$3,'customer_stated')`,
         [OP, ctx.enquiryId, ctx.messageId],
       )
+      return v!['id'] as string
     }
 
     /**
@@ -623,15 +624,53 @@ describe('prepare_quote', () => {
     })
 
     /**
-     * A price says nothing about whether the car is free, and the two facts
-     * arrive from different tools for exactly that reason.
+     * A price used to say nothing about whether the car was free, and the
+     * guidance said so — correctly, because this tool priced from the rate
+     * and never looked at the calendar.
+     *
+     * Read live: "The Ferrari 488 Spider from 25th to 27th September is AED
+     * 10,000 for 2 days... Availability still needs to be confirmed." The
+     * calendar was complete, the car was free, and the system held it forty
+     * seconds later without checking anything. Nobody was wrong; the
+     * information never travelled. It costs nothing to look — the vehicle and
+     * the dates are already resolved here.
      */
-    it('tells the model a price is not availability', async () => {
-      await readyToQuote()
-      const result = await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })
+    const quoteFor = async () =>
+      (await createToolBoundary(ctx).call('prepare_quote', { enquiryId: ctx.enquiryId })) as {
+        data: { availability: string; guidance: string }
+      }
 
-      const { guidance } = (result as { data: { guidance: string } }).data
-      expect(guidance).toContain('A price is not availability')
+    it('will not claim a car is free when the calendar cannot say', async () => {
+      await readyToQuote()
+      const { data } = await quoteFor()
+
+      expect(data.availability).toBe('unknown')
+      expect(data.guidance).toContain('do not say the car is free')
+    })
+
+    /** Vouched for by the operator, and nothing against these dates. */
+    it('says the car is free when the calendar can say so', async () => {
+      await readyToQuote()
+      await run(`update operators set availability_calendar_complete = true where id = $1`, [OP])
+
+      const { data } = await quoteFor()
+      expect(data.availability).toBe('free')
+      expect(data.guidance).toContain('has been confirmed')
+    })
+
+    /** A price for a car somebody else has is worse than no price. */
+    it('says the car is taken when something is against those dates', async () => {
+      const vehicleId = await readyToQuote()
+      await run(
+        `insert into vehicle_availability (operator_id, vehicle_id, start_date, end_date,
+                                           reason, recorded_by)
+         values ($1,$2,'2026-09-21','2026-09-22','booked','somebody else')`,
+        [OP, vehicleId],
+      )
+
+      const { data } = await quoteFor()
+      expect(data.availability).toBe('taken')
+      expect(data.guidance).toContain('is NOT free')
     })
 
     it('stores the draft for a person to approve', async () => {
