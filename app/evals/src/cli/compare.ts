@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { qualification } from '../qualification.js'
+import { booking } from '../booking.js'
 import { language } from '../language.js'
 import { anthropicModel } from '@vyra/agent'
 import { openaiModel, type ReasoningEffort } from '@vyra/agent'
@@ -69,7 +70,7 @@ The harness itself is tested without a key: npx vitest run app/evals`)
   process.exit(1)
 }
 
-const suites = [qualification, language]
+const suites = [qualification, language, booking]
 const totalCases = suites.reduce((n, s) => n + s.cases.length, 0)
 console.error(
   `Running ${totalCases} cases against ${adapters.length} model(s): ` +
