@@ -30,36 +30,71 @@ export type AvailabilityBlock = {
 /**
  * What the calendar can say about one car over one range.
  *
- * 'booked'   — a block overlaps. Authoritative, and a no.
- * 'free'     — no block, and this operator keeps the calendar complete.
- * 'unknown'  — no block, and nobody has claimed the calendar is complete.
+ * 'booked'      — a block overlaps. Authoritative, and a no.
+ * 'already_theirs' — the block is this customer's own booking.
+ * 'free'        — no block, and this operator keeps the calendar complete.
+ * 'unknown'     — no block, and nobody has claimed the calendar is complete.
+ *
+ * The third state exists because of a live conversation. A customer booked
+ * the Huracán for the 25th to the 27th, asked for it again a quarter of an
+ * hour later, and was told it was already taken — by himself. He said "i only
+ * want lambo", and the agent raised a task asking a colleague to see whether
+ * the car could be released, for the person who had booked it.
+ *
+ * Nothing was wrong with the check. A hold is a hold and the query had no way
+ * to ask whose it was, so "taken" was the only honest answer available. It is
+ * the wrong answer to this customer, and the right one costs a join.
  */
 export type CalendarVerdict =
   | { state: 'booked'; until: string; reason: string }
+  | { state: 'already_theirs'; until: string }
   | { state: 'free' }
   | { state: 'unknown' }
 
 export async function checkCalendar(
   run: QueryRunner,
-  input: { operatorId: string; vehicleId: string; startDate: string; endDate: string | null },
+  input: {
+    operatorId: string
+    vehicleId: string
+    startDate: string
+    endDate: string | null
+    /**
+     * Who is asking. A block raised by their own booking is not a refusal,
+     * it is a reminder.
+     */
+    conversationId?: string | null
+  },
 ): Promise<CalendarVerdict> {
   // A single day is a range of one; an open-ended enquiry is treated as that
   // day only, because the customer has not said otherwise.
   const end = input.endDate ?? input.startDate
 
   const rows = await run(
-    `select end_date, reason from vehicle_availability
-     where operator_id = $1 and vehicle_id = $2 and released_at is null
+    `select a.end_date, a.reason,
+            -- Whose hold it is. A booking of their own reads as a reminder
+            -- rather than a refusal, and the difference is one join.
+            (b.conversation_id is not null and b.conversation_id = $5::uuid) as theirs
+     from vehicle_availability a
+     left join bookings b on b.id = a.booking_id and b.operator_id = a.operator_id
+     where a.operator_id = $1 and a.vehicle_id = $2 and a.released_at is null
        -- Overlap, not containment: a booking that covers any part of the
        -- requested range means the car is not free for the whole of it.
-       and start_date <= $4 and end_date >= $3
-     order by end_date desc
+       and a.start_date <= $4 and a.end_date >= $3
+     -- Somebody else's block decides the answer even when their own also
+     -- overlaps: the car genuinely is not available to them for all of it.
+     order by theirs asc, a.end_date desc
      limit 1`,
-    [input.operatorId, input.vehicleId, input.startDate, end],
+    [
+      input.operatorId, input.vehicleId, input.startDate, end,
+      input.conversationId ?? null,
+    ],
   )
 
   const block = rows[0]
   if (block !== undefined) {
+    if (block['theirs'] === true) {
+      return { state: 'already_theirs', until: block['end_date'] as string }
+    }
     return {
       state: 'booked',
       until: block['end_date'] as string,

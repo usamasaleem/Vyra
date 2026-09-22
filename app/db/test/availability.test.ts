@@ -137,3 +137,95 @@ describe('what the database refuses', () => {
     )).rejects.toThrow()
   })
 })
+
+/**
+ * Being told your own car is taken.
+ *
+ * Read live: a customer booked the Huracán for the 25th to the 27th, asked
+ * for it again a quarter of an hour later, and was told it was already taken.
+ * He replied "i only want lambo", and the agent raised a task asking a
+ * colleague whether the car could be released — for the person who had
+ * booked it.
+ *
+ * Nothing was wrong with the check. A hold is a hold, and the query had no
+ * way to ask whose it was, so "taken" was the only honest answer available.
+ * It is the wrong answer to this customer.
+ */
+describe('whose hold it is', () => {
+  const CONV = '66666666-6666-6666-6666-666666666666'
+  const OTHER_CONV = '77777777-7777-7777-7777-777777777777'
+
+  beforeEach(async () => {
+    await run(
+      `insert into whatsapp_accounts (id, operator_id, provider_account_id, phone_number_id)
+       values ('33333333-3333-3333-3333-333333333333', $1, 'waba', '111')`, [OP])
+    for (const [conv, phone] of [[CONV, '9715001'], [OTHER_CONV, '9715002']] as const) {
+      const [ct] = await run(
+        `insert into contacts (operator_id, channel_identifier) values ($1,$2) returning id`,
+        [OP, phone])
+      await run(
+        `insert into conversations (id, operator_id, contact_id, whatsapp_account_id)
+         values ($1,$2,$3,'33333333-3333-3333-3333-333333333333')`,
+        [conv, OP, ct!['id']])
+    }
+  })
+
+  const held = async (conversationId: string | null) => {
+    const [q] = await run(
+      `insert into quotes (operator_id, conversation_id, vehicle_id, revision, state,
+                           total_minor, lines, start_date, end_date, days)
+       values ($1,$2,$3,1,'draft',1000000,'[]'::jsonb,'2026-09-25','2026-09-27',2)
+       returning id`,
+      [OP, conversationId ?? CONV, vehicleId],
+    )
+    const [b] = await run(
+      `insert into bookings (operator_id, conversation_id, quote_id, state, decided_at)
+       values ($1,$2,$3,'confirmed',now()) returning id`,
+      [OP, conversationId ?? CONV, q!['id']],
+    )
+    await run(
+      `insert into vehicle_availability (operator_id, vehicle_id, start_date, end_date,
+                                         reason, recorded_by, booking_id)
+       values ($1,$2,'2026-09-25','2026-09-27','booked','booking confirmed',$3)`,
+      [OP, vehicleId, b!['id']],
+    )
+  }
+
+  const check = (conversationId?: string) => checkCalendar(run, {
+    operatorId: OP, vehicleId,
+    startDate: '2026-09-25', endDate: '2026-09-27',
+    conversationId: conversationId ?? null,
+  })
+
+  it('reads their own booking as theirs', async () => {
+    await held(CONV)
+    expect(await check(CONV)).toMatchObject({ state: 'already_theirs', until: '2026-09-27' })
+  })
+
+  it('still reads somebody else’s as taken', async () => {
+    await held(CONV)
+    expect(await check(OTHER_CONV)).toMatchObject({ state: 'booked' })
+  })
+
+  /** Nobody asking means nobody to compare against, so it stays a refusal. */
+  it('is taken when the asker is unknown', async () => {
+    await held(CONV)
+    expect(await check()).toMatchObject({ state: 'booked' })
+  })
+
+  /**
+   * Their own hold must not hide somebody else's. The car genuinely is not
+   * theirs for the whole range, and answering "you have it" would send them
+   * to collect a car another customer has.
+   */
+  it('prefers somebody else’s block when both overlap', async () => {
+    await held(CONV)
+    await run(
+      `insert into vehicle_availability (operator_id, vehicle_id, start_date, end_date,
+                                         reason, recorded_by)
+       values ($1,$2,'2026-09-26','2026-09-28','booked','somebody else')`,
+      [OP, vehicleId],
+    )
+    expect(await check(CONV)).toMatchObject({ state: 'booked' })
+  })
+})

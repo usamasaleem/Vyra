@@ -45,7 +45,7 @@ export type QuoteRequested = {
    * It costs nothing to look. The vehicle and the dates are already resolved
    * here, which is exactly what the calendar needs.
    */
-  availability: 'free' | 'taken' | 'unknown'
+  availability: 'free' | 'taken' | 'already_theirs' | 'unknown'
   /**
    * The draft these figures belong to, which `request_booking_review` needs.
    *
@@ -177,11 +177,15 @@ export async function prepareQuote(
     vehicleId: vehicleRows[0]!['id'] as string,
     startDate: value('start_at') ?? '',
     endDate: value('end_at'),
+    // Whose hold it is changes the answer completely.
+    conversationId: ctx.conversationId,
   }).catch(() => ({ state: 'unknown' as const }))
 
   const availability = calendar.state === 'booked'
     ? ('taken' as const)
-    : calendar.state === 'free' ? ('free' as const) : ('unknown' as const)
+    : calendar.state === 'already_theirs'
+      ? ('already_theirs' as const)
+      : calendar.state === 'free' ? ('free' as const) : ('unknown' as const)
 
   return ok(
     {
@@ -201,6 +205,8 @@ export async function prepareQuote(
         'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. If they accept this price, pass quoteId to request_booking_review exactly as given here — never build one out of anything else. '
         + (availability === 'free'
           ? 'The car IS free for these dates, from the operator\'s own calendar. Say so plainly and do not tell them availability needs confirming — it has been confirmed.'
+          : availability === 'already_theirs'
+            ? 'THEY have already booked this car for these dates — the hold is their own. Say so warmly, as a reminder rather than a refusal: they are booked. Do not quote it again, do not say it is unavailable, and never offer to ask a colleague whether it can be released to them.'
           : availability === 'taken'
             ? 'The car is NOT free for these dates. Say so, and offer other dates or another car rather than a price they cannot use.'
             : 'Availability is not known for these dates, so do not say the car is free. Say you are checking.'),

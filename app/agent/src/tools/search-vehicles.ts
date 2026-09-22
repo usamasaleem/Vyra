@@ -59,7 +59,14 @@ export type VehicleSearchResult = {
    * unknown, never softened into a maybe.
    */
   availability?: {
-    status: 'available' | 'unavailable' | 'pending_confirmation' | 'unknown'
+    /**
+     * `already_theirs` is not a state of the car, it is a state of this
+     * conversation: the hold against those dates is the customer's own
+     * booking. Read live — a customer booked the Huracán, asked for it again
+     * fifteen minutes later, was told it was taken, and had a colleague asked
+     * whether it could be released to him.
+     */
+    status: 'available' | 'unavailable' | 'already_theirs' | 'pending_confirmation' | 'unknown'
     note: string | null
     /** Where the person looked. */
     source: string
@@ -288,7 +295,23 @@ export async function searchVehicles(
         vehicleId: only.id,
         startDate: args.startDate,
         endDate: args.endDate,
+        // Their own booking is a reminder, not a refusal.
+        conversationId: ctx.conversationId,
       })
+
+  if (calendar?.state === 'already_theirs') {
+    return ok({
+      fleet,
+      availability: {
+        status: 'already_theirs',
+        note: `They have this booked until ${calendar.until}.`,
+        source: 'their own booking',
+        checkedMinutesAgo: 0,
+      },
+      guidance:
+        'THEY have already booked this car for these dates — the hold on it is their own. Say so as a reminder rather than a refusal: they are booked. Do not tell them it is unavailable, and never offer to ask a colleague whether it can be released to them.',
+    })
+  }
 
   if (calendar?.state === 'booked') {
     return ok({
