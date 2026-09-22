@@ -95,10 +95,18 @@ async function publish(operatorId: string, topic: string, answer: string) {
 }
 
 describe('the shape of the boundary', () => {
-  it('exposes exactly the six tools in the specification', () => {
+  /**
+   * The list is asserted whole so that adding a tool is a deliberate edit to
+   * this test rather than something that happens quietly. Six were the
+   * specification's; extend_booking is the seventh and the first added since,
+   * because keeping the car longer is the thing customers ask for most once
+   * they have it and the agent could do nothing about it.
+   */
+  it('exposes exactly the tools it is meant to', () => {
     expect(TOOL_NAMES).toEqual([
       'get_operator_policy', 'search_vehicles', 'prepare_quote',
       'record_enquiry_fields', 'request_handoff', 'request_booking_review',
+      'extend_booking',
     ])
   })
 

@@ -102,6 +102,15 @@ export const requestHandoffSchema = z.strictObject({
     .describe('Why a person is needed. One sentence, for the salesperson who picks this up.'),
 })
 
+export const extendBookingSchema = z.strictObject({
+  newEndDate: z.string().describe(
+    'The new last day of the rental, inclusive, as YYYY-MM-DD resolved against the operator\'s '
+    + 'today. Not the number of extra days and not a phrase — "two more days" on a rental '
+    + 'ending on the 27th is 2026-09-29. It must be later than the day their rental currently '
+    + 'ends; anything else is a change of dates rather than an extension and needs a person.',
+  ),
+})
+
 export const requestBookingReviewSchema = z.strictObject({
   quoteId: z.string().describe(
     'The quote the customer wants to proceed with, as returned by prepare_quote. It must be '
@@ -126,6 +135,7 @@ export const TOOL_SCHEMAS = {
   record_enquiry_fields: recordEnquiryFieldsSchema,
   request_handoff: requestHandoffSchema,
   request_booking_review: requestBookingReviewSchema,
+  extend_booking: extendBookingSchema,
 } as const
 
 export type ToolName = keyof typeof TOOL_SCHEMAS
@@ -152,6 +162,12 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     + 'were never recorded, so a rejected date is a quote the customer never gets.',
   request_handoff:
     'Hand this conversation to a person. Stops automated replies immediately.',
+  extend_booking:
+    'Keep the car they already have for longer. Use this when somebody with a confirmed rental '
+    + 'asks to keep it — it checks the car is free for the extra days, prices them at the '
+    + 'operator\'s own rates and, where the operator allows it, settles it on the spot. It '
+    + 'refuses if the car is promised to somebody else, and tells you until when. Not for '
+    + 'changing the dates of a rental that has not started, and not for a second car.',
   request_booking_review:
     'Record that the customer has agreed to a quote, so a person can confirm it. Call this the '
     + 'moment they say yes to a price you have sent them — it is the only thing that puts their '
