@@ -768,8 +768,19 @@ export async function runConversationTurn(
      * one short question at the point of sale is what a salesperson does, and
      * it beats reciting a visitor's paperwork to a resident.
      */
+    /**
+     * Whenever a price is on the table, not only when their words match.
+     *
+     * This used to hang on wantsToBook, an English pattern. Read live: the
+     * customer answered the price with "yeds". The model understood it and
+     * booked the car; the pattern did not, so the requirements never came
+     * along and the reply ended "someone from the team will be in touch".
+     * The instruction is conditional — used only if the booking actually
+     * lands — so passing it early costs one read and nothing else.
+     */
     const aboutToCommit = wantsToBook(context.message.body)
       || context.conversation.bookingStatus === 'pending'
+      || liveQuote !== undefined
 
     const bringWithYou = !aboutToCommit ? undefined : await (async () => {
       const residency = known.find((k) => k.field === 'residency')?.value?.toLowerCase() ?? null

@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v23'
+export const PROMPT_VERSION = 'sales-v24'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -722,6 +722,22 @@ export function systemPromptFor(input: {
    * before a person gets involved and a wrong detail becomes an expensive
    * phone call.
    */
+  /**
+   * Standing, not only at the decision.
+   *
+   * The block below only appears once the customer's own message reads as a
+   * booking, and the offer to involve the team came earlier than that — in
+   * the reply to the price. Read live: "The Ferrari is free for 25th–27th …
+   * Shall I send it to the team for confirmation?", and then booked it itself
+   * one message later.
+   */
+  const settlesItself = input.mayConfirmBookings !== true
+    ? ''
+    : `\n\nYou can book a car yourself: when they say yes, book it with request_booking_review. `
+      + `So never offer to send anything to the team for confirmation and never say a colleague `
+      + `will confirm it — ask whether they would like you to book it, in those words, and then `
+      + `do it.`
+
   const confirming = input.readyToConfirm !== true
     ? ''
     : `\n\nThey have said they want it and the enquiry has everything. Say the whole `
@@ -736,7 +752,7 @@ export function systemPromptFor(input: {
         : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
           + `booked.`)
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${confirming}${bring}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${settlesItself}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

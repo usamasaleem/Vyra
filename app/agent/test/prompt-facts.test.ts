@@ -361,3 +361,28 @@ describe('when the agent may settle a booking itself', () => {
     expect(text).not.toContain('Then book it')
   })
 })
+
+/**
+ * The offer came before the decision.
+ *
+ * Read live on sales-v23, the version that fixed the decision itself: "The
+ * Ferrari 488 Spider is free for 25th–27th September … Shall I send it to the
+ * team for confirmation?" — in reply to the price, before the customer had
+ * said yes, so the decision block had not appeared yet. The customer answered
+ * "yeds" and the agent booked it on the spot. The team was never involved.
+ */
+describe('an agent that settles bookings, at any point in the conversation', () => {
+  it('never offers the team, even before they have said yes', () => {
+    const text = systemPromptFor({
+      now, timezone: 'Asia/Dubai', enquiryId: 'e1', mayConfirmBookings: true,
+    })
+    expect(text).toContain('never offer to send anything to the team')
+  })
+
+  it('says nothing of the kind for an operator whose people confirm', () => {
+    const text = systemPromptFor({
+      now, timezone: 'Asia/Dubai', enquiryId: 'e1', mayConfirmBookings: false,
+    })
+    expect(text).not.toContain('never offer to send anything to the team')
+  })
+})

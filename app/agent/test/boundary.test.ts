@@ -1345,3 +1345,22 @@ describe('the id that ties a quote to a yes', () => {
     expect(result).toMatchObject({ status: 'refused' })
   })
 })
+
+/**
+ * A description is read on every turn, whatever the operator has switched on.
+ * This one used to end "say that you are passing it to a colleague to
+ * confirm" — a standing instruction to promise a person, delivered to an
+ * agent that confirms bookings itself.
+ */
+describe('what the booking tool tells the model about itself', () => {
+  const description = () =>
+    toolDefinitions().find((t) => t.name === 'request_booking_review')!.description
+
+  it('does not decide who confirms', () => {
+    expect(description()).not.toMatch(/colleague to confirm|so a person can confirm/i)
+  })
+
+  it('defers to the result for what may be said', () => {
+    expect(description()).toContain('The result says whether it is CONFIRMED')
+  })
+})

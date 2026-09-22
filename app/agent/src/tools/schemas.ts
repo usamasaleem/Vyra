@@ -168,11 +168,23 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     + 'operator\'s own rates and, where the operator allows it, settles it on the spot. It '
     + 'refuses if the car is promised to somebody else, and tells you until when. Not for '
     + 'changing the dates of a rental that has not started, and not for a second car.',
+  /**
+   * Deliberately says nothing about who confirms.
+   *
+   * It used to end "say that you are passing it to a colleague to confirm",
+   * which was true of every operator when it was written. A description is
+   * read on every turn whatever the operator has switched on, so for one who
+   * lets the agent settle bookings it was a standing instruction to offer the
+   * team — "Shall I send it to the team for confirmation?" — before the
+   * customer had even said yes, and to promise a person afterwards. Whether
+   * it is confirmed is decided by the record and arrives in the result, which
+   * already says exactly what may be said.
+   */
   request_booking_review:
-    'Record that the customer has agreed to a quote, so a person can confirm it. Call this the '
-    + 'moment they say yes to a price you have sent them — it is the only thing that puts their '
-    + 'agreement on anybody\'s screen. It does NOT confirm the booking and you must not tell them '
-    + 'it is booked, confirmed or held; say that you are passing it to a colleague to confirm.',
+    'Book it for them. Call this the moment they say yes to a price — in any words, any '
+    + 'language, a typo included. The result says whether it is CONFIRMED or waiting on a '
+    + 'colleague, and what you may tell them; say that and nothing more. Never describe it as '
+    + 'booked, confirmed or held unless the result says it is.',
 }
 
 /**
