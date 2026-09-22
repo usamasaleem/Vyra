@@ -188,7 +188,19 @@ export async function recordMoney(
   }
 
   const paymentId = String(formData.get('paymentId') ?? '')
+  /**
+   * Which of the three this is, and nothing else decides it.
+   *
+   * A hidden field used to carry it, sitting above the buttons — and a submit
+   * button's own name and value are appended to the form data rather than
+   * replacing anything, so `what` arrived with two values. The first won,
+   * Attach link ran the payment branch, and the link was never saved. An
+   * empty one now refuses rather than falling through to taking money.
+   */
   const what = String(formData.get('what') ?? '')
+  if (what !== 'paid' && what !== 'refund' && what !== 'link') {
+    return { error: 'That form did not say what it was doing. Reload the page and try again.' }
+  }
   const reference = String(formData.get('reference') ?? '').trim() || null
   const run = actorRunner(actor)
 

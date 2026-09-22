@@ -37,7 +37,6 @@ export function PaymentForm({
     return (
       <form action={action} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="hidden" name="paymentId" value={paymentId} />
-        <input type="hidden" name="what" value="refund" />
         <span>
           <strong>{label} {amount}</strong>
           <span className="muted" style={{ fontSize: '0.8rem' }}> · taken</span>
@@ -45,7 +44,7 @@ export function PaymentForm({
         {kind === 'deposit' && (
           <>
             <input className="input" name="reference" placeholder="Refund reference" style={{ width: '11rem' }} />
-            <button className="button secondary" type="submit" disabled={pending}>
+            <button className="button secondary" type="submit" name="what" value="refund" disabled={pending}>
               {pending ? 'Recording…' : 'Give it back'}
             </button>
           </>
@@ -66,7 +65,15 @@ export function PaymentForm({
   return (
     <form action={action} className="stack" style={{ gap: '0.4rem' }}>
       <input type="hidden" name="paymentId" value={paymentId} />
-      <input type="hidden" name="what" value="paid" />
+      {/*
+        * Which of the three this is comes from the button, never from a hidden
+        * field. There was one reading "paid" above these, and a submit
+        * button's own name and value are appended to the form data rather
+        * than replacing anything — so `what` had two values, the first won,
+        * and Attach link silently ran the payment branch. It asked for a
+        * method, which that half of the form does not have, and the link was
+        * never saved.
+        */}
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <span>
           <strong>{label} {amount}</strong>
@@ -80,7 +87,7 @@ export function PaymentForm({
           <option value="link">Paid a link</option>
         </select>
         <input className="input" name="reference" placeholder="Their reference" style={{ width: '10rem' }} />
-        <button className="button secondary" type="submit" disabled={pending}>
+        <button className="button secondary" type="submit" name="what" value="paid" disabled={pending}>
           {pending ? 'Recording…' : 'Mark taken'}
         </button>
       </div>
@@ -91,7 +98,7 @@ export function PaymentForm({
             className="input" name="linkUrl" placeholder="Paste a payment link to send them"
             style={{ flex: '1 1 16rem' }}
           />
-          <button className="button secondary" type="submit" formAction={action} name="what" value="link">
+          <button className="button secondary" type="submit" name="what" value="link">
             Attach link
           </button>
         </div>
