@@ -222,7 +222,7 @@ describe('photos that arrive together', () => {
 
   it('leaves photos from before the booking alone', async () => {
     await photo()
-    await run(`update messages set created_at = now() - interval '1 day' where kind = 'image'`)
+    await run(`update messages set created_at = now() - interval '1 day' where kind = 'image'`, [])
     const id = await confirmed()
     expect(await fileWaitingDocuments(run, { operatorId: OP, bookingId: id, conversationId: CONV }))
       .toEqual({ filed: 0, total: 0 })
