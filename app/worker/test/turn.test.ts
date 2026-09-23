@@ -107,6 +107,29 @@ describe('a turn that works', () => {
   })
 })
 
+/**
+ * Live and in simulation: "Yes, book it" was booked, then a detail saved, then
+ * priced again, and the rounds ran out before a word was written. The last
+ * round now goes with no tools, so the work that was done gets said.
+ */
+describe('a turn that spends every round on tools', () => {
+  it('still replies, with a last round that may not call anything', async () => {
+    const busy = (id: string): ModelResponse => ({
+      toolCalls: [{
+        id, name: 'record_enquiry_fields',
+        arguments: { forVehicle: null, fields: [{ field: 'vehicle', value: 'Ferrari', originalWording: null }] },
+      }],
+      reply: null,
+    })
+    const result = await turn([busy('t1'), busy('t2'), busy('t3'), busy('t4'),
+      { toolCalls: [], reply: 'Booked — the Ferrari is yours for Friday.' }])
+    expect(result).toMatchObject({ outcome: 'queued' })
+    const [message] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV])
+    expect(message!['body']).toBe('Booked — the Ferrari is yours for Friday.')
+  })
+})
+
 describe('shadow mode', () => {
   /**
    * The reply becomes an internal note. Section 18.12 keeps notes away from the

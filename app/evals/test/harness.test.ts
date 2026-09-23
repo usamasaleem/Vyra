@@ -453,7 +453,8 @@ describe('bounds', () => {
     }))
     const { outcome } = await grade(testCase({ id: 'bound-2' }), looping)
     expect(outcome.stoppedBecause).toBe('max_rounds')
-    expect(outcome.rounds).toBe(4)
+    // Four rounds of tools, then one last call that may not use any.
+    expect(outcome.rounds).toBe(5)
   })
 
   it('counts too many questions against the reply', async () => {

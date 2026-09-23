@@ -16,7 +16,8 @@ export type Finding = { severity: 'fail' | 'warn'; rule: string; detail: string 
 const RULES: Array<{ rule: string; severity: 'fail' | 'warn'; test: RegExp; why: string }> = [
   {
     rule: 'says "free" for available', severity: 'fail',
-    test: /\b(?:is|are|it's|it is|still)\s+free\b|\bfree (?:for|on|from|this|next|between)\b/i,
+    // About the car's dates, not a fee: "whether delivery is free" is the customer's own question.
+    test: /\b(?<!delivery )(?:is|are|it's|it is|still)\s+free\b(?! (?:delivery|of charge))|\bfree (?:for|on|from|this|next|between) (?!delivery)/i,
     why: 'a customer reads "free" as no charge',
   },
   {

@@ -49,6 +49,7 @@ export function anthropicModel(options: {
             input_schema: tool.parameters,
             strict: true,
           })),
+          ...(request.noTools === true ? { tool_choice: { type: 'none' } } : {}),
           messages: toMessages(request),
         }),
       })

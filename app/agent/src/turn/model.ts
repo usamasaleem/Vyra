@@ -34,6 +34,11 @@ export type ModelRequest = {
   transcript: TranscriptEntry[]
   tools: ToolDefinition[]
   /**
+   * Reply in words this time; call nothing. The tools stay defined because
+   * the transcript refers to them — it is only this round that may not.
+   */
+  noTools?: boolean
+  /**
    * What happened before the transcript starts, in prose.
    *
    * Carried separately from `system` so the system prompt stays byte-identical

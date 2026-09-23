@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v33'
+export const PROMPT_VERSION = 'sales-v34'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -438,6 +438,8 @@ export function systemPromptFor(input: {
    * a person says it ("2 hours"), and the hold this conversation has now.
    */
   holds?: { hours: string; active: { vehicle: string | null; until: string } | null }
+  /** The youngest a driver may be, from the operator's published requirements. */
+  minimumAge?: number
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -820,6 +822,12 @@ export function systemPromptFor(input: {
           + ` — ${b.state === 'confirmed' ? 'confirmed' : 'waiting on a colleague'}`).join('\n')}`
         + `\nDo not describe anything else as booked.`
 
+  const ageRule = input.minimumAge === undefined
+    ? ''
+    : `\n\nThe driver must be at least ${input.minimumAge}. When you give a price, add it in a few words `
+      + `("the driver needs to be ${input.minimumAge} or over") unless they have already told you the `
+      + `driver's age. If they say the driver is younger, do not book it — say it plainly and kindly.`
+
   const after = input.afterBooking
   const followThrough = after === undefined || after.missing.length === 0
     ? ''
@@ -868,7 +876,7 @@ export function systemPromptFor(input: {
         : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
           + `booked.`)
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${settlesItself}${confirming}${bring}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${settlesItself}${ageRule}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

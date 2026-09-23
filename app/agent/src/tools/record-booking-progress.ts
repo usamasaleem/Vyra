@@ -67,17 +67,24 @@ export async function recordBookingProgressTool(
 
   const list = await bookingChecklist(ctx.run, { operatorId: ctx.operatorId, bookingId })
   const missing = list?.missing ?? []
-  const wasOpen = before !== null && before.missing.some((m) => BEFORE_HANDOVER.includes(m))
-  const nowReady = !missing.some((m) => BEFORE_HANDOVER.includes(m))
+  // The same rule the summary uses: a way to pay chosen is enough to send it.
+  const open = (list: { missing: typeof missing; paymentPlan: string | null } | null) =>
+    (list?.missing ?? []).filter((m) => BEFORE_HANDOVER.includes(m)
+      && !(m === 'payment' && list?.paymentPlan != null))
+  const wasOpen = open(before).length > 0
+  const nowReady = open(list).length === 0
+  const onlyTheMoney = missing.length === 1 && missing[0] === 'payment' && list?.paymentPlan != null
 
   return ok({
     stillNeeded: missing.map((m) => ASK_FOR[m]),
-    guidance: missing.length === 0
-      ? (wasOpen && nowReady
-        ? 'Everything is in. A summary of the whole booking is sent to them automatically straight '
-          + 'after your reply, so do not list the details — thank them in a sentence and stop.'
-        : 'Everything is in. Thank them in a few words and stop — do not ask for anything else.')
-      : `Acknowledge what they gave in a few words, then ask for ${ASK_FOR[missing[0]!]}. One thing `
-        + 'at a time.',
+    guidance: wasOpen && nowReady
+      ? 'That is everything the handover needs. A summary of the whole booking is sent to them '
+        + 'automatically straight after your reply, so do not list the details — thank them in a '
+        + 'sentence'
+        + (onlyTheMoney ? ' and ask them to let you know here once they have paid.' : ' and stop.')
+      : missing.length === 0 || onlyTheMoney
+        ? 'Everything is in. Thank them in a few words and stop — do not ask for anything else.'
+        : `Acknowledge what they gave in a few words, then ask for ${ASK_FOR[missing[0]!]}. One thing `
+          + 'at a time.',
   })
 }

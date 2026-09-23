@@ -81,9 +81,11 @@ async function play(
   /** What went out since last time, as the customer would see it. */
   const collect = async () => {
     const rows = await world.run(
+      // Photos sent first share the reply's timestamp (one transaction); the
+      // pictures go out before the words, as the dispatcher sends them.
       `select body, reply_buttons, reply_list, reply_image_url, created_at from messages
        where conversation_id = $1 and direction = 'outbound' and created_at > $2
-       order by created_at`,
+       order by created_at, (reply_image_url is null)`,
       [conversationId, seen.toISOString()],
     )
     for (const r of rows) {
@@ -146,7 +148,7 @@ async function play(
   const lastButtons = async (): Promise<Array<{ id: string; title: string }>> => {
     const [r] = await world.run(
       `select reply_buttons, reply_list from messages where conversation_id = $1 and direction = 'outbound'
-       order by created_at desc limit 1`,
+       order by created_at desc, (reply_buttons is null and reply_list is null) limit 1`,
       [conversationId],
     )
     const buttons = (r?.['reply_buttons'] as Array<{ id: string; title: string }> | null) ?? []
@@ -251,7 +253,8 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
     `select result_state::text as state, duration_ms from agent_runs where conversation_id = $1 order by created_at`,
     [conversationId])
   const outbound = await run(
-    `select body, reply_buttons from messages where conversation_id = $1 and direction = 'outbound' order by created_at`,
+    `select body, reply_buttons from messages where conversation_id = $1 and direction = 'outbound'
+     order by created_at, (reply_image_url is null)`,
     [conversationId])
   const [conversation] = await run(`select next_action from conversations where id = $1`, [conversationId])
   return {

@@ -284,7 +284,14 @@ export async function sendBookingSummaryIfComplete(
     operatorId: input.operatorId, bookingId: input.bookingId,
   })
   if (list === null || list.returnedAt !== null) return false
-  if (list.missing.some((m) => BEFORE_HANDOVER.includes(m))) return false
+  /**
+   * Payment counts once they have chosen how. Waiting for "I've paid" held the
+   * summary back from everybody paying by link or transfer — the customers who
+   * most need the amount and the booking in one place.
+   */
+  const waiting = list.missing.filter((m) => BEFORE_HANDOVER.includes(m)
+    && !(m === 'payment' && list.paymentPlan !== null))
+  if (waiting.length > 0) return false
 
   const collectionPoint = list.handover === 'collection'
     ? (await getApprovedAnswer(deps.run, input.operatorId, 'collection-point'))?.answer ?? null
@@ -1108,6 +1115,25 @@ export async function runConversationTurn(
         }
       })().catch(() => undefined)
 
+    /**
+     * The minimum age, from the operator's own requirements, for the price.
+     *
+     * Simulated and certain to happen live: a 22-year-old was quoted, said yes,
+     * was booked — and only then read that the driver must be 25. Said with the
+     * price, it costs a few words and saves a cancellation.
+     */
+    const minimumAge = await (async () => {
+      const answers = await Promise.all(
+        (['driver-requirements-visitor', 'driver-requirements-resident'] as const).map((topic) =>
+          getApprovedAnswer(deps.run, context.operator.id, topic, deps.now?.() ?? new Date())),
+      )
+      const ages = answers
+        .map((a) => a?.answer.match(/minimum age(?: for this car)? is (\d{2})\b/i)?.[1])
+        .filter((x): x is string => x !== undefined)
+        .map(Number)
+      return ages.length === 0 ? undefined : Math.max(...ages)
+    })().catch(() => undefined)
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -1153,6 +1179,7 @@ export async function runConversationTurn(
       ...(onFile === undefined ? {} : { bookingsOnFile: onFile }),
       ...(afterBooking === undefined ? {} : { afterBooking }),
       ...(holds === undefined ? {} : { holds }),
+      ...(minimumAge === undefined ? {} : { minimumAge }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *
@@ -1912,7 +1939,16 @@ const PHOTOS_PER_CAR = 6
      * fix. A salesperson who picks it up takes over explicitly, as they would
      * with any other handoff.
      */
-    const promised = discount === null && items.length === 0
+    /**
+     * "The team will confirm once the transfer has arrived" is what the agent
+     * is told to say when somebody has paid, and the check it promises already
+     * has its place: the booking shows "customer says paid — check the
+     * account". Read as a promise of a person, it opened a handoff for every
+     * customer who paid.
+     */
+    const aboutMoneyArriving = end.toolResults.some((r) => r.name === 'record_booking_progress')
+      && /\b(?:arriv|received|land|come through|reflect)/i.test(end.reply ?? '')
+    const promised = discount === null && items.length === 0 && !aboutMoneyArriving
       ? promiseMadeIn(end.reply)
       : null
 

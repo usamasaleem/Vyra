@@ -141,6 +141,7 @@ export function openaiModel(options: {
             parameters: tool.parameters,
             strict: true,
           })),
+          ...(request.noTools === true ? { tool_choice: 'none' } : {}),
           input: toInput(request),
         }),
         })

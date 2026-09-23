@@ -90,6 +90,8 @@ export type RunTurnOptions = {
   }
   /** Holding a car for somebody deciding. See systemPromptFor. */
   holds?: { hours: string; active: { vehicle: string | null; until: string } | null }
+  /** The youngest a driver may be, from the operator's published requirements. */
+  minimumAge?: number
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -156,7 +158,17 @@ export async function runTurn(
   }
 
   let rounds = 0
-  while (rounds < maxRounds) {
+  /**
+   * The last round is for writing, not for more tools.
+   *
+   * Live and again in simulation: "Yes, book it" was booked, then saved an
+   * address, then priced again — and the rounds ran out before a word was
+   * written. The booking stood, the customer heard nothing, and the turn went
+   * to a person as "AI unavailable". So once the tools have had their rounds,
+   * one more call goes with no tools at all: whatever was done gets said.
+   */
+  let finalWord = false
+  while (rounds < maxRounds || finalWord) {
     rounds++
     const response: ModelResponse = await model.complete({
       // Composed per turn so the model is told what day it is. It was not, for
@@ -180,6 +192,7 @@ export async function runTurn(
             : { bookingsOnFile: options.bookingsOnFile }),
           ...(options.afterBooking === undefined ? {} : { afterBooking: options.afterBooking }),
           ...(options.holds === undefined ? {} : { holds: options.holds }),
+          ...(options.minimumAge === undefined ? {} : { minimumAge: options.minimumAge }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),
@@ -190,6 +203,7 @@ export async function runTurn(
       summary: options.summary ?? null,
       transcript: [...transcript],
       tools: boundary.definitions,
+      ...(finalWord ? { noTools: true } : {}),
     })
 
     usage.modelCalls++
@@ -201,7 +215,8 @@ export async function runTurn(
       usage.cachedInputTokens += response.usage.cachedInputTokens ?? 0
     }
 
-    if (response.toolCalls.length > 0) {
+    // A model that ignores "no tools" on the final word does not get to run any.
+    if (response.toolCalls.length > 0 && !finalWord) {
       transcript.push({ from: 'agent', toolCalls: response.toolCalls })
       for (const call of response.toolCalls) {
         const result = await boundary.call(call.name, call.arguments)
@@ -224,18 +239,21 @@ export async function runTurn(
     }
 
     // No reply and no tools is a model with nothing to say. Asking again would
-    // produce the same nothing.
-    if (response.toolCalls.length === 0) {
+    // produce the same nothing — and so is a final word that still said nothing.
+    if (response.toolCalls.length === 0 || finalWord) {
       return {
         reply: null,
         rounds,
-        stoppedBecause: 'no_output',
+        stoppedBecause: finalWord ? 'max_rounds' : 'no_output',
         toolCalls: boundary.history,
         toolResults,
         transcript,
         usage,
       }
     }
+
+    // Out of tool rounds with the work done and nothing said: one more, to say it.
+    if (rounds === maxRounds && !finalWord) finalWord = true
   }
 
   return {
