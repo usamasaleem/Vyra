@@ -288,6 +288,7 @@ export default async function BookingsPage() {
                       amount={formatMoney(o.amountMinor, o.currency)}
                       state={o.state}
                       linkUrl={o.linkUrl}
+                      vehicle={b.vehicle}
                     />
                   )
                   return (
@@ -299,6 +300,7 @@ export default async function BookingsPage() {
                           total={formatMoney(due.reduce((sum, o) => sum + o.amountMinor, 0), due[0]!.currency)}
                           breakdown={due.map((o) => `${o.kind === 'deposit' ? 'deposit' : 'rental'} ${formatMoney(o.amountMinor, o.currency)}`).join(' · ')}
                           linkUrl={links.size === 1 ? [...links][0]! : null}
+                          vehicle={b.vehicle}
                         />
                         <details>
                           <summary className="muted" style={{ fontSize: '0.82rem', cursor: 'pointer' }}>

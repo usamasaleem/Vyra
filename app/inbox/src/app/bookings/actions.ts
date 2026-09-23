@@ -211,15 +211,55 @@ export async function recordMoney(
       ? 'A payment link has to be https. Anything else is not going to a customer.'
       : null
 
+  /**
+   * A link nobody sends reaches nobody.
+   *
+   * Live: a link attached at 6:15 sat on the payment rows while the customer,
+   * last told "a colleague will send you the payment details", waited. The
+   * agent only mentions a link when the customer next writes, and they had no
+   * reason to. So attaching one sends it, in the person's words, signed with
+   * their name like every other message from a person — unless they cleared
+   * the message, which attaches it quietly.
+   */
+  const message = String(formData.get('message') ?? '').trim()
+  if (message !== '' && actor.displayName === null && (what === 'link' || what === 'link_all')) {
+    return {
+      error: 'The link goes out signed with your name, and you have not set one yet. Add it on '
+        + 'the Team page, or clear the message to attach the link without sending it.',
+    }
+  }
+  const sendLink = async (conversationId: string | null, key: string): Promise<MoneyState | null> => {
+    if (message === '' || conversationId === null) return null
+    try {
+      await queueOutboundText(run, {
+        conversationId,
+        operatorId: actor.operatorId,
+        body: message.includes(linkUrl) ? message : `${message}\n${linkUrl}`,
+        // One send per link, so a double-click or a retry sends once.
+        idempotencyKey: `payment-link:${key}:${linkUrl}`,
+        sentByMembershipId: actor.membershipId,
+      })
+    } catch (error: unknown) {
+      if (error instanceof NoDisplayName) {
+        return { error: 'The link is attached, but your name is not set, so it was not sent.' }
+      }
+      throw error
+    }
+    revalidatePath(`/conversations/${conversationId}`)
+    return null
+  }
+
   // The whole booking at once: the ordinary case, one transfer for everything.
   if (what === 'link_all' || what === 'paid_all') {
     const bookingId = String(formData.get('bookingId') ?? '')
     if (what === 'link_all') {
       if (linkProblem !== null) return { error: linkProblem }
-      const { attached } = await attachLinkToAllDue(run, {
+      const { attached, conversationId } = await attachLinkToAllDue(run, {
         operatorId: actor.operatorId, bookingId, linkUrl,
       })
       if (attached === 0) return { error: 'Nothing is still owed on that booking. Reload to see it.' }
+      const failed = await sendLink(conversationId, bookingId)
+      if (failed !== null) return failed
     } else {
       const method = String(formData.get('method') ?? '')
       if (!['link', 'bank_transfer', 'cash', 'card_in_person'].includes(method)) {
@@ -244,6 +284,8 @@ export async function recordMoney(
       operatorId: actor.operatorId, paymentId, linkUrl,
     })
     if (!attached.attached) return { error: 'That one has already been taken.' }
+    const failed = await sendLink(attached.conversationId, paymentId)
+    if (failed !== null) return failed
     revalidatePath('/bookings')
     return { error: null }
   }

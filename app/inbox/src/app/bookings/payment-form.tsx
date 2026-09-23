@@ -20,12 +20,15 @@ export function PaymentForm({
   amount,
   state,
   linkUrl,
+  vehicle,
 }: {
   paymentId: string
   kind: 'rental' | 'deposit'
   amount: string
   state: string
   linkUrl: string | null
+  /** For the message that carries the link: "for your Ferrari 488 Spider". */
+  vehicle: string | null
 }) {
   const [result, action, pending] = useActionState<MoneyState, FormData>(
     recordMoney, { error: null },
@@ -93,15 +96,12 @@ export function PaymentForm({
       </div>
 
       {linkUrl === null ? (
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            className="input" name="linkUrl" placeholder="Paste a payment link to send them"
-            style={{ flex: '1 1 16rem' }}
-          />
-          <button className="button secondary" type="submit" name="what" value="link">
-            Attach link
-          </button>
-        </div>
+        <LinkFields
+          what="link"
+          pending={pending}
+          placeholder="Paste a payment link to send them"
+          message={`Here is the link to pay the ${label.toLowerCase()} of ${amount}${vehicle === null ? '' : ` for your ${vehicle}`}:`}
+        />
       ) : (
         <span className="muted" style={{ fontSize: '0.82rem' }}>
           Link attached: <a href={linkUrl}>{linkUrl}</a>
@@ -126,8 +126,10 @@ export function AllOwedForm({
   total,
   breakdown,
   linkUrl,
+  vehicle,
 }: {
   bookingId: string
+  vehicle: string | null
   /** Formatted, e.g. "AED 10,000". */
   total: string
   /** "rental AED 5,000 · deposit AED 5,000" */
@@ -162,15 +164,12 @@ export function AllOwedForm({
       </div>
 
       {linkUrl === null ? (
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            className="input" name="linkUrl" placeholder={`Paste a payment link for ${total}`}
-            style={{ flex: '1 1 16rem' }}
-          />
-          <button className="button secondary" type="submit" name="what" value="link_all" disabled={pending}>
-            Attach link
-          </button>
-        </div>
+        <LinkFields
+          what="link_all"
+          pending={pending}
+          placeholder={`Paste a payment link for ${total}`}
+          message={`Here is the link to pay ${total}${vehicle === null ? '' : ` for your ${vehicle}`}:`}
+        />
       ) : (
         <span className="muted" style={{ fontSize: '0.82rem' }}>
           Link attached: <a href={linkUrl}>{linkUrl}</a>
@@ -179,5 +178,45 @@ export function AllOwedForm({
 
       {result.error !== null && <p className="notice">{result.error}</p>}
     </form>
+  )
+}
+
+/**
+ * The link, and the message that takes it to the customer.
+ *
+ * Attaching used to only write the link down; the customer heard nothing until
+ * they happened to write again. The message is drafted and theirs to change,
+ * the link is added to the end if they leave it out, and clearing it attaches
+ * the link without sending anything.
+ */
+function LinkFields({
+  what,
+  pending,
+  placeholder,
+  message,
+}: {
+  what: 'link' | 'link_all'
+  pending: boolean
+  placeholder: string
+  message: string
+}) {
+  return (
+    <div className="stack" style={{ gap: '0.4rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input className="input" name="linkUrl" placeholder={placeholder} style={{ flex: '1 1 16rem' }} />
+        <button className="button secondary" type="submit" name="what" value={what} disabled={pending}>
+          {pending ? 'Sending…' : 'Attach and send'}
+        </button>
+      </div>
+      <textarea
+        className="input" name="message" rows={2} defaultValue={message}
+        aria-label="Message sent with the link"
+        style={{ fontSize: '0.88rem' }}
+      />
+      <span className="muted" style={{ fontSize: '0.78rem' }}>
+        Sent to them signed with your name, with the link added at the end. Clear it to attach the
+        link without sending anything.
+      </span>
+    </div>
   )
 }

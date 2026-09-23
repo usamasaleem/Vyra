@@ -173,7 +173,7 @@ describe('taking it', () => {
 
     expect(await attachPaymentLink(run, {
       operatorId: OP, paymentId: rental.paymentId, linkUrl: 'https://pay.example.com/abc',
-    })).toEqual({ attached: true })
+    })).toEqual({ attached: true, conversationId: CONV })
 
     expect((await rentalOf(bookingId)).linkUrl).toBe('https://pay.example.com/abc')
   })
@@ -188,7 +188,7 @@ describe('taking it', () => {
 
     expect(await attachPaymentLink(run, {
       operatorId: OP, paymentId: rental.paymentId, linkUrl: 'https://pay.example.com/abc',
-    })).toEqual({ attached: false })
+    })).toEqual({ attached: false, conversationId: null })
   })
 })
 
@@ -227,7 +227,7 @@ describe('taking the whole booking at once', () => {
     const bookingId = await confirmedBooking()
     expect(await attachLinkToAllDue(run, {
       operatorId: OP, bookingId, linkUrl: 'https://pay.example.com/all',
-    })).toEqual({ attached: 2 })
+    })).toEqual({ attached: 2, conversationId: CONV })
     expect((await whatIsOwed(run, { operatorId: OP, bookingId })).map((o) => o.linkUrl))
       .toEqual(['https://pay.example.com/all', 'https://pay.example.com/all'])
   })

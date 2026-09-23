@@ -170,14 +170,18 @@ export async function refundPayment(
 export async function attachPaymentLink(
   run: QueryRunner,
   input: { operatorId: string; paymentId: string; linkUrl: string },
-): Promise<{ attached: boolean }> {
+): Promise<{ attached: boolean; conversationId: string | null }> {
   const rows = await run(
     `update payments set link_url = $3, updated_at = now()
      where id = $1 and operator_id = $2 and state = 'due'
-     returning id`,
+     returning id, conversation_id`,
     [input.paymentId, input.operatorId, input.linkUrl],
   )
-  return { attached: rows.length > 0 }
+  return {
+    attached: rows.length > 0,
+    // Where to send it — a link attached and never sent reaches nobody.
+    conversationId: (rows[0]?.['conversation_id'] as string) ?? null,
+  }
 }
 
 /**
@@ -218,14 +222,17 @@ export async function recordAllDue(
 export async function attachLinkToAllDue(
   run: QueryRunner,
   input: { operatorId: string; bookingId: string; linkUrl: string },
-): Promise<{ attached: number }> {
+): Promise<{ attached: number; conversationId: string | null }> {
   const rows = await run(
     `update payments set link_url = $3, updated_at = now()
      where booking_id = $1 and operator_id = $2 and state = 'due'
-     returning id`,
+     returning id, conversation_id`,
     [input.bookingId, input.operatorId, input.linkUrl],
   )
-  return { attached: rows.length }
+  return {
+    attached: rows.length,
+    conversationId: (rows[0]?.['conversation_id'] as string) ?? null,
+  }
 }
 
 export type OutstandingPayment = {
