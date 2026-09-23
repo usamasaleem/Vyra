@@ -25,6 +25,8 @@ In the examples, the operator's example fleet and rules are:
 
 ### 1. First message
 
+The operator's written greeting is sent only when the first message is just a hello ("hi", "salam"). When the customer opens with a question, as here, the answer is the welcome.
+
 > **Customer:** Hi, do you have a Ferrari available this weekend?
 >
 > **Vyra:** Hi Usama! Yes, the Ferrari 488 Spider. It's AED 5,000 a day. Which days do you need it, Saturday to Sunday?
@@ -77,7 +79,9 @@ In the examples, the operator's example fleet and rules are:
 >
 > **Vyra:** 10:00 on Saturday at Address Downtown. Could you send me a photo of your licence and passport here?
 
-**Behind it:** `record_booking_progress` saves the address, then the time, as soon as each is given. The checklist decides what to ask next, in this order: address, time, documents, payment. The agent asks for the first missing item only, and only asks about delivery if the customer chose delivery.
+**If they're collecting instead:** there's no address to ask for, but there is still a time. "What time on Saturday will you come to collect it?" Once they give it, the agent says where to come, using the operator's published *collection point* answer word for word.
+
+**Behind it:** `record_booking_progress` saves the address, then the time, as soon as each is given. The checklist decides what to ask next, in this order: address, time (or collection time), documents, payment. The agent asks for the first missing item only, and only asks about delivery if the customer chose delivery.
 
 ### 6. Documents
 
@@ -154,6 +158,7 @@ The code supports every step above. What's missing is operator content and setup
 | Gap | Effect on the flow | Who fixes it |
 |---|---|---|
 | **Payment answer unpublished** (bank name / IBAN blanks) | At step 7 the agent says "a colleague will send the payment details", and a person has to step in. **This is the biggest break in the flow.** | Operator: Knowledge → Payment |
+| Collection point answer unpublished | A collecting customer isn't told where to come; the agent says it will send the pickup point, and that becomes a task | Operator: Knowledge → Collection point |
 | Kilometres, delivery areas and business hours answers unpublished | The agent can't answer those questions and hands off | Operator: Knowledge |
 | Service hours not set | Out-of-hours handling can't tell customers when a person will be available | Operator settings |
 | `ai_resumes_after_minutes = 5` | After a hand-off, the AI comes back in 5 minutes and may pick up a thread a person is still working on | Decision pending |
