@@ -1665,6 +1665,8 @@ const PHOTOS_PER_CAR = 6
     ? { label: FULL_RANGE_LABEL, url: website }
     : null
 
+  const bothAtOnce = offered.list === null && offered.buttons !== null && showing.length > 0
+
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,
     operatorId: context.operator.id,
@@ -1690,16 +1692,18 @@ const PHOTOS_PER_CAR = 6
      * Dropped when photographs are going out, because one message cannot hold
      * both and the picture of the car is the better half of that trade.
      */
-    replyButtons: offered.list === null && showing.length === 0 ? offered.buttons : null,
-    replyList: offered.list,
     /**
-     * The reply carries the first photograph when there is one — except when
-     * it carries a list or buttons, which an image message cannot hold. In
-     * that case every picture follows as its own message.
+     * Buttons and photographs both, when the reply has both: the pictures go
+     * first as their own messages and the question arrives last with its
+     * buttons. Live: the first quote — "I can book it now, or hold it for you
+     * for 2 hours" — went out as a photo caption, with neither button.
      */
-    replyImageUrl: showing[0] ?? null,
+    replyButtons: offered.list === null ? offered.buttons : null,
+    replyList: offered.list,
+    replyImageUrl: bothAtOnce ? null : showing[0] ?? null,
     // Further photographs of a car the reply has already named, so no caption.
-    extraImages: showing.slice(1).map((url) => ({ url })),
+    extraImages: (bothAtOnce ? showing : showing.slice(1)).map((url) => ({ url })),
+    imagesFirst: bothAtOnce,
     quotesMessageId: quoting,
     replyLink: link,
     // Per inbound message, so a retried job cannot produce a second reply to

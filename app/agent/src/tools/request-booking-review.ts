@@ -106,7 +106,10 @@ export async function requestBookingReview(
         + 'heard back, apologise briefly for that and confirm the details.'
       : result.booking.confirmed
       ? 'This is CONFIRMED. The car is held for those dates and nobody else can be given '
-        + 'it. Tell them plainly that it is booked and say the car and the dates back once. '
+        + 'it. Your reply opens with "Booked" — they must be able to see it is done — and says '
+        + 'the car and the dates back once. If they already told you the address, the time or '
+        + 'whether they are collecting, save it now with record_booking_progress rather than '
+        + 'asking again. '
         + carryOn
         + 'Do not say it is pending or that a colleague still has to approve it.'
       : 'This is NOT confirmed. Their agreement is recorded and a colleague will confirm it. '

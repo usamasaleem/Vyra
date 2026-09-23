@@ -123,6 +123,14 @@ export async function acceptTurnOutput(
      */
     extraImages?: ReadonlyArray<{ url: string; caption?: string }>
     /**
+     * Send the photographs before the reply rather than after it.
+     *
+     * For a reply that carries buttons: an image message cannot hold them, and
+     * the buttons answer the question the reply ends on — so the pictures go
+     * first and the question arrives last, where the thumb is.
+     */
+    imagesFirst?: boolean
+    /**
      * An earlier message to quote, so the reply arrives attached to what it is
      * about. Only the reply itself quotes: a follow-up photograph carries no
      * caption and has nothing to be about.
@@ -245,6 +253,45 @@ export async function acceptTurnOutput(
      * it carries the caption. Written in one transaction with the reply, so a
      * message queued without a job can never be left with nothing to send it.
      */
+    if (input.imagesFirst === true && (input.extraImages ?? []).length > 0) {
+      const [lead, ...rest] = input.extraImages!
+      // The reply and every photograph after the first ride on the first
+      // photograph's job, in order: pictures, then the question.
+      const reply = await queueOutboundText(tx, {
+        conversationId: input.conversationId,
+        operatorId: input.operatorId,
+        body: input.body,
+        replyButtons: input.replyButtons ?? null,
+        replyList: input.replyList ?? null,
+        quotesMessageId: input.quotesMessageId ?? null,
+        replyLink: input.replyLink ?? null,
+        idempotencyKey: input.idempotencyKey,
+        withoutOwnJob: true,
+      })
+      const chained: string[] = []
+      for (const [index, image] of rest.entries()) {
+        const extra = await queueOutboundText(tx, {
+          conversationId: input.conversationId,
+          operatorId: input.operatorId,
+          body: image.caption ?? ' ',
+          replyImageUrl: image.url,
+          idempotencyKey: `${input.idempotencyKey}:photo:${index + 2}`,
+          withoutOwnJob: true,
+        })
+        if (extra.messageId !== null) chained.push(extra.messageId)
+      }
+      if (reply.messageId !== null) chained.push(reply.messageId)
+      await queueOutboundText(tx, {
+        conversationId: input.conversationId,
+        operatorId: input.operatorId,
+        body: lead!.caption ?? ' ',
+        replyImageUrl: lead!.url,
+        idempotencyKey: `${input.idempotencyKey}:photo:1`,
+        alsoSend: chained,
+      })
+      return { accepted: true, destination: 'send', queued: reply, revision: revisionNow } as const
+    }
+
     const followUps: string[] = []
     for (const [index, image] of (input.extraImages ?? []).entries()) {
       const extra = await queueOutboundText(tx, {

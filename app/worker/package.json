@@ -8,12 +8,16 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "start": "node --env-file-if-exists=../inbox/.env.local dist/index.js",
-    "failures": "tsx --env-file-if-exists=../inbox/.env.local src/cli/failures.ts"
+    "failures": "tsx --env-file-if-exists=../inbox/.env.local src/cli/failures.ts",
+    "simulate": "tsx --env-file-if-exists=../inbox/.env.local src/cli/simulate.ts"
   },
   "dependencies": {
     "graphile-worker": "^0.18.0",
     "@vyra/contracts": "*",
     "@vyra/db": "*",
     "@vyra/agent": "*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
   }
 }

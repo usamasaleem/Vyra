@@ -1,0 +1,271 @@
+import { meaningOfButton } from '@vyra/contracts'
+import { bookingChecklist, type QueryRunner } from '@vyra/db'
+import type { ModelAdapter } from '@vyra/agent'
+import { sendDueFollowUps } from '../follow-ups.js'
+import { processInboundMessage } from '../tasks/process-inbound-message.js'
+import {
+  acknowledgeWaiting, fileDocumentIfBooked, greetIfNew, handleNonTextMessage, handleUrgentMessage,
+  runConversationTurn, type TurnDependencies,
+} from '../turn.js'
+import { nextAction, type CustomerAction, type Line } from './customer.js'
+import type { Persona } from './personas.js'
+import { createSimWorld, newCustomer, OPERATOR, type SimWorld } from './world.js'
+
+/**
+ * One customer, played through the real pipeline.
+ *
+ * Every message goes in the way the webhook puts it in — a row in messages, the
+ * conversation's revision moved — and out through the same functions the
+ * worker calls: processInboundMessage decides, the turn answers, photos are
+ * filed, follow-ups are swept. Only WhatsApp itself is missing: what would have
+ * been sent is read back from the messages table.
+ */
+export type Played = {
+  persona: Persona
+  lines: Line[]
+  facts: RunFacts
+  errors: string[]
+  turnMs: number[]
+}
+
+export type RunFacts = {
+  bookings: Array<{ state: string; vehicle: string | null; days: number | null; handover: string | null;
+    deliveryAddress: string | null; deliveryTime: string | null; documents: number; paymentPlan: string | null }>
+  latestQuote: { vehicle: string | null; days: number; totalMinor: number } | null
+  held: boolean
+  handoffs: Array<{ reason: string; summary: string }>
+  runs: Array<{ state: string; ms: number }>
+  outbound: Array<{ body: string; buttons: string[] }>
+  nextAction: string | null
+}
+
+export async function playPersona(input: {
+  persona: Persona
+  model: ModelAdapter
+  customerModel: { apiKey: string; model: string }
+  withAnswers: boolean
+}): Promise<Played> {
+  const world = await createSimWorld({ withAnswers: input.withAnswers })
+  try {
+    return await play(world, input)
+  } finally {
+    await world.close()
+  }
+}
+
+async function play(
+  world: SimWorld,
+  input: { persona: Persona; model: ModelAdapter; customerModel: { apiKey: string; model: string } },
+): Promise<Played> {
+  const { persona } = input
+  const { conversationId } = await newCustomer(world, persona.brief.match(/You are ([^,.]+)/)?.[1] ?? 'Customer')
+  const deps: TurnDependencies = {
+    run: world.run, transact: world.transact, model: input.model, destination: 'send',
+  }
+
+  if (persona.before === 'ferrari_taken') {
+    // Somebody else has the Ferrari for the next fortnight.
+    await world.run(
+      `insert into vehicle_availability (operator_id, vehicle_id, start_date, end_date, reason, recorded_by)
+       values ($1, $2, to_char(now(), 'YYYY-MM-DD'), to_char(now() + interval '14 days', 'YYYY-MM-DD'),
+               'booked', 'another customer')`,
+      [OPERATOR, world.vehicles.ferrari],
+    )
+  }
+
+  const lines: Line[] = []
+  const errors: string[] = []
+  const turnMs: number[] = []
+  let seen = new Date(0)
+
+  /** What went out since last time, as the customer would see it. */
+  const collect = async () => {
+    const rows = await world.run(
+      `select body, reply_buttons, reply_list, reply_image_url, created_at from messages
+       where conversation_id = $1 and direction = 'outbound' and created_at > $2
+       order by created_at`,
+      [conversationId, seen.toISOString()],
+    )
+    for (const r of rows) {
+      seen = new Date(r['created_at'] as string)
+      const buttons = (r['reply_buttons'] as Array<{ title: string }> | null)?.map((b) => b.title)
+      const list = (r['reply_list'] as { rows: Array<{ title: string }> } | null)?.rows.map((x) => x.title)
+      lines.push({
+        from: 'business',
+        text: String(r['body'] ?? ''),
+        ...(buttons === undefined ? {} : { buttons }),
+        ...(list === undefined ? {} : { list }),
+        ...(r['reply_image_url'] == null ? {} : { photo: true }),
+      })
+    }
+  }
+
+  const insert = async (kind: 'text' | 'image', body: string | null): Promise<string> => {
+    const [m] = await world.run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id, media)
+       values ($1, $2, 'inbound', $3::message_kind, $4, $5, $6::jsonb) returning id`,
+      [OPERATOR, conversationId, kind, body, `wamid.sim.${Math.random()}`,
+        kind === 'image' ? JSON.stringify({ type: 'image', mediaId: 'sim', mimeType: 'image/jpeg' }) : null],
+    )
+    await world.run(
+      `update conversations set last_customer_message_at = now(), revision = revision + 1,
+         updated_at = now() where id = $1`,
+      [conversationId],
+    )
+    return m!['id'] as string
+  }
+
+  /** The worker's process_inbound_message, minus WhatsApp. */
+  const process = async (messageId: string) => {
+    const started = Date.now()
+    const result = await processInboundMessage(world.run, { message_id: messageId, operator_id: OPERATOR }, {
+      systemAiSendingEnabled: true, dispatcherAvailable: true,
+    })
+    if (result.outcome !== 'processed') {
+      errors.push(`message not processed: ${result.outcome}`)
+      return
+    }
+    const { context, handling } = result
+    if (handling.reason === 'urgent_needs_a_person' && handling.urgent !== undefined) {
+      await handleUrgentMessage(deps, context, handling.urgent)
+    } else if (handling.reason === 'non_text_needs_a_person') {
+      const filed = await fileDocumentIfBooked(deps, context)
+      if (filed === null) await handleNonTextMessage(deps, context)
+    } else if (handling.reason === 'human_owns_the_conversation') {
+      await acknowledgeWaiting(deps, context)
+    } else if (handling.action === 'draft') {
+      await greetIfNew(deps, context)
+      const outcome = await runConversationTurn(deps, context)
+      if (outcome.outcome === 'failed' || outcome.outcome === 'skipped') {
+        errors.push(`turn ${outcome.outcome}: ${JSON.stringify(outcome).slice(0, 200)}`)
+      }
+    }
+    turnMs.push(Date.now() - started)
+  }
+
+  const lastButtons = async (): Promise<Array<{ id: string; title: string }>> => {
+    const [r] = await world.run(
+      `select reply_buttons, reply_list from messages where conversation_id = $1 and direction = 'outbound'
+       order by created_at desc limit 1`,
+      [conversationId],
+    )
+    const buttons = (r?.['reply_buttons'] as Array<{ id: string; title: string }> | null) ?? []
+    const rows = (r?.['reply_list'] as { rows: Array<{ id: string; title: string }> } | null)?.rows ?? []
+    return [...buttons, ...rows]
+  }
+
+  const maxTurns = persona.maxTurns ?? 18
+  for (let turn = 0; turn < maxTurns; turn++) {
+    let action: CustomerAction
+    try {
+      action = await nextAction({ ...input.customerModel, brief: persona.brief, lines })
+    } catch (error) {
+      errors.push(`customer model: ${error instanceof Error ? error.message : String(error)}`)
+      break
+    }
+
+    try {
+      if ('done' in action) {
+        lines.push({ from: 'customer', text: `[leaves: ${action.done}]` })
+        break
+      }
+      if ('wait' in action) {
+        lines.push({ from: 'customer', text: '[goes quiet]' })
+        // Time passes: whatever chase was scheduled comes due now.
+        await world.run(
+          `update follow_ups set due_at = now() - interval '1 second'
+           where conversation_id = $1 and state = 'scheduled'`, [conversationId])
+        const swept = await sendDueFollowUps(world.run, () => undefined)
+        if (swept.sent === 0) lines.push({ from: 'customer', text: '[nothing came — no follow-up was sent]' })
+        await collect()
+        continue
+      }
+      if ('tap' in action) {
+        const options = await lastButtons()
+        const chosen = options.find((o) => o.title.toLowerCase() === action.tap.toLowerCase())
+        if (chosen === undefined) {
+          errors.push(`customer tapped "${action.tap}", which was not offered`)
+          lines.push({ from: 'customer', text: action.tap })
+          await process(await insert('text', action.tap))
+        } else {
+          const body = meaningOfButton(chosen.id, chosen.title)
+          lines.push({ from: 'customer', text: `[taps "${chosen.title}"]` })
+          await process(await insert('text', body))
+        }
+      } else if ('photo' in action || 'photos' in action) {
+        const photos = 'photos' in action ? action.photos : [action.photo]
+        lines.push({ from: 'customer', text: `[sends ${photos.length} photo${photos.length === 1 ? '' : 's'}: ${photos.join(', ')}]` })
+        // Sent together: like the webhook, only the newest is processed.
+        let last = ''
+        for (const _ of photos) last = await insert('image', null)
+        await process(last)
+      } else {
+        lines.push({ from: 'customer', text: action.message })
+        await process(await insert('text', action.message))
+      }
+    } catch (error) {
+      errors.push(`turn threw: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    await collect()
+  }
+
+  return { persona, lines, errors, turnMs, facts: await factsFor(world.run, conversationId) }
+}
+
+async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFacts> {
+  const bookingRows = await run(
+    `select b.id, b.state::text as state, q.days,
+            trim(v.make || ' ' || v.model) as vehicle
+     from bookings b join quotes q on q.id = b.quote_id
+     left join vehicles v on v.id = q.vehicle_id
+     where b.conversation_id = $1 order by b.created_at`,
+    [conversationId],
+  )
+  const bookings: RunFacts['bookings'] = []
+  for (const b of bookingRows) {
+    const list = b['state'] === 'confirmed'
+      ? await bookingChecklist(run, { operatorId: OPERATOR, bookingId: b['id'] as string })
+      : null
+    bookings.push({
+      state: b['state'] as string,
+      vehicle: (b['vehicle'] as string) ?? null,
+      days: b['days'] == null ? null : Number(b['days']),
+      handover: list?.handover ?? null,
+      deliveryAddress: list?.deliveryAddress ?? null,
+      deliveryTime: list?.deliveryTime ?? null,
+      documents: list?.documents ?? 0,
+      paymentPlan: list?.paymentPlan ?? null,
+    })
+  }
+  const [quote] = await run(
+    `select q.days, q.total_minor, trim(v.make || ' ' || v.model) as vehicle from quotes q
+     left join vehicles v on v.id = q.vehicle_id
+     where q.conversation_id = $1 and q.state <> 'superseded' order by q.revision desc limit 1`,
+    [conversationId],
+  )
+  const held = await run(
+    `select 1 from vehicle_availability where held_for_conversation_id = $1 and released_at is null
+       and expires_at > now()`, [conversationId])
+  const handoffs = await run(`select reason::text as reason, summary from handoffs where conversation_id = $1`, [conversationId])
+  const runs = await run(
+    `select result_state::text as state, duration_ms from agent_runs where conversation_id = $1 order by created_at`,
+    [conversationId])
+  const outbound = await run(
+    `select body, reply_buttons from messages where conversation_id = $1 and direction = 'outbound' order by created_at`,
+    [conversationId])
+  const [conversation] = await run(`select next_action from conversations where id = $1`, [conversationId])
+  return {
+    bookings,
+    latestQuote: quote === undefined ? null : {
+      vehicle: (quote['vehicle'] as string) ?? null, days: Number(quote['days']), totalMinor: Number(quote['total_minor']),
+    },
+    held: held.length > 0,
+    handoffs: handoffs.map((h) => ({ reason: h['reason'] as string, summary: String(h['summary'] ?? '') })),
+    runs: runs.map((r) => ({ state: r['state'] as string, ms: Number(r['duration_ms'] ?? 0) })),
+    outbound: outbound.map((o) => ({
+      body: String(o['body'] ?? ''),
+      buttons: ((o['reply_buttons'] as Array<{ title: string }> | null) ?? []).map((b) => b.title),
+    })),
+    nextAction: (conversation?.['next_action'] as string) ?? null,
+  }
+}

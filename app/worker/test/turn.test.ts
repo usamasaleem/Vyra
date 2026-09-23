@@ -1388,14 +1388,15 @@ describe('showing a car the model did not look up', () => {
     })
 
     /**
-     * A WhatsApp message carries an image or an interactive, never both.
+     * A WhatsApp message carries an image or an interactive, never both — so
+     * when a reply has both, the pictures go first as their own messages and
+     * the question arrives last with its buttons.
      *
-     * It used to be the buttons that won, which was invisible while the button
-     * patterns matched one reply in ninety-eight. Widening them surfaced it: a
-     * customer who had just picked the Ferrari off the list would have lost its
-     * photographs to two buttons.
+     * It used to be one or the other. Buttons winning cost a customer the
+     * photographs of the car they had just picked; photographs winning cost
+     * the first quote its "Yes, book it" / "Hold it for me", live.
      */
-    it('keeps the photographs and drops the buttons', async () => {
+    it('sends the photographs first and the question last, with its buttons', async () => {
       await addHuracan()
       await addFerrari()
       await shownAlready(PHOTOS[0]!)
@@ -1406,13 +1407,20 @@ describe('showing a car the model did not look up', () => {
         reply: 'The Ferrari 488 — AED 5,000 per day. Still looking at 19th to 21st September?',
       }], 'send', ctx)
 
-      const [sent] = await run(
-        `select reply_image_url, reply_buttons from messages
-         where direction = 'outbound' and delivery_state = 'pending'
-         order by created_at desc limit 1`, [],
+      const [reply] = await run(
+        `select id, reply_image_url, reply_buttons from messages
+         where direction = 'outbound' and idempotency_key = $1`, [`turn:${ctx.message.id}`],
       )
-      expect(sent!['reply_image_url']).toBe(FERRARI[0])
-      expect(sent!['reply_buttons']).toBeNull()
+      expect(reply!['reply_image_url']).toBeNull()
+      expect(reply!['reply_buttons']).not.toBeNull()
+
+      // One job, led by the first photograph, ending with the reply.
+      const [job] = await run(
+        `select o.payload from outbox o join messages m on m.id = (o.payload->>'message_id')::uuid
+         where m.reply_image_url = $1 and o.event_type = 'dispatch_outbound'`, [FERRARI[0]],
+      )
+      const chained = (job!['payload'] as { also_message_ids: string[] }).also_message_ids
+      expect(chained[chained.length - 1]).toBe(reply!['id'])
     })
 
     /** And the buttons still arrive when there is no picture to displace. */

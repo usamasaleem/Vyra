@@ -342,8 +342,9 @@ describe('when the agent may settle a booking itself', () => {
 
   it('tells it to book rather than ask permission', () => {
     const text = atTheDecision(true)
-    expect(text).toContain('Then book it')
-    expect(text).toContain('do not ask whether they would like you to send it')
+    expect(text).toContain('Book it first')
+    expect(text).toContain('opens with "Booked"')
+    expect(text).toContain('Do not ask whether they would like you to send it')
     expect(text).not.toContain('You cannot book anything yourself')
   })
 
