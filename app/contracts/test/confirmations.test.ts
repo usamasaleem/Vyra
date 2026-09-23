@@ -425,6 +425,7 @@ describe('a reply that asks to book', () => {
     'Do you want me to reserve it?',
     'Ready to book?',
     'هل تريد أن أحجزها لك؟',
+    'It is AED 15,000 for 3 days. Shall I book it now, or hold it for you for 2 hours?',
   ])('is recognised: %s', (reply) => {
     expect(asksToBook(reply)).toBe(true)
   })

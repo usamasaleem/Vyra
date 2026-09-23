@@ -255,6 +255,18 @@ export const BOOKING_NOW: ReplyButton[] = [
   { id: 'booking_wait', title: 'Not just yet' },
 ]
 
+/**
+ * The same offer where the operator holds cars: book now, hold it, or not yet.
+ *
+ * The middle one is for the customer who was going to say "let me think" and
+ * disappear. Three is WhatsApp's limit for reply buttons.
+ */
+export const BOOKING_NOW_OR_HOLD: ReplyButton[] = [
+  { id: 'booking_confirm', title: 'Yes, book it' },
+  { id: 'booking_hold', title: 'Hold it for me' },
+  { id: 'booking_wait', title: 'Not just yet' },
+]
+
 export const DELIVERY_CHOICE: ReplyButton[] = [
   { id: 'prefers_delivery', title: 'Delivery' },
   { id: 'prefers_collection', title: 'Collection' },
@@ -397,9 +409,16 @@ const ASKS_TO_BOOK: RegExp[] = [
   /(?:أحجز|احجز|نحجز)[^؟?]{0,80}[؟?]/,
 ]
 
+/**
+ * "Shall I book it, or hold it for you for 2 hours?" is an either/or, and it
+ * is still the booking question — the three buttons answer exactly it.
+ */
+const BOOK_OR_HOLD = /\b(?:book|reserve)\b[^?]{0,80}\bor\b[^?]{0,40}\bhold\b[^?]{0,60}\?/i
+
 export function asksToBook(reply: string | null): boolean {
   if (reply === null || reply.trim() === '') return false
   if ((reply.match(/[?؟]/g) ?? []).length > 1) return false
+  if (BOOK_OR_HOLD.test(reply)) return true
   if (offersAChoice(reply)) return false
   return ASKS_TO_BOOK.some((p) => p.test(reply))
 }
@@ -419,6 +438,7 @@ const BUTTON_MEANINGS: Record<string, string> = {
   prefers_collection: "I'll collect it.",
   booking_confirm: 'Yes — please confirm this booking.',
   booking_wait: 'Not just yet.',
+  booking_hold: 'Please hold it for me while I decide.',
 }
 
 export function meaningOfButton(id: string, title: string): string {

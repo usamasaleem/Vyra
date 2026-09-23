@@ -9,6 +9,7 @@ import { requestHandoff } from './request-handoff.js'
 import { requestBookingReview } from './request-booking-review.js'
 import { extendBookingTool } from './extend-booking.js'
 import { recordBookingProgressTool } from './record-booking-progress.js'
+import { holdCarTool } from './hold-car.js'
 
 /**
  * Build plan step 24 — the boundary itself.
@@ -38,6 +39,7 @@ const IMPLEMENTATIONS: {
   request_booking_review: requestBookingReview,
   extend_booking: extendBookingTool,
   record_booking_progress: recordBookingProgressTool,
+  hold_car: holdCarTool,
 }
 
 export type ToolCallRecord = {

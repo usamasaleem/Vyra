@@ -316,6 +316,13 @@
       "when": 1790173354823,
       "tag": "0044_rental_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790174333935,
+      "tag": "0045_holds",
+      "breakpoints": true
     }
   ]
 }

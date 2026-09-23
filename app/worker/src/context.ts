@@ -39,6 +39,8 @@ export type ConversationContext = {
      * for is the one case the booking path refuses anyway.
      */
     mayConfirmBookings: boolean
+    /** How long the agent may hold a car for somebody deciding; null when it does not. */
+    holdMinutes: number | null
     policyVersion: number
   }
   conversation: {
@@ -80,7 +82,7 @@ const CONTEXT_SQL = `
   select
     o.id as operator_id, o.name as operator_name, o.timezone, o.website_url, o.service_hours,
     o.response_expectation, o.ai_sending_enabled, o.policy_version,
-    o.auto_confirm_bookings, o.availability_calendar_complete,
+    o.auto_confirm_bookings, o.availability_calendar_complete, o.hold_minutes,
     v.id as conversation_id, v.revision, v.handler_mode, v.sales_stage,
     v.summary, v.summary_through_count,
     v.waiting_reason, v.booking_status, v.owner_membership_id,
@@ -138,6 +140,10 @@ export async function loadConversationContext(
       aiSendingEnabled: row['ai_sending_enabled'] === true,
       mayConfirmBookings: row['auto_confirm_bookings'] === true
         && row['availability_calendar_complete'] === true,
+      // Only where the calendar can be trusted: a hold on a car nobody knows
+      // is free is a promise with nothing under it.
+      holdMinutes: row['hold_minutes'] != null && row['availability_calendar_complete'] === true
+        ? Number(row['hold_minutes']) : null,
       policyVersion: Number(row['policy_version']),
     },
     conversation: {

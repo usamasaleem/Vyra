@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v31'
+export const PROMPT_VERSION = 'sales-v32'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -433,6 +433,11 @@ export function systemPromptFor(input: {
      */
     collecting?: { where: string | null }
   }
+  /**
+   * The operator holds cars for somebody deciding: for how long, said the way
+   * a person says it ("2 hours"), and the hold this conversation has now.
+   */
+  holds?: { hours: string; active: { vehicle: string | null; until: string } | null }
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -784,6 +789,16 @@ export function systemPromptFor(input: {
       + `So never offer to send anything to the team for confirmation and never say a colleague `
       + `will confirm it — ask whether they would like you to book it, in those words, and then `
       + `do it.`
+      + (input.holds === undefined
+        ? ''
+        : ` You can also hold a quoted car for ${input.holds.hours}: with every price you give, `
+          + `offer both in one short line — book it now, or you can hold it for them for `
+          + `${input.holds.hours}. When they ask you to hold it, or say they need to think or check `
+          + `with somebody, hold it with hold_car and the quoteId.`
+          + (input.holds.active === null
+            ? ''
+            : ` You are holding the ${input.holds.active.vehicle ?? 'car'} for them until `
+              + `${input.holds.active.until}. If they say yes, book it with that same quote.`))
 
   /**
    * Only said when there has ever been a booking in this thread. For a new

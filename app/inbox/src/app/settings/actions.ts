@@ -46,6 +46,8 @@ export async function saveSettings(
     // handles it however long that takes.
     aiResumesAfterMinutes: minutes(formData, 'aiResumesAfterMinutes'),
     followUpAfterMinutes: minutes(formData, 'followUpAfterMinutes') ?? Number.NaN,
+    // Blank is off: the agent does not offer to hold cars at all.
+    holdMinutes: minutes(formData, 'holdMinutes'),
     handoffSlaMinutes: minutes(formData, 'handoffSlaMinutes') ?? Number.NaN,
     answerValidMinutes: minutes(formData, 'answerValidMinutes') ?? Number.NaN,
     retentionDays: minutes(formData, 'retentionDays') ?? Number.NaN,

@@ -19,6 +19,8 @@ export type OperatorSettings = {
   /** Null switches off taking a conversation back from a silent salesperson. */
   aiResumesAfterMinutes: number | null
   followUpAfterMinutes: number
+  /** How long the agent holds a car for somebody deciding. Null: it does not. */
+  holdMinutes: number | null
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -44,7 +46,7 @@ export async function getOperatorSettings(
 ): Promise<OperatorSettings | null> {
   const rows = await run(
     `select o.name, o.timezone, o.website_url, o.ai_sending_enabled, o.ai_resumes_after_minutes,
-            o.follow_up_after_minutes, o.handoff_sla_minutes, o.answer_valid_minutes,
+            o.follow_up_after_minutes, o.hold_minutes, o.handoff_sla_minutes, o.answer_valid_minutes,
             o.retention_days, o.fallback_owner_membership_id,
             o.auto_confirm_bookings, o.auto_confirm_limit_minor,
             o.availability_calendar_complete,
@@ -66,6 +68,7 @@ export async function getOperatorSettings(
       ? null
       : Number(row['ai_resumes_after_minutes']),
     followUpAfterMinutes: Number(row['follow_up_after_minutes']),
+    holdMinutes: row['hold_minutes'] == null ? null : Number(row['hold_minutes']),
     handoffSlaMinutes: Number(row['handoff_sla_minutes']),
     answerValidMinutes: Number(row['answer_valid_minutes']),
     retentionDays: Number(row['retention_days']),
@@ -85,6 +88,8 @@ export type SettingsUpdate = {
   websiteUrl: string | null
   aiResumesAfterMinutes: number | null
   followUpAfterMinutes: number
+  /** How long the agent holds a car for somebody deciding. Null: it does not. */
+  holdMinutes: number | null
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -104,6 +109,7 @@ export type SettingsUpdate = {
 export const SETTING_BOUNDS = {
   aiResumesAfterMinutes: { min: 5, max: 10_080 },
   followUpAfterMinutes: { min: 5, max: 1_440 },
+  holdMinutes: { min: 15, max: 1_440 },
   handoffSlaMinutes: { min: 5, max: 1_440 },
   answerValidMinutes: { min: 15, max: 10_080 },
   retentionDays: { min: 30, max: 3_650 },
@@ -132,7 +138,7 @@ export function checkSettings(update: SettingsUpdate): SettingsProblem[] {
   for (const [field, bound] of Object.entries(SETTING_BOUNDS)) {
     const value = update[field as keyof typeof SETTING_BOUNDS]
     // Null is off, where the setting allows it, and is not out of range.
-    if (value === null) continue
+    if (value == null) continue
     if (!Number.isInteger(value) || value < bound.min || value > bound.max) {
       problems.push({
         field,
@@ -174,6 +180,7 @@ export async function updateOperatorSettings(
        ),
        auto_confirm_bookings = $11,
        auto_confirm_limit_minor = $12,
+       hold_minutes = $13,
        updated_at = now()
      where o.id = $1
      returning o.id`,
@@ -182,7 +189,7 @@ export async function updateOperatorSettings(
       input.aiResumesAfterMinutes, input.followUpAfterMinutes, input.handoffSlaMinutes,
       input.answerValidMinutes, input.retentionDays, input.fallbackOwnerMembershipId,
       usableWebsite(input.websiteUrl),
-      input.autoConfirmBookings, input.autoConfirmLimitMinor,
+      input.autoConfirmBookings, input.autoConfirmLimitMinor, input.holdMinutes,
     ],
   )
   if (rows.length === 0) return { saved: false }
@@ -202,6 +209,7 @@ export async function updateOperatorSettings(
         retention_days: input.retentionDays,
         auto_confirm_bookings: input.autoConfirmBookings,
         auto_confirm_limit_minor: input.autoConfirmLimitMinor,
+        hold_minutes: input.holdMinutes,
       }),
     ],
   )

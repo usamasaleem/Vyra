@@ -86,7 +86,10 @@ export type RunTurnOptions = {
     /** The operator's own words on how to pay. Null when unpublished. */
     paymentInstructions: string | null
     paymentLink: string | null
+    collecting?: { where: string | null }
   }
+  /** Holding a car for somebody deciding. See systemPromptFor. */
+  holds?: { hours: string; active: { vehicle: string | null; until: string } | null }
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -176,6 +179,7 @@ export async function runTurn(
             ? {}
             : { bookingsOnFile: options.bookingsOnFile }),
           ...(options.afterBooking === undefined ? {} : { afterBooking: options.afterBooking }),
+          ...(options.holds === undefined ? {} : { holds: options.holds }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),

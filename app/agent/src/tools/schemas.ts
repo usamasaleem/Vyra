@@ -147,6 +147,12 @@ export const recordBookingProgressSchema = z.strictObject({
   ),
 })
 
+export const holdCarSchema = z.strictObject({
+  quoteId: z.string().describe(
+    'The quote for the car and dates they want held, exactly as prepare_quote returned it.',
+  ),
+})
+
 export const requestBookingReviewSchema = z.strictObject({
   quoteId: z.string().describe(
     'The quote the customer wants to proceed with, as returned by prepare_quote. It must be '
@@ -173,6 +179,7 @@ export const TOOL_SCHEMAS = {
   request_booking_review: requestBookingReviewSchema,
   extend_booking: extendBookingSchema,
   record_booking_progress: recordBookingProgressSchema,
+  hold_car: holdCarSchema,
 } as const
 
 export type ToolName = keyof typeof TOOL_SCHEMAS
@@ -203,6 +210,11 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Save what they told you about a confirmed booking: the delivery address, the delivery '
     + 'time, how they will pay, or that they have paid. Call it as soon as they say any of it. '
     + 'It only fills in what they gave, so call it again for each new piece.',
+  hold_car:
+    'Hold a quoted car for somebody who is not ready to book yet — "let me think", "I need to '
+    + 'check with my wife", or a tap on Hold it for me. The car is theirs for a set time and '
+    + 'nobody else can book it; after that it lets go on its own. Pass the quoteId of the price '
+    + 'they were given. Not for somebody who has said yes — book that instead.',
   extend_booking:
     'Keep the car they already have for longer. Use this when somebody with a confirmed rental '
     + 'asks to keep it — it checks the car is free for the extra days, prices them at the '

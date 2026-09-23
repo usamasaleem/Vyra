@@ -10,6 +10,7 @@ type Settings = {
   websiteUrl: string | null
   aiResumesAfterMinutes: number | null
   followUpAfterMinutes: number
+  holdMinutes: number | null
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -120,6 +121,15 @@ export function SettingsForm({
           problem={problem('followUpAfterMinutes')}
         >
           {number('followUpAfterMinutes', settings.followUpAfterMinutes)}
+        </Field>
+
+        <Field
+          name="holdMinutes"
+          label="Hold a car while they decide (minutes)"
+          hint="Offered with every quote: book it now, or the agent holds it for them this long, and nobody else can book it in the meantime. It lets go on its own. Blank switches holds off."
+          problem={problem('holdMinutes')}
+        >
+          {number('holdMinutes', settings.holdMinutes)}
         </Field>
 
         <Field

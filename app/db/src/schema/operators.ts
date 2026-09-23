@@ -139,6 +139,12 @@ export const operators = pgTable('operators', {
      */
     autoConfirmLimitMinor: integer(),
     availabilityCalendarComplete: boolean().notNull().default(false),
+    /**
+     * How long the agent may hold a car for somebody deciding, in minutes.
+     * Null: it does not offer holds. The operator's rule, never a default —
+     * a hold is a car nobody else can have.
+     */
+    holdMinutes: integer(),
 
   /**
    * How long to wait before chasing a customer who has gone quiet.

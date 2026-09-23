@@ -1,5 +1,6 @@
+import { BOOKING_NOW, BOOKING_NOW_OR_HOLD } from '@vyra/contracts'
 import {
-  findDueFollowUps, markFollowUpNeedsAPerson, markFollowUpSent, queueOutboundText,
+  findDueFollowUps, followUpFacts, markFollowUpNeedsAPerson, markFollowUpSent, queueOutboundText,
   raiseHandoff, scheduleFollowUp, type QueryRunner,
 } from '@vyra/db'
 
@@ -94,7 +95,32 @@ export async function sendDueFollowUps(
      * published policy is what the operator approved being sent, and anything
      * else is a different message with their name on it.
      */
-    const body = item.approvedPolicy as string
+    /**
+     * With the car underneath, checked now: which one, when, what it costs,
+     * and whether it is still available or held for them. The operator's line
+     * stays first and unchanged — this is the record's part, not a rewording.
+     */
+    const facts = await followUpFacts(run, {
+      operatorId: item.operatorId, conversationId: item.conversationId,
+    }).catch(() => null)
+    const body = facts === null
+      ? item.approvedPolicy as string
+      : `${item.approvedPolicy as string}\n\n${facts.text}`
+
+    /**
+     * One tap to say yes, when there is a yes to say: the car is available, or
+     * already held for them. Not under a chase whose car has gone.
+     */
+    const [flags] = facts === null || (facts.state !== 'available' && facts.state !== 'held')
+      ? []
+      : await run(
+        `select auto_confirm_bookings and availability_calendar_complete as may_confirm, hold_minutes
+         from operators where id = $1`, [item.operatorId])
+    const replyButtons = flags?.['may_confirm'] !== true
+      ? null
+      : facts!.state === 'available' && flags['hold_minutes'] != null
+        ? BOOKING_NOW_OR_HOLD
+        : BOOKING_NOW
 
     const queued = await queueOutboundText(run, {
       conversationId: item.conversationId,
@@ -102,6 +128,7 @@ export async function sendDueFollowUps(
       body,
       // Per follow-up, so a retried sweep cannot chase the same customer twice.
       idempotencyKey: `followup:${item.id}`,
+      replyButtons,
     })
 
     await markFollowUpSent(run, {

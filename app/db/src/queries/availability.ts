@@ -80,6 +80,14 @@ export async function checkCalendar(
        -- Overlap, not containment: a booking that covers any part of the
        -- requested range means the car is not free for the whole of it.
        and a.start_date <= $4 and a.end_date >= $3
+       -- A hold that has run out holds nothing, and a hold for the person
+       -- asking is theirs: it blocks everybody except them.
+       and (a.expires_at is null or a.expires_at > now())
+       -- Written out, not "is distinct from": with nobody asking, $5 is null,
+       -- and null is not distinct from an ordinary block's null — which would
+       -- quietly drop every booking from the check.
+       and (a.held_for_conversation_id is null or $5::uuid is null
+            or a.held_for_conversation_id <> $5::uuid)
      -- Somebody else's block decides the answer even when their own also
      -- overlaps: the car genuinely is not available to them for all of it.
      order by theirs asc, a.end_date desc

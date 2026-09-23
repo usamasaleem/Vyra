@@ -6,7 +6,7 @@ import { dispatchMessage } from './dispatcher.js'
 import { releaseAbandonedJobs } from './abandoned-jobs.js'
 import { reapStaleDispatching } from './failures.js'
 import {
-  purgeExpiredConversations,
+  purgeExpiredConversations, releaseExpiredHolds,
   escalateAbandonedConversations, escalateOverdueHandoffs, findSendingCredentials,
   resumeAbandonedConversations,
 } from '@vyra/db'
@@ -283,6 +283,11 @@ async function relayLoop(): Promise<void> {
         if (chased.sent > 0 || chased.raisedForAPerson > 0 || chased.rescheduled > 0) {
           log({ event: 'followups.swept', ...chased })
         }
+
+        // Holds that ran out. The overlap checks already ignore them; this
+        // makes the calendar read true to a person as well.
+        const letGo = await releaseExpiredHolds(query)
+        if (letGo > 0) log({ event: 'holds.expired', count: letGo })
 
         // The day before a car goes out, and the day before it comes back.
         const reminded = await sendDueReminders(query, log)

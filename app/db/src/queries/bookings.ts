@@ -1,4 +1,5 @@
 import { raiseWhatIsOwed } from './payments.js'
+import { releaseHoldsFor } from './holds.js'
 import type { QueryRunner, Transactor } from '../runner.js'
 
 /**
@@ -380,8 +381,11 @@ async function autoConfirm(
      where a.operator_id = $1 and a.vehicle_id = $2 and a.released_at is null
        and a.booking_id is distinct from $5
        and a.start_date <= $4 and a.end_date >= $3
+       -- Their own hold is what they are booking, not a clash with it.
+       and (a.expires_at is null or a.expires_at > now())
+       and a.held_for_conversation_id is distinct from $6::uuid
      limit 1`,
-    [input.operatorId, vehicleId, startDate, endDate, input.bookingId],
+    [input.operatorId, vehicleId, startDate, endDate, input.bookingId, input.conversationId],
   )
   if (clash !== undefined) return false
 
@@ -401,6 +405,10 @@ async function autoConfirm(
      values ($1, $2, $3, $4, 'booked', 'confirmed by the agent', $5)`,
     [input.operatorId, vehicleId, startDate, endDate, input.bookingId],
   )
+  // Booked is what the hold was for; it has done its job.
+  await releaseHoldsFor(tx, {
+    operatorId: input.operatorId, conversationId: input.conversationId, why: 'booked',
+  })
 
   await tx(
     `update conversations set booking_status = 'confirmed', updated_at = now()
@@ -515,6 +523,8 @@ export async function listBookingRequests(
        from vehicle_availability a
        where a.operator_id = b.operator_id and a.vehicle_id = q.vehicle_id
          and a.released_at is null and a.booking_id is distinct from b.id
+         and (a.expires_at is null or a.expires_at > now())
+         and a.held_for_conversation_id is distinct from b.conversation_id
          and a.start_date <= coalesce(q.end_date, q.start_date)::date::text
          and a.end_date >= q.start_date::date::text
        limit 1
@@ -637,6 +647,9 @@ export async function decideBooking(
          join vehicles v on v.id = a.vehicle_id and v.operator_id = a.operator_id
          where a.operator_id = $1 and a.vehicle_id = $2 and a.released_at is null
            and a.booking_id is distinct from $5
+           and (a.expires_at is null or a.expires_at > now())
+           and a.held_for_conversation_id is distinct from
+               (select conversation_id from bookings where id = $5)
            -- Overlap, not containment. Inclusive of the end date: a car coming
            -- back on the 27th is not reliably free to somebody else that
            -- morning, and over-holding costs a lead where under-holding costs
@@ -685,6 +698,10 @@ export async function decideBooking(
           input.membershipId, input.bookingId,
         ],
       )
+    }
+
+    if (input.decision === 'confirmed') {
+      await releaseHoldsFor(tx, { operatorId: input.operatorId, conversationId, why: 'booked' })
     }
 
     /**

@@ -196,6 +196,18 @@ export const vehicleAvailability = pgTable(
     bookingId: uuid(),
 
     /**
+     * A hold for somebody deciding: the conversation it is for, the quote it
+     * holds the price of, and when it lets go on its own.
+     *
+     * It blocks the car for everybody else and not for them — a customer told
+     * "I'm holding it for you until six" who then says yes must not be refused
+     * by their own hold.
+     */
+    heldForConversationId: uuid(),
+    heldForQuoteId: uuid(),
+    expiresAt: timestamp({ withTimezone: true }),
+
+    /**
      * Cleared rather than deleted, so a cancelled booking that cost an enquiry
      * can still be explained afterwards.
      */

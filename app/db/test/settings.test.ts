@@ -36,13 +36,28 @@ const valid: SettingsUpdate = {
   name: 'Vyra Pilot', timezone: 'Asia/Dubai', websiteUrl: null,
   aiResumesAfterMinutes: 60, followUpAfterMinutes: 10, handoffSlaMinutes: 30,
   answerValidMinutes: 240, retentionDays: 730, fallbackOwnerMembershipId: null,
-  autoConfirmBookings: false, autoConfirmLimitMinor: null,
+  autoConfirmBookings: false, autoConfirmLimitMinor: null, holdMinutes: null,
 }
 
 const save = (over: Partial<SettingsUpdate> = {}) =>
   updateOperatorSettings(run, {
     ...valid, ...over, operatorId: OP, actorMembershipId: SARA,
   })
+
+describe('holding a car', () => {
+  it('saves the length, and blank is off', async () => {
+    await save({ holdMinutes: 120 })
+    expect((await getOperatorSettings(run, OP))!.holdMinutes).toBe(120)
+    await save({ holdMinutes: null })
+    expect((await getOperatorSettings(run, OP))!.holdMinutes).toBeNull()
+  })
+
+  it('refuses a hold of a few minutes or a few days', () => {
+    expect(checkSettings({ ...valid, holdMinutes: 5 })).toEqual([
+      { field: 'holdMinutes', message: 'Choose a number between 15 and 1440.' },
+    ])
+  })
+})
 
 describe('reading the settings', () => {
   it('reports what the operator is currently running on', async () => {

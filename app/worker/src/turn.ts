@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
   asksToSeePhotos, asWhatsAppText, isOnlyAGreeting, buttonsFor, photosPromisedIn, detectDiscountRequest,
-  type AutomatedMessage, BOOKING_CONFIRMATION, BOOKING_NOW, carChosenIn, civilDateIn,
+  type AutomatedMessage, BOOKING_CONFIRMATION, BOOKING_NOW, BOOKING_NOW_OR_HOLD, carChosenIn, civilDateIn,
   DELIVERY_CHOICE,
   formatCivil, surfaceForAsking,
   FULL_RANGE_LABEL, isOpenAt, readServiceHours, type StopCode, mightNeedAvailability,
@@ -38,6 +38,7 @@ import {
   ASK_FOR,
   activeBookingFor,
   bookingChecklist,
+  activeHoldFor,
   BEFORE_HANDOVER,
   DOCUMENTS_WANTED,
   fileWaitingDocuments,
@@ -1074,6 +1075,39 @@ export async function runConversationTurn(
       return undefined
     })
 
+    /**
+     * Holding a car for somebody deciding: the operator's length, said the way
+     * a person says it, and whatever this conversation holds now — read from
+     * the calendar, so a hold that ran out is not described as still standing.
+     */
+    const holds = context.operator.holdMinutes === null || !context.operator.mayConfirmBookings
+      ? undefined
+      : await (async () => {
+        const minutes = context.operator.holdMinutes!
+        const hours = minutes % 60 === 0
+          ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}`
+          : `${minutes} minutes`
+        const held = await activeHoldFor(deps.run, {
+          operatorId: context.operator.id, conversationId: context.conversation.id,
+        })
+        if (held === null) return { hours, active: null }
+        const tz = context.operator.timezone
+        const civil = (d: Date) => new Intl.DateTimeFormat('en-CA', {
+          timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(d)
+        const time = new Intl.DateTimeFormat('en-GB', {
+          timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+        }).format(held.until)
+        const now = deps.now?.() ?? new Date()
+        return {
+          hours,
+          active: {
+            vehicle: held.vehicle,
+            until: civil(held.until) === civil(now) ? `${time} today` : `${time} tomorrow`,
+          },
+        }
+      })().catch(() => undefined)
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -1118,6 +1152,7 @@ export async function runConversationTurn(
       mayConfirmBookings: context.operator.mayConfirmBookings,
       ...(onFile === undefined ? {} : { bookingsOnFile: onFile }),
       ...(afterBooking === undefined ? {} : { afterBooking }),
+      ...(holds === undefined ? {} : { holds }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *
@@ -1324,7 +1359,9 @@ export async function runConversationTurn(
       : (readyToBook && !offersAChoice(end.reply)) || (!bookedThisTurn && asksToBook(end.reply))
       // "Confirm with team" promises a person who is not coming when the
       // agent settles bookings itself.
-      ? (context.operator.mayConfirmBookings ? BOOKING_NOW : BOOKING_CONFIRMATION)
+      ? (context.operator.mayConfirmBookings
+        ? (context.operator.holdMinutes !== null ? BOOKING_NOW_OR_HOLD : BOOKING_NOW)
+        : BOOKING_CONFIRMATION)
       : null,
     list: fromQuestion === 'car_list' || invitesACarChoice(end.reply)
       ? vehicleList(fleet)

@@ -165,9 +165,11 @@ export async function extendBooking(
       `select a.end_date, a.reason from vehicle_availability a
        where a.operator_id = $1 and a.vehicle_id = $2 and a.released_at is null
          and a.start_date <= $4 and a.end_date >= $3
+         and (a.expires_at is null or a.expires_at > now())
+         and a.held_for_conversation_id is distinct from $5::uuid
        order by a.start_date
        limit 1`,
-      [input.operatorId, vehicleId, holdFrom, input.newEndDate],
+      [input.operatorId, vehicleId, holdFrom, input.newEndDate, current['conversation_id']],
     )
     if (clash !== undefined) {
       return {
