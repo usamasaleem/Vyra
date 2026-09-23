@@ -20,7 +20,7 @@ import {
   type ModelAdapter, type Transcriber,
 } from '@vyra/agent'
 import {
-  acknowledgeWaiting, greetIfNew, handleNonTextMessage, handleUrgentMessage,
+  acknowledgeWaiting, greetIfNew, fileDocumentIfBooked, handleNonTextMessage, handleUrgentMessage,
   noticeOutOfHours, runConversationTurn,
 } from './turn.js'
 
@@ -561,6 +561,20 @@ const runner: Runner = await runWorker({
       if (handling.reason === 'non_text_needs_a_person') {
         if (context.message.providerId !== null) {
           void whatsapp.markRead({ messageId: context.message.providerId })
+        }
+        // A photo for a booking that is waiting on documents is filed, not
+        // handed to a person. Anything else falls through to the handoff.
+        const filed = await fileDocumentIfBooked(
+          { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
+          context,
+        ).catch((error: unknown) => {
+          log({ event: 'document.filing_failed', error: error instanceof Error ? error.message : String(error) })
+          return null
+        })
+        if (filed !== null) {
+          log({ event: 'turn.completed', jobId: helpers.job.id, conversation: context.conversation.id,
+            messageKind: context.message.kind, autosend: env.AI_AUTOSEND_ENABLED, ...filed })
+          return
         }
         const routed = await handleNonTextMessage(
           { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },

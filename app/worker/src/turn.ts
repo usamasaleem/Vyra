@@ -36,6 +36,8 @@ import {
   acceptTurnOutput,
   activeBookingFor,
   bookingChecklist,
+  DOCUMENTS_WANTED,
+  fileBookingDocument,
   bookingsOnFile,
   currentQuoteFor,
   ensureEnquiry,
@@ -143,6 +145,76 @@ const DEFAULT_ACKNOWLEDGEMENT =
  * said nothing. So this sends one honest sentence — no guess at the contents —
  * and puts the conversation in front of someone.
  */
+/**
+ * A photo sent for a booking is a document, not a mystery.
+ *
+ * Every photo used to become a handoff — "I can't view images, so a colleague
+ * will take a look" — which is right for a picture of a scratch and a dead end
+ * for the licence the agent had just asked for. When the customer has a
+ * confirmed booking that is still waiting on documents, a photo or a file is
+ * filed against it and acknowledged, and the conversation carries on without
+ * anybody being paged.
+ *
+ * Nothing here reads the image. Whether it is a licence, a passport or a
+ * picture of their lunch is a person's to see when they check the booking;
+ * the acknowledgement says so rather than pretending otherwise.
+ *
+ * Returns null when this is not that case, and the ordinary handoff runs.
+ */
+const DOCUMENT_KINDS = new Set(['image', 'document'])
+
+export async function fileDocumentIfBooked(
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  context: ConversationContext,
+): Promise<TurnResult | null> {
+  if (!DOCUMENT_KINDS.has(context.message.kind)) return null
+
+  const bookingId = await activeBookingFor(deps.run, {
+    operatorId: context.operator.id, conversationId: context.conversation.id,
+  })
+  if (bookingId === null) return null
+
+  const before = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
+  if (before === null || !before.missing.includes('documents')) return null
+
+  const { total } = await fileBookingDocument(deps.run, {
+    operatorId: context.operator.id,
+    bookingId,
+    conversationId: context.conversation.id,
+    messageId: context.message.id,
+  })
+
+  const after = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
+  const next = after?.missing[0]
+  const NEXT: Record<string, string> = {
+    delivery_address: 'What address should the car go to?',
+    delivery_time: 'What time on the first day would you like it?',
+    payment: 'How would you like to pay — bank transfer, a payment link, or card or cash on delivery?',
+  }
+
+  const body = total < DOCUMENTS_WANTED
+    ? 'Got it — I have added that to your booking. Could you send the other one too? We need '
+      + 'your driving licence and your passport or Emirates ID. The team checks them before delivery.'
+    : 'Got it — that is both, and they are on your booking. The team checks them before delivery.'
+      + (next !== undefined && NEXT[next] !== undefined ? ` ${NEXT[next]}` : '')
+
+  const accepted = await acceptTurnOutput(deps.transact, {
+    conversationId: context.conversation.id,
+    operatorId: context.operator.id,
+    revisionAtTurnStart: context.conversation.revision,
+    body,
+    idempotencyKey: `document:${context.message.id}`,
+    destination: deps.destination,
+  })
+
+  // The photo is filed whether or not the acknowledgement survives: a newer
+  // message overtaking it is the turn's business, not the document's.
+  if (!accepted.accepted) return { outcome: 'rejected', reason: String(accepted.reason) }
+  return accepted.destination === 'send'
+    ? { outcome: 'queued', messageId: accepted.queued.messageId }
+    : { outcome: 'drafted', noteId: accepted.noteId }
+}
+
 export async function handleNonTextMessage(
   deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
   context: ConversationContext,

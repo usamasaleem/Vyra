@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { scriptedModel, type ModelResponse } from '../../agent/src/turn/model.ts'
 import { loadConversationContext, type ConversationContext } from '../src/context.ts'
 import {
-  acknowledgeWaiting, greetIfNew, handleNonTextMessage, handleUrgentMessage,
+  acknowledgeWaiting, fileDocumentIfBooked, greetIfNew, handleNonTextMessage, handleUrgentMessage,
   noticeOutOfHours, runConversationTurn,
 } from '../src/turn.ts'
 import { draftKnowledge, publishKnowledge } from '../../db/src/queries/knowledge.ts'
@@ -2254,5 +2254,79 @@ describe('chasing what the enquiry still needs', () => {
       )
       expect(last!['body']).toBe('Noted.')
     })
+  })
+})
+
+
+/**
+ * A photo sent for a booking is a document, not a mystery.
+ *
+ * Every photo used to become a handoff — "I can't view images, so a colleague
+ * will take a look" — right for a picture of a scratch, and a dead end for the
+ * licence the agent had just asked for.
+ */
+describe('a photo for a booking that is waiting on documents', () => {
+  const inDays = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString().slice(0, 10)
+
+  const bookedFerrari = async () => {
+    const [car] = await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by)
+       values ($1,'Ferrari','488',2022,'Giallo','exotic','D 9','VIN9','operator_confirmed','Owner')
+       returning id`, [OP])
+    const enquiryId = (await ensureEnquiry(run, OP, CONV))!
+    const [q] = await run(
+      `insert into quotes (operator_id, conversation_id, enquiry_id, vehicle_id, revision, state,
+                           total_minor, lines, start_date, end_date, days, approved_by_membership_id,
+                           approved_at)
+       values ($1,$2,$3,$4,1,'sent',1000000,'[]'::jsonb,$5::timestamptz,$6::timestamptz,2,$7,now())
+       returning id`, [OP, CONV, enquiryId, car!['id'], inDays(3), inDays(5), MEMBER])
+    const [b] = await run(
+      `insert into bookings (operator_id, conversation_id, enquiry_id, quote_id, state, decided_at)
+       values ($1,$2,$3,$4,'confirmed',now()) returning id`, [OP, CONV, enquiryId, q!['id']])
+    return b!['id'] as string
+  }
+
+  const photo = async (kind = 'image') => {
+    const rows = await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, provider_id, media)
+       values ($1, $2, 'inbound', $3::message_kind, $4, '{"id":"media-1"}'::jsonb) returning id`,
+      [OP, CONV, kind, `wamid.${Math.random()}`])
+    return (await loadConversationContext(run, rows[0]!['id'] as string))!
+  }
+
+  it('files it against the booking instead of paging anybody', async () => {
+    const bookingId = await bookedFerrari()
+    const result = await fileDocumentIfBooked({ run, transact, destination: 'send' }, await photo())
+
+    expect(result).toMatchObject({ outcome: 'queued' })
+    expect(await run(`select id from booking_documents where booking_id = $1`, [bookingId]))
+      .toHaveLength(1)
+    expect(await run(`select id from handoffs where conversation_id = $1`, [CONV])).toEqual([])
+  })
+
+  it('asks for the other one, and never claims to have looked', async () => {
+    await bookedFerrari()
+    await fileDocumentIfBooked({ run, transact, destination: 'send' }, await photo())
+
+    const [reply] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV])
+    expect(reply!['body']).toContain('Could you send the other one')
+    expect(reply!['body']).toContain('team checks them')
+  })
+
+  it('takes a file as well as a photo', async () => {
+    await bookedFerrari()
+    expect(await fileDocumentIfBooked({ run, transact, destination: 'send' }, await photo('document')))
+      .not.toBeNull()
+  })
+
+  /** No booking, or a voice note: the ordinary handoff still runs. */
+  it('leaves everything else to the handoff', async () => {
+    expect(await fileDocumentIfBooked({ run, transact, destination: 'send' }, await photo()))
+      .toBeNull()
+    await bookedFerrari()
+    expect(await fileDocumentIfBooked({ run, transact, destination: 'send' }, await photo('audio')))
+      .toBeNull()
   })
 })
