@@ -11,6 +11,7 @@ import { playPersona, type Played } from '../simulate/run.js'
  *   npm run simulate --workspace=app/worker -- --only decisive-visitor,po-box
  *   npm run simulate --workspace=app/worker -- --answers      (payment + collection point published)
  *   npm run simulate --workspace=app/worker -- --out report.md
+ *   npm run simulate --workspace=app/worker -- --only terse --repeat 5     (a flaky one, five times)
  *
  * Each customer gets a database of their own, in memory — never production.
  * The agent is the real one, on the real model, so a run costs what that many
@@ -35,7 +36,9 @@ const modelName = process.env['AI_MODEL'] ?? 'gpt-5.6-luna'
 const effort = process.env['AI_REASONING_EFFORT'] as 'low' | 'medium' | 'high' | undefined
 const model = openaiModel({ apiKey, model: modelName, ...(effort === undefined ? {} : { effort }) })
 
-const personas = only === null ? PERSONAS : PERSONAS.filter((p) => only.includes(p.id))
+const repeat = Math.max(1, Number(flag('--repeat') ?? 1))
+const personas = (only === null ? PERSONAS : PERSONAS.filter((p) => only.includes(p.id)))
+  .flatMap((p) => Array.from({ length: repeat }, () => p))
 if (personas.length === 0) {
   console.error(`No personas match ${only?.join(', ')}. Known: ${PERSONAS.map((p) => p.id).join(', ')}`)
   process.exit(2)
@@ -57,7 +60,7 @@ await Promise.all(Array.from({ length: Math.min(concurrency, personas.length) },
     console.log(`${fails === 0 ? 'PASS' : 'FAIL'}  ${persona.id}${fails === 0 ? '' : `  (${fails} failing)`}`)
   }
 }))
-results.sort((a, b) => personas.indexOf(a.played.persona) - personas.indexOf(b.played.persona))
+results.sort((a, b) => PERSONAS.indexOf(a.played.persona) - PERSONAS.indexOf(b.played.persona))
 
 // — The report.
 const passed = results.filter((r) => r.findings.every((f) => f.severity !== 'fail')).length
@@ -99,6 +102,9 @@ for (const { played, findings } of results) {
     }
   }
   md.push('```', '')
+  md.push('<details><summary>Agent turns</summary>', '')
+  md.push(...played.facts.runs.map((r, i) => `${i + 1}. ${r.state}, ${Math.round(r.ms / 100) / 10}s — ${r.tools || 'no tools'}`))
+  md.push('', '</details>', '')
 }
 writeFileSync(out, md.join('\n'))
 console.log(`\n${passed} of ${results.length} passed. Report: ${out}`)

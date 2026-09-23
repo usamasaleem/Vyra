@@ -1948,7 +1948,8 @@ const PHOTOS_PER_CAR = 6
      * account". Read as a promise of a person, it opened a handoff for every
      * customer who paid.
      */
-    const aboutMoneyArriving = end.toolResults.some((r) => r.name === 'record_booking_progress')
+    const aboutMoneyArriving = (context.conversation.bookingStatus === 'confirmed'
+        || end.toolResults.some((r) => r.name === 'record_booking_progress'))
       && /\b(?:arriv|received|land|come through|reflect)/i.test(end.reply ?? '')
     const promised = discount === null && items.length === 0 && !aboutMoneyArriving
       ? promiseMadeIn(end.reply)

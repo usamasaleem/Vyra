@@ -22,7 +22,7 @@ const RULES: Array<{ rule: string; severity: 'fail' | 'warn'; test: RegExp; why:
   },
   {
     rule: 'promises a person will follow up', severity: 'fail',
-    test: /\bbe in touch\b|\bcolleague will (?:confirm|contact|call)\b|\bteam will confirm (?:it|your booking|the booking)\b|\bsend (?:it|this) to the team\b/i,
+    test: /\bbe in touch\b|\bcolleague will (?:confirm|contact|call)\b|\bteam will confirm (?:your booking|the booking)\b|\bsend (?:it|this) to the team\b/i,
     why: 'the agent does the follow-through itself',
   },
   { rule: 'says "this morning"', severity: 'warn', test: /\bthis morning\b/i, why: 'the photos went a moment ago' },

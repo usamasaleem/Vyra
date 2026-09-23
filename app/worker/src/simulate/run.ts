@@ -34,7 +34,7 @@ export type RunFacts = {
   latestQuote: { vehicle: string | null; days: number; totalMinor: number } | null
   held: boolean
   handoffs: Array<{ reason: string; summary: string }>
-  runs: Array<{ state: string; ms: number }>
+  runs: Array<{ state: string; ms: number; tools: string }>
   outbound: Array<{ body: string; buttons: string[] }>
   nextAction: string | null
 }
@@ -250,7 +250,7 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
        and expires_at > now()`, [conversationId])
   const handoffs = await run(`select reason::text as reason, summary from handoffs where conversation_id = $1`, [conversationId])
   const runs = await run(
-    `select result_state::text as state, duration_ms from agent_runs where conversation_id = $1 order by created_at`,
+    `select result_state::text as state, duration_ms, tool_names from agent_runs where conversation_id = $1 order by created_at`,
     [conversationId])
   const outbound = await run(
     `select body, reply_buttons from messages where conversation_id = $1 and direction = 'outbound'
@@ -264,7 +264,9 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
     },
     held: held.length > 0,
     handoffs: handoffs.map((h) => ({ reason: h['reason'] as string, summary: String(h['summary'] ?? '') })),
-    runs: runs.map((r) => ({ state: r['state'] as string, ms: Number(r['duration_ms'] ?? 0) })),
+    runs: runs.map((r) => ({
+      state: r['state'] as string, ms: Number(r['duration_ms'] ?? 0), tools: String(r['tool_names'] ?? ''),
+    })),
     outbound: outbound.map((o) => ({
       body: String(o['body'] ?? ''),
       buttons: ((o['reply_buttons'] as Array<{ title: string }> | null) ?? []).map((b) => b.title),
