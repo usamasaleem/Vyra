@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v29'
+export const PROMPT_VERSION = 'sales-v30'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -573,7 +573,9 @@ export function systemPromptFor(input: {
       + `again unless you want a narrower set or you need to check dates. The customer is `
       + `shown these as a tappable list under your reply, with the name, colour, engine and `
       + `rate of each, so naming them all again in the message repeats what is already in `
-      + `front of them — say something worth saying about them instead, and ask which one:`
+      + `front of them — say something worth saying about them instead, and ask which one. `
+      + `If they already named a car, it is that one: answer about it and do not offer the `
+      + `others unless they ask what else there is:`
       + `\n${input.fleetOnHand}`
 
   const NEEDS: Record<string, string> = {
@@ -826,8 +828,9 @@ export function systemPromptFor(input: {
       + (after.collecting === undefined
         ? ''
         : after.collecting.where === null
-          ? ` They are collecting the car. Nobody has written where from, so never name a place — if `
-            + `they ask, say you will send the exact pickup point.`
+          ? ` They are collecting the car. Nobody has written where from, so never name a place and `
+            + `do not bring it up yourself — a colleague has been asked to send it. If they ask, say `
+            + `the team will send them the exact pickup point.`
           : ` They are collecting the car. Where, in the operator's own words: `
             + `"${after.collecting.where}" Tell them this once, when they give the time.`)
 

@@ -38,6 +38,7 @@ import {
   activeBookingFor,
   bookingChecklist,
   DOCUMENTS_WANTED,
+  fileWaitingDocuments,
   fileBookingDocument,
   bookingsOnFile,
   currentQuoteFor,
@@ -178,11 +179,17 @@ export async function fileDocumentIfBooked(
   const before = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
   if (before === null || !before.missing.includes('documents')) return null
 
-  const { total } = await fileBookingDocument(deps.run, {
+  await fileBookingDocument(deps.run, {
     operatorId: context.operator.id,
     bookingId,
     conversationId: context.conversation.id,
     messageId: context.message.id,
+  })
+  // And any that arrived alongside it, whose own jobs gave way to this one.
+  const { total } = await fileWaitingDocuments(deps.run, {
+    operatorId: context.operator.id,
+    bookingId,
+    conversationId: context.conversation.id,
   })
 
   const after = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
@@ -617,6 +624,11 @@ export async function runConversationTurn(
   let askedThisTurn: EnquiryField[] = []
   /** Empty means the enquiry has everything section 3 asks for. */
   let nothingOutstanding = false
+  /**
+   * What the booking needs that only a person can supply, because the operator
+   * has not written it down. Raised as visible work after the reply is accepted.
+   */
+  let gapsForAPerson: string[] = []
 
   let end: (TurnEnd & {
     rounds: number
@@ -955,17 +967,49 @@ export async function runConversationTurn(
         operatorId: context.operator.id, conversationId: context.conversation.id,
       })
       if (bookingId === null) return undefined
+      /**
+       * A photo answered by a text: "here is the second" sent with the picture
+       * is one burst, answered from the text, and the picture's own job never
+       * runs. File it before reading what is still missing, or the reply asks
+       * for a document the customer is looking at in the chat.
+       */
+      await fileWaitingDocuments(deps.run, {
+        operatorId: context.operator.id, bookingId, conversationId: context.conversation.id,
+      })
       const list = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
       if (list === null) return undefined
       const payment = await getApprovedAnswer(
         deps.run, context.operator.id, 'payment', deps.now?.() ?? new Date())
-      const collecting = list.deliveryWanted
+      const collecting = list.handover !== 'collection'
         ? undefined
         : {
           where: (await getApprovedAnswer(
             deps.run, context.operator.id, 'collection-point', deps.now?.() ?? new Date(),
           ))?.answer ?? null,
         }
+
+      /**
+       * The two things the agent has to hand to a person when nobody has
+       * written them down: how to pay, and where to collect.
+       *
+       * Live: "A colleague will send you the payment details" and "I'll send
+       * you the exact pickup point" both went out, and neither became anything
+       * a colleague could see — "send" was not one of the words the promise
+       * check listens for. Decided here from the record rather than from the
+       * reply, so it does not depend on how the sentence was phrased.
+       */
+      const owedNow = list.owedMinor === 0 ? null : formatMoneyMinor(list.owedMinor, list.currency)
+      gapsForAPerson = [
+        ...(owedNow !== null && list.missing.includes('payment') && payment === null
+          && list.paymentLink === null
+          ? [`send them how to pay ${owedNow} — nothing is published under Answers for payment, `
+            + 'so the agent cannot (Bookings → Attach and send, or publish the payment answer)']
+          : []),
+        ...(collecting !== undefined && collecting.where === null
+          ? [`tell them where to collect the ${list.vehicle ?? 'car'} — no collection point is `
+            + 'published under Answers']
+          : []),
+      ]
       return {
         vehicle: list.vehicle,
         ...(collecting === undefined ? {} : { collecting }),
@@ -1757,6 +1801,7 @@ const PHOTOS_PER_CAR = 6
       .filter((call) => !(call.requestedName === 'prepare_quote' && context.operator.mayConfirmBookings))
       .map((call) => call.needsAPerson)
       .filter((item): item is string => item !== null)
+      .concat(gapsForAPerson)
 
     /**
      * A promise the turn made and did not keep.

@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   activeBookingFor, bookingChecklist, fileBookingDocument, markDocumentsChecked,
-  recordBookingProgress,
+  recordBookingProgress, fileWaitingDocuments,
 } from '../src/queries/booking-checklist.ts'
 import { decideBooking, requestBooking } from '../src/queries/bookings.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
@@ -194,5 +194,46 @@ describe('which booking the conversation is working on', () => {
 
   it('is nothing when they have none', async () => {
     expect(await activeBookingFor(run, { operatorId: OP, conversationId: CONV })).toBeNull()
+  })
+})
+
+/**
+ * Live: a licence and an Emirates ID arrived 0.7s apart, the older one's job
+ * gave way to the newer, and the booking held one of them.
+ */
+describe('photos that arrive together', () => {
+  it('files every photo sent since the booking, not only the newest', async () => {
+    const id = await confirmed()
+    await photo()
+    await photo()
+    expect(await fileWaitingDocuments(run, { operatorId: OP, bookingId: id, conversationId: CONV }))
+      .toEqual({ filed: 2, total: 2 })
+    expect((await bookingChecklist(run, { operatorId: OP, bookingId: id }))!.missing)
+      .not.toContain('documents')
+  })
+
+  it('files each one once', async () => {
+    const id = await confirmed()
+    await photo()
+    await fileWaitingDocuments(run, { operatorId: OP, bookingId: id, conversationId: CONV })
+    expect(await fileWaitingDocuments(run, { operatorId: OP, bookingId: id, conversationId: CONV }))
+      .toEqual({ filed: 0, total: 1 })
+  })
+
+  it('leaves photos from before the booking alone', async () => {
+    await photo()
+    await run(`update messages set created_at = now() - interval '1 day' where kind = 'image'`)
+    const id = await confirmed()
+    expect(await fileWaitingDocuments(run, { operatorId: OP, bookingId: id, conversationId: CONV }))
+      .toEqual({ filed: 0, total: 0 })
+  })
+})
+
+describe('changing between delivery and collection', () => {
+  it('drops a time given for the other one', async () => {
+    const id = await confirmed('collection')
+    await recordBookingProgress(run, { operatorId: OP, bookingId: id, deliveryTime: '16:00' })
+    await recordBookingProgress(run, { operatorId: OP, bookingId: id, clearTime: true })
+    expect((await bookingChecklist(run, { operatorId: OP, bookingId: id }))!.deliveryTime).toBeNull()
   })
 })

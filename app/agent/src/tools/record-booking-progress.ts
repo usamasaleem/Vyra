@@ -1,4 +1,4 @@
-import { ASK_FOR, activeBookingFor, bookingChecklist, recordBookingProgress } from '@vyra/db'
+import { ASK_FOR, activeBookingFor, bookingChecklist, recordBookingProgress, recordFields } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { recordBookingProgressSchema } from './schemas.js'
@@ -32,6 +32,25 @@ export async function recordBookingProgressTool(
     )
   }
 
+  /**
+   * Delivery or collection lives on the enquiry, where the checklist reads it.
+   *
+   * Live: "I'll collect it" was answered in words and recorded nowhere — this
+   * tool had no field for it and the enquiry questions had stopped once the car
+   * was booked — so the checklist still did not know, and the collection time
+   * was never asked for.
+   */
+  const before = await bookingChecklist(ctx.run, { operatorId: ctx.operatorId, bookingId })
+  const switched = args.handover !== null && before !== null && before.handover !== null
+    && before.handover !== args.handover
+  if (args.handover !== null && before?.enquiryId != null && before.handover !== args.handover) {
+    await recordFields(ctx.transact, {
+      operatorId: ctx.operatorId,
+      enquiryId: before.enquiryId,
+      observations: [{ field: 'delivery_preference', value: args.handover, sourceMessageId: ctx.messageId }],
+    })
+  }
+
   await recordBookingProgress(ctx.run, {
     operatorId: ctx.operatorId,
     bookingId,
@@ -39,6 +58,7 @@ export async function recordBookingProgressTool(
     deliveryTime: args.deliveryTime,
     paymentPlan: args.paymentPlan,
     saysPaid: args.saysPaid === true,
+    clearTime: switched,
   })
 
   const list = await bookingChecklist(ctx.run, { operatorId: ctx.operatorId, bookingId })

@@ -1050,6 +1050,34 @@ describe('request_booking_review', () => {
     expect(guidance).not.toMatch(/say somebody will be in touch about the details/)
   })
 
+  /**
+   * Live: "I'll collect it" was answered and recorded nowhere, so the booking
+   * never learned it and the collection time was never asked for.
+   */
+  it('records delivery or collection once the car is booked, and moves on to the time', async () => {
+    await run(
+      `update operators set auto_confirm_bookings = true, availability_calendar_complete = true
+       where id = $1`, [OP])
+    const [car] = await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by)
+       values ($1, 'Ferrari', '488', 2022, 'Giallo', 'exotic', 'D 8', 'V8',
+               'operator_confirmed', 'Owner') returning id`, [OP])
+    const quoteId = await sentQuote({ state: 'draft' })
+    await run(
+      `update quotes set vehicle_id = $2, start_date = '2026-10-01', end_date = '2026-10-02'
+       where id = $1`, [quoteId, car!['id']])
+    const boundary = createToolBoundary(ctx)
+    await boundary.call('request_booking_review', { quoteId })
+
+    const result = await boundary.call('record_booking_progress', {
+      handover: 'collection', deliveryAddress: null, deliveryTime: null, paymentPlan: null, saysPaid: null,
+    })
+    expect(result).toMatchObject({ status: 'ok' })
+    const next = (result as { data: { stillNeeded: string[] } }).data.stillNeeded
+    expect(next[0]).toBe('what time on the first day they will come to collect it')
+  })
+
   it('refuses a quote somebody here has rejected', async () => {
     const rejected = await sentQuote({ state: 'rejected' })
     const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: rejected })

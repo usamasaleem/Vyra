@@ -112,6 +112,11 @@ export const extendBookingSchema = z.strictObject({
 })
 
 export const recordBookingProgressSchema = z.strictObject({
+  handover: z.enum(['delivery', 'collection']).nullable().describe(
+    'Whether they want the car delivered or will collect it, the moment they say — "I\'ll '
+    + 'collect it", "bring it to me", a tapped Delivery or Collection. Null unless they said in '
+    + 'this message. Changing it is fine; a time given for the other one is dropped.',
+  ),
   deliveryAddress: z.string().min(3).nullable().describe(
     'The full address the car goes to, as they gave it — building, flat or villa, area. Null '
     + 'unless they gave one in this message. A P.O. Box is not an address a car can be handed '
@@ -123,8 +128,10 @@ export const recordBookingProgressSchema = z.strictObject({
     + '14:30. Null unless they gave one. If they gave a range, use the start of it.',
   ),
   paymentPlan: z.enum(['transfer', 'link', 'on_delivery']).nullable().describe(
-    'How they said they will pay: bank transfer, the payment link, or card or cash when the car '
-    + 'is delivered. Null unless they said.',
+    'How they said they will pay: bank transfer, the payment link, or card or cash at the '
+    + 'handover. Null unless they said. on_delivery only when they said they will pay when the car '
+    + 'is handed over — "card" alone, or asking you to send the details, is not that: ask, or leave '
+    + 'it null.',
   ),
   saysPaid: z.boolean().nullable().describe(
     'True only when they say they have already paid, or send a transfer screenshot. A person '

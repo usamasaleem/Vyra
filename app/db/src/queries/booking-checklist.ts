@@ -14,6 +14,9 @@ export type PaymentPlan = 'transfer' | 'link' | 'on_delivery'
 
 export type Checklist = {
   bookingId: string
+  enquiryId: string | null
+  /** What they chose, or null when nobody has asked yet. */
+  handover: 'delivery' | 'collection' | null
   vehicle: string | null
   startDate: string | null
   deliveryWanted: boolean
@@ -61,7 +64,7 @@ export async function bookingChecklist(
   input: { operatorId: string; bookingId: string },
 ): Promise<Checklist | null> {
   const [row] = await run(
-    `select b.id, b.delivery_address, b.delivery_time, b.payment_plan,
+    `select b.id, b.enquiry_id, b.delivery_address, b.delivery_time, b.payment_plan,
             b.customer_reported_paid_at, b.documents_checked_at,
             trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle,
             q.start_date::date::text as start_date, q.currency,
@@ -122,6 +125,8 @@ export async function bookingChecklist(
 
   return {
     bookingId: row['id'] as string,
+    enquiryId: (row['enquiry_id'] as string) ?? null,
+    handover: deliveryWanted ? 'delivery' : handoverKnown ? 'collection' : null,
     vehicle: (row['vehicle'] as string) ?? null,
     startDate: (row['start_date'] as string) ?? null,
     deliveryWanted,
@@ -177,12 +182,18 @@ export async function recordBookingProgress(
     deliveryTime?: string | null
     paymentPlan?: PaymentPlan | null
     saysPaid?: boolean
+    /**
+     * They switched between delivery and collection, so a time given for the
+     * other one no longer stands. Live: 4pm was said for a collection, the
+     * customer then chose delivery, and 4pm quietly became the delivery time.
+     */
+    clearTime?: boolean
   },
 ): Promise<{ recorded: boolean }> {
   const rows = await run(
     `update bookings
      set delivery_address = coalesce($3, delivery_address),
-         delivery_time = coalesce($4, delivery_time),
+         delivery_time = case when $7 then $4 else coalesce($4, delivery_time) end,
          payment_plan = coalesce($5, payment_plan),
          customer_reported_paid_at = case when $6 then coalesce(customer_reported_paid_at, now())
                                           else customer_reported_paid_at end,
@@ -192,7 +203,7 @@ export async function recordBookingProgress(
     [
       input.bookingId, input.operatorId,
       input.deliveryAddress ?? null, input.deliveryTime ?? null,
-      input.paymentPlan ?? null, input.saysPaid === true,
+      input.paymentPlan ?? null, input.saysPaid === true, input.clearTime === true,
     ],
   )
   return { recorded: rows.length > 0 }
@@ -220,6 +231,41 @@ export async function fileBookingDocument(
     [input.bookingId, input.operatorId],
   )
   return { filed: true, total: Number(row?.['n'] ?? 0) }
+}
+
+/**
+ * Every photo or file sent since the booking was confirmed that is not on it
+ * yet — not only the message this job happens to be about.
+ *
+ * Messages that arrive together are answered once, from the newest, which is
+ * right for "can you" / "send" / "more photos" and wrong for two photographs
+ * a second apart. Live: a licence and an Emirates ID arrived 0.7s apart, the
+ * older one's job gave way to the newer, and the booking held one of them. The
+ * customer was asked for "the other one" three times and had already sent it.
+ */
+export async function fileWaitingDocuments(
+  run: QueryRunner,
+  input: { operatorId: string; bookingId: string; conversationId: string },
+): Promise<{ filed: number; total: number }> {
+  const filed = await run(
+    `insert into booking_documents (operator_id, booking_id, conversation_id, message_id)
+     select m.operator_id, b.id, m.conversation_id, m.id
+     from messages m
+     join bookings b on b.id = $2 and b.operator_id = m.operator_id
+     where m.operator_id = $1 and m.conversation_id = $3
+       and m.direction = 'inbound' and m.kind in ('image', 'document')
+       and m.created_at >= coalesce(b.decided_at, b.created_at)
+       and not exists (select 1 from booking_documents d where d.message_id = m.id)
+     order by m.created_at
+     on conflict do nothing
+     returning message_id`,
+    [input.operatorId, input.bookingId, input.conversationId],
+  )
+  const [row] = await run(
+    `select count(*)::int as n from booking_documents where booking_id = $1 and operator_id = $2`,
+    [input.bookingId, input.operatorId],
+  )
+  return { filed: filed.length, total: Number(row?.['n'] ?? 0) }
 }
 
 /** A person has looked at the photos. Their name goes on it. */
