@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import {
-  attachPaymentLink, cancelBooking, decideBooking, markDocumentsChecked, NoDisplayName,
-  queueOutboundText, recordPayment, refundPayment,
+  attachLinkToAllDue, attachPaymentLink, cancelBooking, decideBooking, markDocumentsChecked,
+  NoDisplayName, queueOutboundText, recordAllDue, recordPayment, refundPayment,
 } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
@@ -198,18 +198,48 @@ export async function recordMoney(
    * empty one now refuses rather than falling through to taking money.
    */
   const what = String(formData.get('what') ?? '')
-  if (what !== 'paid' && what !== 'refund' && what !== 'link') {
+  if (!['paid', 'refund', 'link', 'paid_all', 'link_all'].includes(what)) {
     return { error: 'That form did not say what it was doing. Reload the page and try again.' }
   }
   const reference = String(formData.get('reference') ?? '').trim() || null
   const run = actorRunner(actor)
 
-  if (what === 'link') {
-    const linkUrl = String(formData.get('linkUrl') ?? '').trim()
-    if (linkUrl === '') return { error: 'Paste the link first.' }
-    if (!/^https:\/\//i.test(linkUrl)) {
-      return { error: 'A payment link has to be https. Anything else is not going to a customer.' }
+  const linkUrl = String(formData.get('linkUrl') ?? '').trim()
+  const linkProblem = linkUrl === ''
+    ? 'Paste the link first.'
+    : !/^https:\/\//i.test(linkUrl)
+      ? 'A payment link has to be https. Anything else is not going to a customer.'
+      : null
+
+  // The whole booking at once: the ordinary case, one transfer for everything.
+  if (what === 'link_all' || what === 'paid_all') {
+    const bookingId = String(formData.get('bookingId') ?? '')
+    if (what === 'link_all') {
+      if (linkProblem !== null) return { error: linkProblem }
+      const { attached } = await attachLinkToAllDue(run, {
+        operatorId: actor.operatorId, bookingId, linkUrl,
+      })
+      if (attached === 0) return { error: 'Nothing is still owed on that booking. Reload to see it.' }
+    } else {
+      const method = String(formData.get('method') ?? '')
+      if (!['link', 'bank_transfer', 'cash', 'card_in_person'].includes(method)) {
+        return { error: 'Say how it arrived. A payment nobody can account for is not a record.' }
+      }
+      const { recorded } = await recordAllDue(run, {
+        operatorId: actor.operatorId,
+        bookingId,
+        membershipId: actor.membershipId,
+        method: method as 'link' | 'bank_transfer' | 'cash' | 'card_in_person',
+        reference,
+      })
+      if (recorded === 0) return { error: 'Nothing is still owed on that booking. Reload to see it.' }
     }
+    revalidatePath('/bookings')
+    return { error: null }
+  }
+
+  if (what === 'link') {
+    if (linkProblem !== null) return { error: linkProblem }
     const attached = await attachPaymentLink(run, {
       operatorId: actor.operatorId, paymentId, linkUrl,
     })

@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { decideBooking, requestBooking } from '../src/queries/bookings.ts'
 import { extendBooking } from '../src/queries/extensions.ts'
 import {
-  attachPaymentLink, listOutstanding, recordPayment, refundPayment, whatIsOwed,
+  attachLinkToAllDue, attachPaymentLink, listOutstanding, recordAllDue, recordPayment,
+  refundPayment, whatIsOwed,
 } from '../src/queries/payments.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
@@ -188,6 +189,47 @@ describe('taking it', () => {
     expect(await attachPaymentLink(run, {
       operatorId: OP, paymentId: rental.paymentId, linkUrl: 'https://pay.example.com/abc',
     })).toEqual({ attached: false })
+  })
+})
+
+/**
+ * One transfer for the rental and the deposit, which is how most customers
+ * pay — recorded as one, rather than the same bank credit entered twice.
+ */
+describe('taking the whole booking at once', () => {
+  it('takes every line still owed, with one method and reference', async () => {
+    const bookingId = await confirmedBooking()
+    expect(await recordAllDue(run, {
+      operatorId: OP, bookingId, membershipId: MEMBER, method: 'bank_transfer', reference: 'TRF-1',
+    })).toEqual({ recorded: 2 })
+
+    const owed = await whatIsOwed(run, { operatorId: OP, bookingId })
+    expect(owed.map((o) => [o.kind, o.state, o.method, o.reference])).toEqual([
+      ['rental', 'paid', 'bank_transfer', 'TRF-1'],
+      ['deposit', 'paid', 'bank_transfer', 'TRF-1'],
+    ])
+  })
+
+  it('leaves a line already taken as it was', async () => {
+    const bookingId = await confirmedBooking()
+    const [rental] = await whatIsOwed(run, { operatorId: OP, bookingId })
+    await recordPayment(run, {
+      operatorId: OP, paymentId: rental!.paymentId, membershipId: MEMBER, method: 'cash',
+    })
+
+    expect(await recordAllDue(run, {
+      operatorId: OP, bookingId, membershipId: MEMBER, method: 'bank_transfer',
+    })).toEqual({ recorded: 1 })
+    expect((await whatIsOwed(run, { operatorId: OP, bookingId }))[0]!.method).toBe('cash')
+  })
+
+  it('puts one link on everything still owed', async () => {
+    const bookingId = await confirmedBooking()
+    expect(await attachLinkToAllDue(run, {
+      operatorId: OP, bookingId, linkUrl: 'https://pay.example.com/all',
+    })).toEqual({ attached: 2 })
+    expect((await whatIsOwed(run, { operatorId: OP, bookingId })).map((o) => o.linkUrl))
+      .toEqual(['https://pay.example.com/all', 'https://pay.example.com/all'])
   })
 })
 

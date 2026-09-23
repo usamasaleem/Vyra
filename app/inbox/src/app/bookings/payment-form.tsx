@@ -112,3 +112,72 @@ export function PaymentForm({
     </form>
   )
 }
+
+/**
+ * Everything still owed on a booking, as the one payment it usually is.
+ *
+ * A customer transferring AED 10,000 sends one transfer, not a rental and a
+ * deposit. Each line had its own method, reference, button and link box —
+ * eight fields to record one bank credit. This is the common case; the lines
+ * one by one are still there for somebody who paid them separately.
+ */
+export function AllOwedForm({
+  bookingId,
+  total,
+  breakdown,
+  linkUrl,
+}: {
+  bookingId: string
+  /** Formatted, e.g. "AED 10,000". */
+  total: string
+  /** "rental AED 5,000 · deposit AED 5,000" */
+  breakdown: string
+  /** The link on every line still due, when they all share one. */
+  linkUrl: string | null
+}) {
+  const [result, action, pending] = useActionState<MoneyState, FormData>(
+    recordMoney, { error: null },
+  )
+
+  return (
+    <form action={action} className="stack" style={{ gap: '0.4rem' }}>
+      <input type="hidden" name="bookingId" value={bookingId} />
+      {/* What this does comes from the button pressed — see PaymentForm. */}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>
+          <strong>Owed {total}</strong>
+          <span className="muted" style={{ fontSize: '0.8rem' }}> · {breakdown}</span>
+        </span>
+        <select className="input" name="method" defaultValue="" style={{ width: 'auto' }}>
+          <option value="" disabled>How did it arrive?</option>
+          <option value="bank_transfer">Bank transfer</option>
+          <option value="cash">Cash</option>
+          <option value="card_in_person">Card, in person</option>
+          <option value="link">Paid a link</option>
+        </select>
+        <input className="input" name="reference" placeholder="Their reference" style={{ width: '10rem' }} />
+        <button className="button secondary" type="submit" name="what" value="paid_all" disabled={pending}>
+          {pending ? 'Recording…' : 'Mark all taken'}
+        </button>
+      </div>
+
+      {linkUrl === null ? (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            className="input" name="linkUrl" placeholder={`Paste a payment link for ${total}`}
+            style={{ flex: '1 1 16rem' }}
+          />
+          <button className="button secondary" type="submit" name="what" value="link_all" disabled={pending}>
+            Attach link
+          </button>
+        </div>
+      ) : (
+        <span className="muted" style={{ fontSize: '0.82rem' }}>
+          Link attached: <a href={linkUrl}>{linkUrl}</a>
+        </span>
+      )}
+
+      {result.error !== null && <p className="notice">{result.error}</p>}
+    </form>
+  )
+}

@@ -180,6 +180,54 @@ export async function attachPaymentLink(
   return { attached: rows.length > 0 }
 }
 
+/**
+ * Everything still owed on a booking, taken in one go.
+ *
+ * Most customers pay the rental and the deposit in one transfer, and the
+ * diary gave that one transfer eight fields: a method, a reference and a
+ * button for each line, and a link box under both. One statement, so a
+ * salesperson either records the whole transfer or none of it.
+ */
+export async function recordAllDue(
+  run: QueryRunner,
+  input: {
+    operatorId: string
+    bookingId: string
+    membershipId: string
+    method: PaymentMethod
+    reference?: string | null
+  },
+): Promise<{ recorded: number }> {
+  const rows = await run(
+    `update payments
+     set state = 'paid', method = $4::payment_method, paid_at = now(),
+         recorded_by_membership_id = $3, reference = coalesce($5, reference),
+         updated_at = now()
+     where booking_id = $1 and operator_id = $2 and state = 'due'
+     returning id`,
+    [input.bookingId, input.operatorId, input.membershipId, input.method, input.reference ?? null],
+  )
+  return { recorded: rows.length }
+}
+
+/**
+ * One link for the whole amount, written against every line it covers — so
+ * the agent, which reads a link off whatever is still due, sends the same one
+ * whichever line it looks at.
+ */
+export async function attachLinkToAllDue(
+  run: QueryRunner,
+  input: { operatorId: string; bookingId: string; linkUrl: string },
+): Promise<{ attached: number }> {
+  const rows = await run(
+    `update payments set link_url = $3, updated_at = now()
+     where booking_id = $1 and operator_id = $2 and state = 'due'
+     returning id`,
+    [input.bookingId, input.operatorId, input.linkUrl],
+  )
+  return { attached: rows.length }
+}
+
 export type OutstandingPayment = {
   paymentId: string
   bookingId: string

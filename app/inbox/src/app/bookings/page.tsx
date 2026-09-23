@@ -8,7 +8,7 @@ import { actorReads } from '@/lib/db'
 import { SiteNav } from '../site-nav'
 import { BookingForm } from './booking-form'
 import { CancelForm } from './cancel-form'
-import { PaymentForm } from './payment-form'
+import { AllOwedForm, PaymentForm } from './payment-form'
 import { checkDocuments } from './actions'
 
 /**
@@ -208,6 +208,14 @@ export default async function BookingsPage() {
                       {b.endDate !== null && b.endDate !== b.startDate ? ` to ${b.endDate}` : ''}
                       {' · '}{b.customerName ?? b.customer}
                       {' · '}{formatMoney(b.totalMinor, b.currency)}
+                      {/*
+                        * The rental alone read as the whole bill: "AED 5,000" on a
+                        * booking where the customer owed 10,000, which is the figure
+                        * whoever checks the bank is looking for.
+                        */}
+                      {b.owed.filter((o) => o.kind === 'deposit').map((o) => (
+                        ` + ${formatMoney(o.amountMinor, o.currency)} deposit`
+                      ))}
                       {b.confirmedAutomatically
                         ? ' · confirmed by the agent'
                         : b.confirmedBy === null ? '' : ` · confirmed by ${b.confirmedBy}`}
@@ -268,18 +276,43 @@ export default async function BookingsPage() {
                     </dd>
                   </dl>
                 )}
-                {b.owed.length > 0 && (
+                {b.owed.length > 0 && (() => {
+                  const due = b.owed.filter((o) => o.state === 'due')
+                  const together = canAnswer && due.length > 1
+                  const links = new Set(due.map((o) => o.linkUrl))
+                  const oneForm = (o: (typeof b.owed)[number]) => (
+                    <PaymentForm
+                      key={o.paymentId}
+                      paymentId={o.paymentId}
+                      kind={o.kind}
+                      amount={formatMoney(o.amountMinor, o.currency)}
+                      state={o.state}
+                      linkUrl={o.linkUrl}
+                    />
+                  )
+                  return (
                   <div className="stack" style={{ gap: '0.5rem', marginTop: '0.7rem' }}>
-                    {b.owed.map((o) => (
-                      canAnswer ? (
-                        <PaymentForm
-                          key={o.paymentId}
-                          paymentId={o.paymentId}
-                          kind={o.kind}
-                          amount={formatMoney(o.amountMinor, o.currency)}
-                          state={o.state}
-                          linkUrl={o.linkUrl}
+                    {together && (
+                      <>
+                        <AllOwedForm
+                          bookingId={b.bookingId}
+                          total={formatMoney(due.reduce((sum, o) => sum + o.amountMinor, 0), due[0]!.currency)}
+                          breakdown={due.map((o) => `${o.kind === 'deposit' ? 'deposit' : 'rental'} ${formatMoney(o.amountMinor, o.currency)}`).join(' · ')}
+                          linkUrl={links.size === 1 ? [...links][0]! : null}
                         />
+                        <details>
+                          <summary className="muted" style={{ fontSize: '0.82rem', cursor: 'pointer' }}>
+                            Paid separately? Record each line
+                          </summary>
+                          <div className="stack" style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
+                            {due.map(oneForm)}
+                          </div>
+                        </details>
+                      </>
+                    )}
+                    {b.owed.filter((o) => !together || o.state !== 'due').map((o) => (
+                      canAnswer ? (
+                        oneForm(o)
                       ) : (
                         <span key={o.paymentId} className="muted" style={{ fontSize: '0.88rem' }}>
                           {o.kind === 'deposit' ? 'Deposit' : 'Rental'}{' '}
@@ -288,7 +321,8 @@ export default async function BookingsPage() {
                       )
                     ))}
                   </div>
-                )}
+                  )
+                })()}
                 {canAnswer && <div style={{ marginTop: '0.7rem' }}><CancelForm bookingId={b.bookingId} /></div>}
               </li>
             ))}
