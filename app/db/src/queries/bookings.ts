@@ -826,3 +826,57 @@ export async function listConfirmedBookings(
     confirmedAutomatically: r['decided_automatically'] === true,
   }))
 }
+
+/**
+ * What this customer actually has booked, from the record rather than from
+ * the conversation.
+ *
+ * Read live: a booking was cancelled overnight and the customer asked for the
+ * same car in the morning. The agent answered "your Ferrari 488 Spider is
+ * already confirmed for 25th–27th September" — without calling anything,
+ * because the transcript still carried last night's "Confirmed — booked and
+ * held". Nothing had ever told it otherwise.
+ *
+ * A transcript is what was said, not what is true now. A salesperson cancels,
+ * a booking is declined, a rental ends — and every earlier "you're booked"
+ * stays exactly where it was. So the turn reads the record every time, and
+ * says so plainly when there is nothing on it.
+ */
+export type BookingOnFile = {
+  vehicle: string | null
+  startDate: string | null
+  endDate: string | null
+  state: 'requested' | 'confirmed'
+}
+
+export async function bookingsOnFile(
+  run: QueryRunner,
+  input: { operatorId: string; conversationId: string },
+): Promise<{ live: BookingOnFile[]; everHadOne: boolean }> {
+  const rows = await run(
+    `select b.state::text as state,
+            trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle,
+            q.start_date::date::text as start_date,
+            coalesce(q.end_date, q.start_date)::date::text as end_date
+     from bookings b
+     join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
+     left join vehicles v on v.id = q.vehicle_id
+     where b.operator_id = $1 and b.conversation_id = $2
+       and b.state in ('requested', 'confirmed')
+     order by q.start_date`,
+    [input.operatorId, input.conversationId],
+  )
+  const [any] = await run(
+    `select exists (select 1 from bookings where operator_id = $1 and conversation_id = $2) as had`,
+    [input.operatorId, input.conversationId],
+  )
+  return {
+    live: rows.map((r) => ({
+      vehicle: (r['vehicle'] as string) ?? null,
+      startDate: (r['start_date'] as string) ?? null,
+      endDate: (r['end_date'] as string) ?? null,
+      state: r['state'] as 'requested' | 'confirmed',
+    })),
+    everHadOne: any?.['had'] === true,
+  }
+}

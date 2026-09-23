@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v24'
+export const PROMPT_VERSION = 'sales-v25'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -397,6 +397,24 @@ export function systemPromptFor(input: {
    * prompt asking for it.
    */
   mayConfirmBookings?: boolean
+  /**
+   * What they actually have booked, from the record.
+   *
+   * Read live: a booking cancelled overnight, and in the morning the agent
+   * told the customer "your Ferrari 488 Spider is already confirmed" without
+   * calling anything — last night's "Confirmed — booked and held" was still
+   * in the transcript and nothing said otherwise. A transcript is what was
+   * said, not what is true now.
+   */
+  bookingsOnFile?: {
+    live: ReadonlyArray<{
+      vehicle: string | null
+      startDate: string | null
+      endDate: string | null
+      state: 'requested' | 'confirmed'
+    }>
+    everHadOne: boolean
+  }
   liveQuote?: {
     quoteId: string
     total: string
@@ -738,6 +756,26 @@ export function systemPromptFor(input: {
       + `will confirm it — ask whether they would like you to book it, in those words, and then `
       + `do it.`
 
+  /**
+   * Only said when there has ever been a booking in this thread. For a new
+   * customer "they have no booking" is noise; for one whose booking was
+   * cancelled it is the fact that stops the agent repeating a confirmation
+   * that no longer stands.
+   */
+  const onFileNow = input.bookingsOnFile
+  const onTheBooks = onFileNow === undefined || (!onFileNow.everHadOne && onFileNow.live.length === 0)
+    ? ''
+    : onFileNow.live.length === 0
+      ? `\n\nThey have NO booking right now. Anything earlier in this conversation saying a car is `
+        + `booked, confirmed or held has since been cancelled or has lapsed. Do not tell them they `
+        + `are booked. If they ask for a car, treat it as a fresh request.`
+      : `\n\nWhat they have booked right now, from the record — this, not earlier messages, is `
+        + `what is true:\n${onFileNow.live.map((b) => `- ${b.vehicle ?? 'a car'}, `
+          + `${b.startDate === null ? 'dates not set' : readDate(b.startDate, input.timezone)}`
+          + `${b.endDate !== null && b.endDate !== b.startDate ? ` to ${readDate(b.endDate, input.timezone)}` : ''}`
+          + ` — ${b.state === 'confirmed' ? 'confirmed' : 'waiting on a colleague'}`).join('\n')}`
+        + `\nDo not describe anything else as booked.`
+
   const confirming = input.readyToConfirm !== true
     ? ''
     : `\n\nThey have said they want it and the enquiry has everything. Say the whole `
@@ -752,7 +790,7 @@ export function systemPromptFor(input: {
         : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
           + `booked.`)
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${settlesItself}${confirming}${bring}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${settlesItself}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

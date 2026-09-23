@@ -34,6 +34,7 @@ import {
 import { searchVehicles } from '@vyra/agent'
 import {
   acceptTurnOutput,
+  bookingsOnFile,
   currentQuoteFor,
   ensureEnquiry,
   formatMoneyMinor,
@@ -805,6 +806,24 @@ export async function runConversationTurn(
       return undefined
     })
 
+    /**
+     * What they actually have booked, read fresh every turn. A nicety in the
+     * sense that a failure costs a fact rather than the reply — but the fact
+     * is the one that stops the agent confirming a booking that was
+     * cancelled overnight.
+     */
+    const onFile = await bookingsOnFile(deps.run, {
+      operatorId: context.operator.id,
+      conversationId: context.conversation.id,
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'bookings_on_file.failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      return undefined
+    })
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -847,6 +866,7 @@ export async function runConversationTurn(
       ...(liveQuote === undefined ? {} : { liveQuote }),
       ...(bringWithYou === undefined ? {} : { bringWithYou }),
       mayConfirmBookings: context.operator.mayConfirmBookings,
+      ...(onFile === undefined ? {} : { bookingsOnFile: onFile }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *

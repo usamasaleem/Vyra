@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  cancelBooking, decideBooking, listBookingRequests, listConfirmedBookings, requestBooking,
+  bookingsOnFile, cancelBooking, decideBooking, listBookingRequests, listConfirmedBookings,
+  requestBooking,
 } from '../src/queries/bookings.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
@@ -531,5 +532,23 @@ describe('a rental they already have', () => {
     const later = await sentQuote({ revision: 2, startDate: '2026-10-10', endDate: '2026-10-12' })
 
     expect(await request(later)).toMatchObject({ ok: true, booking: { alreadyRequested: false } })
+  })
+})
+
+describe('what is on file for this conversation', () => {
+  it('lists the live ones, and knows a cancelled one existed', async () => {
+    const result = await request(await sentQuote())
+    const id = (result as { booking: { bookingId: string } }).booking.bookingId
+    expect(await bookingsOnFile(run, { operatorId: OP, conversationId: CONV }))
+      .toMatchObject({ live: [{ state: 'requested', startDate: '2026-09-20' }], everHadOne: true })
+
+    await run(`update bookings set state = 'cancelled' where id = $1`, [id])
+    expect(await bookingsOnFile(run, { operatorId: OP, conversationId: CONV }))
+      .toEqual({ live: [], everHadOne: true })
+  })
+
+  it('is empty and unremarkable for a conversation that never booked', async () => {
+    expect(await bookingsOnFile(run, { operatorId: OP, conversationId: CONV }))
+      .toEqual({ live: [], everHadOne: false })
   })
 })

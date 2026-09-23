@@ -386,3 +386,38 @@ describe('an agent that settles bookings, at any point in the conversation', () 
     expect(text).not.toContain('never offer to send anything to the team')
   })
 })
+
+/**
+ * A transcript is what was said, not what is true now.
+ *
+ * Read live: a booking cancelled overnight, and in the morning the agent told
+ * the customer "your Ferrari 488 Spider is already confirmed for 25th–27th
+ * September" — calling nothing, because last night's "Confirmed — booked and
+ * held" was still in the conversation and nothing had ever said otherwise.
+ */
+describe('what is booked, from the record', () => {
+  const withBookings = (bookingsOnFile: Parameters<typeof systemPromptFor>[0]['bookingsOnFile']) =>
+    systemPromptFor({ now, timezone: 'Asia/Dubai', enquiryId: 'e1', bookingsOnFile })
+
+  it('says plainly when a booking they had is gone', () => {
+    const text = withBookings({ live: [], everHadOne: true })
+    expect(text).toContain('They have NO booking right now')
+    expect(text).toContain('Do not tell them they are booked')
+  })
+
+  it('lists what they do have, and nothing else counts', () => {
+    const text = withBookings({
+      live: [{ vehicle: 'Ferrari 488 Spider', startDate: '2026-09-25', endDate: '2026-09-27', state: 'confirmed' }],
+      everHadOne: true,
+    })
+    expect(text).toContain('Ferrari 488 Spider')
+    expect(text).toContain('confirmed')
+    expect(text).toContain('Do not describe anything else as booked')
+  })
+
+  /** For somebody who has never booked, "no booking" is noise. */
+  it('says nothing to a customer who never had one', () => {
+    const text = withBookings({ live: [], everHadOne: false })
+    expect(text).not.toContain('NO booking')
+  })
+})
