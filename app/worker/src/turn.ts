@@ -34,6 +34,8 @@ import {
 import { searchVehicles } from '@vyra/agent'
 import {
   acceptTurnOutput,
+  activeBookingFor,
+  bookingChecklist,
   bookingsOnFile,
   currentQuoteFor,
   ensureEnquiry,
@@ -824,6 +826,42 @@ export async function runConversationTurn(
       return undefined
     })
 
+    /**
+     * What a confirmed booking still needs, read every turn so the agent can
+     * pick up where the last message left off. A nicety: without it the reply
+     * still goes, and the customer is back to waiting for a salesperson.
+     */
+    const afterBooking = await (async () => {
+      const bookingId = await activeBookingFor(deps.run, {
+        operatorId: context.operator.id, conversationId: context.conversation.id,
+      })
+      if (bookingId === null) return undefined
+      const list = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
+      if (list === null) return undefined
+      const payment = await getApprovedAnswer(
+        deps.run, context.operator.id, 'payment', deps.now?.() ?? new Date())
+      const ASK: Record<string, string> = {
+        delivery_address: 'the address the car should go to',
+        delivery_time: 'what time on the first day they want it',
+        documents: 'a photo of their driving licence and of their passport or Emirates ID',
+        payment: 'how they would like to pay',
+      }
+      return {
+        vehicle: list.vehicle,
+        missing: list.missing.map((m) => ASK[m] ?? m),
+        owed: list.owedMinor === 0 ? null : formatMoneyMinor(list.owedMinor, list.currency),
+        paymentInstructions: payment?.answer ?? null,
+        paymentLink: list.paymentLink,
+      }
+    })().catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'booking_checklist.failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      return undefined
+    })
+
     const stillNeeded = await outstandingQuestions(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,
@@ -867,6 +905,7 @@ export async function runConversationTurn(
       ...(bringWithYou === undefined ? {} : { bringWithYou }),
       mayConfirmBookings: context.operator.mayConfirmBookings,
       ...(onFile === undefined ? {} : { bookingsOnFile: onFile }),
+      ...(afterBooking === undefined ? {} : { afterBooking }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *

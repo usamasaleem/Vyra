@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v25'
+export const PROMPT_VERSION = 'sales-v26'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -406,6 +406,23 @@ export function systemPromptFor(input: {
    * in the transcript and nothing said otherwise. A transcript is what was
    * said, not what is true now.
    */
+  /**
+   * What a confirmed booking still needs before the car can go out.
+   *
+   * The agent stopped at "Booked", and the address, the time, the documents
+   * and the money all fell to a salesperson messaging the customer again.
+   * This is the list it works through instead, one thing at a time.
+   */
+  afterBooking?: {
+    vehicle: string | null
+    /** Plain phrases, in the order worth asking. */
+    missing: readonly string[]
+    /** Formatted, e.g. "AED 15,000". Null when nothing is owed. */
+    owed: string | null
+    /** The operator's own words on how to pay. Null when unpublished. */
+    paymentInstructions: string | null
+    paymentLink: string | null
+  }
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -776,6 +793,27 @@ export function systemPromptFor(input: {
           + ` — ${b.state === 'confirmed' ? 'confirmed' : 'waiting on a colleague'}`).join('\n')}`
         + `\nDo not describe anything else as booked.`
 
+  const after = input.afterBooking
+  const followThrough = after === undefined || after.missing.length === 0
+    ? ''
+    : `\n\nThey have a confirmed booking for the ${after.vehicle ?? 'car'}. Before it can go out you `
+      + `still need: ${after.missing.join('; ')}. Answer whatever they asked first, then ask for `
+      + `the first of these only, in one short sentence. Save each answer with `
+      + `record_booking_progress the moment they give it. `
+      + `For the documents: ask them to send photos here. Photos they send are filed against the `
+      + `booking automatically and a colleague checks them before delivery — never say you can see, `
+      + `read or approve a document. `
+      + (after.owed === null
+        ? ''
+        : `For the money: ${after.owed} is owed. `
+          + (after.paymentInstructions === null
+            ? `The operator has not written how customers pay, so say a colleague will send the `
+              + `payment details — do not make up an account, a link or a method. `
+            : `Offer the ways to pay in the operator's own words, as written: "${after.paymentInstructions}" `)
+          + (after.paymentLink === null ? '' : `Their payment link is ${after.paymentLink}. `)
+          + `If they say they have paid or send a screenshot, record saysPaid and tell them the team `
+          + `will confirm it arrived — never that it has.`)
+
   const confirming = input.readyToConfirm !== true
     ? ''
     : `\n\nThey have said they want it and the enquiry has everything. Say the whole `
@@ -790,7 +828,7 @@ export function systemPromptFor(input: {
         : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
           + `booked.`)
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${settlesItself}${confirming}${bring}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${settlesItself}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

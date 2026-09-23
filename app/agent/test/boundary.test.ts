@@ -106,7 +106,7 @@ describe('the shape of the boundary', () => {
     expect(TOOL_NAMES).toEqual([
       'get_operator_policy', 'search_vehicles', 'prepare_quote',
       'record_enquiry_fields', 'request_handoff', 'request_booking_review',
-      'extend_booking',
+      'extend_booking', 'record_booking_progress',
     ])
   })
 

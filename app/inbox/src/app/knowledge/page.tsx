@@ -66,6 +66,10 @@ const STARTERS: Record<string, string> = {
   'business-hours':
     'Somebody is at the desk ___, and delivery is possible ___. Outside those hours the '
     + 'assistant still answers, and anything needing one of us is picked up ___.',
+  payment:
+    'You can pay by bank transfer to ___ (IBAN ___), by the payment link we send you, or by card '
+    + 'or cash when the car is delivered. For a transfer, please send a screenshot once it is '
+    + 'done so we can match it.',
   'driver-requirements-resident':
     'You will need your Emirates ID and your UAE driving licence, both in the driver\u2019s own '
     + 'name. Minimum age for this car is ___, and the licence must have been held for at least '
@@ -73,6 +77,10 @@ const STARTERS: Record<string, string> = {
 }
 
 const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = {
+  payment: {
+    question: 'How do customers pay?',
+    placeholder: 'Bank details, whether you send a link, and whether card or cash on delivery is fine.',
+  },
   deposit: {
     question: 'What is the security deposit, and when is it returned?',
     placeholder: 'If it differs by car or category, say so — the agent quotes this exactly as written.',

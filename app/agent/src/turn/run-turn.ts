@@ -77,6 +77,16 @@ export type RunTurnOptions = {
   liveQuote?: { quoteId: string; total: string; discounted: boolean; sent: boolean }
   bringWithYou?: string
   mayConfirmBookings?: boolean
+  afterBooking?: {
+    vehicle: string | null
+    /** Plain phrases, in the order worth asking. */
+    missing: readonly string[]
+    /** Formatted, e.g. "AED 15,000". Null when nothing is owed. */
+    owed: string | null
+    /** The operator's own words on how to pay. Null when unpublished. */
+    paymentInstructions: string | null
+    paymentLink: string | null
+  }
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -165,6 +175,7 @@ export async function runTurn(
           ...(options.bookingsOnFile === undefined
             ? {}
             : { bookingsOnFile: options.bookingsOnFile }),
+          ...(options.afterBooking === undefined ? {} : { afterBooking: options.afterBooking }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),

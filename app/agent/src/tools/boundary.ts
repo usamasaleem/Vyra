@@ -8,6 +8,7 @@ import { recordEnquiryFields } from './record-enquiry-fields.js'
 import { requestHandoff } from './request-handoff.js'
 import { requestBookingReview } from './request-booking-review.js'
 import { extendBookingTool } from './extend-booking.js'
+import { recordBookingProgressTool } from './record-booking-progress.js'
 
 /**
  * Build plan step 24 — the boundary itself.
@@ -36,6 +37,7 @@ const IMPLEMENTATIONS: {
   request_handoff: requestHandoff,
   request_booking_review: requestBookingReview,
   extend_booking: extendBookingTool,
+  record_booking_progress: recordBookingProgressTool,
 }
 
 export type ToolCallRecord = {

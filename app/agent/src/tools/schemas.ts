@@ -111,6 +111,25 @@ export const extendBookingSchema = z.strictObject({
   ),
 })
 
+export const recordBookingProgressSchema = z.strictObject({
+  deliveryAddress: z.string().min(3).nullable().describe(
+    'The full address the car goes to, as they gave it — building, flat or villa, area. Null '
+    + 'unless they gave one in this message.',
+  ),
+  deliveryTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/).nullable().describe(
+    'The time on the first day, 24-hour HH:MM — "10am" is 10:00, "half two in the afternoon" is '
+    + '14:30. Null unless they gave one. If they gave a range, use the start of it.',
+  ),
+  paymentPlan: z.enum(['transfer', 'link', 'on_delivery']).nullable().describe(
+    'How they said they will pay: bank transfer, the payment link, or card or cash when the car '
+    + 'is delivered. Null unless they said.',
+  ),
+  saysPaid: z.boolean().nullable().describe(
+    'True only when they say they have already paid, or send a transfer screenshot. A person '
+    + 'checks the account; this only records that they said so.',
+  ),
+})
+
 export const requestBookingReviewSchema = z.strictObject({
   quoteId: z.string().describe(
     'The quote the customer wants to proceed with, as returned by prepare_quote. It must be '
@@ -136,6 +155,7 @@ export const TOOL_SCHEMAS = {
   request_handoff: requestHandoffSchema,
   request_booking_review: requestBookingReviewSchema,
   extend_booking: extendBookingSchema,
+  record_booking_progress: recordBookingProgressSchema,
 } as const
 
 export type ToolName = keyof typeof TOOL_SCHEMAS
@@ -162,6 +182,10 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     + 'were never recorded, so a rejected date is a quote the customer never gets.',
   request_handoff:
     'Hand this conversation to a person. Stops automated replies immediately.',
+  record_booking_progress:
+    'Save what they told you about a confirmed booking: the delivery address, the delivery '
+    + 'time, how they will pay, or that they have paid. Call it as soon as they say any of it. '
+    + 'It only fills in what they gave, so call it again for each new piece.',
   extend_booking:
     'Keep the car they already have for longer. Use this when somebody with a confirmed rental '
     + 'asks to keep it — it checks the car is free for the extra days, prices them at the '

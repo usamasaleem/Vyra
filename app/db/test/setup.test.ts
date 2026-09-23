@@ -197,12 +197,12 @@ describe('what counts as an answered policy question', () => {
     await publish('out-of-hours')
     const step = await answersStep()
     expect(step.done).toBe(false)
-    expect(step.detail).toBe('0 of 6 answered.')
+    expect(step.detail).toBe('0 of 7 answered.')
   })
 
   it('counts a real one', async () => {
     await publish('deposit')
-    expect((await answersStep()).detail).toBe('1 of 6 answered.')
+    expect((await answersStep()).detail).toBe('1 of 7 answered.')
   })
 
   /** And the messages have a step of their own, which they did not. */

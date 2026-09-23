@@ -32,6 +32,15 @@ export const POLICY_TOPICS = [
   'driver-requirements-visitor',
   'delivery-areas',
   'business-hours',
+  /**
+   * How a customer pays, in the operator's words — bank details, a link, or
+   * card and cash on delivery.
+   *
+   * The agent could confirm a booking and then say nothing about money, so
+   * every one ended with a salesperson sending bank details by hand. The
+   * account number is the operator's and never the agent's to compose.
+   */
+  'payment',
 ] as const
 
 export type PolicyTopic = (typeof POLICY_TOPICS)[number]

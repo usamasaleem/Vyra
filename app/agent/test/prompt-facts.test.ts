@@ -421,3 +421,48 @@ describe('what is booked, from the record', () => {
     expect(text).not.toContain('NO booking')
   })
 })
+
+/**
+ * The agent stopped at "Booked". The address, the time, the documents and the
+ * money all fell to a salesperson messaging the customer again.
+ */
+describe('after the booking', () => {
+  const after = (over: Partial<NonNullable<Parameters<typeof systemPromptFor>[0]['afterBooking']>> = {}) =>
+    systemPromptFor({
+      now, timezone: 'Asia/Dubai', enquiryId: 'e1',
+      afterBooking: {
+        vehicle: 'Ferrari 488 Spider',
+        missing: ['the address the car should go to', 'a photo of their driving licence'],
+        owed: 'AED 15,000',
+        paymentInstructions: 'Bank transfer to Emirates NBD, IBAN AE12 3456.',
+        paymentLink: null,
+        ...over,
+      },
+    })
+
+  it('asks for the first missing thing, one at a time', () => {
+    const text = after()
+    expect(text).toContain('the address the car should go to')
+    expect(text).toContain('ask for the first of these only')
+  })
+
+  it('offers the operator’s own payment words, verbatim', () => {
+    expect(after()).toContain('Bank transfer to Emirates NBD, IBAN AE12 3456.')
+  })
+
+  /** An account number is the operator's to write, never the agent's. */
+  it('says a colleague will send details when none are published', () => {
+    const text = after({ paymentInstructions: null })
+    expect(text).toContain('do not make up an account')
+  })
+
+  it('never lets it claim to have checked a document or a payment', () => {
+    const text = after()
+    expect(text).toContain('never say you can see, read or approve a document')
+    expect(text).toContain('never that it has')
+  })
+
+  it('says nothing once the booking has everything', () => {
+    expect(after({ missing: [] })).not.toContain('Before it can go out')
+  })
+})
