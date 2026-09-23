@@ -49,6 +49,21 @@ export const AUTOMATED_MESSAGES = [
    * following up has a new reason to be in touch.
    */
   'follow-up-message-2',
+  /**
+   * The day before the car goes out. The booking's details are added
+   * underneath by the system — this is only the part in the operator's voice.
+   */
+  'handover-reminder',
+  /**
+   * The day before it comes back: keep it longer, or when shall we collect it.
+   * The agent handles whichever they answer.
+   */
+  'return-reminder',
+  /**
+   * Once somebody has marked the car back. Where a review link belongs, if the
+   * operator wants one.
+   */
+  'thank-you',
 ] as const
 
 export type AutomatedMessage = (typeof AUTOMATED_MESSAGES)[number]
@@ -100,6 +115,28 @@ export const AUTOMATED_MESSAGE_LABELS: Record<AutomatedMessage, {
       + 'the chase becomes a task for one of your people instead.',
     starter: () => 'Still thinking it over? Happy to answer anything about the car or '
       + 'the dates whenever you are ready.',
+  },
+  'handover-reminder': {
+    title: 'The day before the car goes out',
+    why: 'Sent the day before, between 10:00 and 20:00, with the car, the time and the place '
+      + 'added underneath — and anything still unpaid or missing, which is the last chance to '
+      + 'catch it before a driver is at the door.',
+    starter: () => 'Looking forward to tomorrow! Here is what we have for you — just reply if '
+      + 'anything has changed.',
+  },
+  'return-reminder': {
+    title: 'The day before it comes back',
+    why: 'Sent the day before the rental ends. Whatever they answer — a time, or more days — '
+      + 'the agent takes it from there, and extends the booking if the car is free.',
+    starter: () => 'Hope you are enjoying the car! Your rental ends tomorrow. Would you like to '
+      + 'keep it a little longer? If not, just tell me what time suits for the return.',
+  },
+  'thank-you': {
+    title: 'When the car is back',
+    why: 'Sent when one of your people marks the car returned on the Handovers page. If you '
+      + 'want reviews, this is where the link goes.',
+    starter: (business) => `Thank you for renting with ${business}! We hope you enjoyed it. `
+      + 'If you have a moment, a review would mean a lot: ___',
   },
   'follow-up-message-2': {
     title: 'And chasing a second time',

@@ -11,6 +11,7 @@ import {
   resumeAbandonedConversations,
 } from '@vyra/db'
 import { sendDueFollowUps } from './follow-ups.js'
+import { sendDueReminders } from './reminders.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
@@ -281,6 +282,12 @@ async function relayLoop(): Promise<void> {
         const chased = await sendDueFollowUps(query, log)
         if (chased.sent > 0 || chased.raisedForAPerson > 0 || chased.rescheduled > 0) {
           log({ event: 'followups.swept', ...chased })
+        }
+
+        // The day before a car goes out, and the day before it comes back.
+        const reminded = await sendDueReminders(query, log)
+        if (reminded.sent > 0 || reminded.raisedForAPerson > 0) {
+          log({ event: 'reminders.swept', ...reminded })
         }
 
         /**

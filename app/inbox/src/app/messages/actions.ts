@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { isAutomatedMessage, readServiceHours } from '@vyra/contracts'
+import { hasUnfilledBlank, isAutomatedMessage, readServiceHours } from '@vyra/contracts'
 import { draftKnowledge, publishKnowledge } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
@@ -34,6 +34,10 @@ export async function saveAutomatedMessage(
   }
   if (confirmedBy === '') {
     return { error: 'Say who approved this. It goes out in the operator’s name.' }
+  }
+  // The thank-you starter leaves the review link blank; a blank must never reach a customer.
+  if (hasUnfilledBlank(answer)) {
+    return { error: 'Fill in the ___ before publishing — or take it out if you do not want it.' }
   }
 
   const draft = await draftKnowledge(actorRunner(actor), {

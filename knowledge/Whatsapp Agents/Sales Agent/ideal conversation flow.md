@@ -107,11 +107,37 @@ The operator's written greeting is sent only when the first message is just a he
 
 **Salesperson sees:** Payment shows *customer says paid — check the account*. They check the bank and click **Record** (paid). If the customer chose a link, they attach it there instead and the agent sends it.
 
-### 8. Done
+### 8. The summary
 
-The checklist is complete, so the agent stops asking. It doesn't send a sign-off or a "let me know if you need anything!" just to fill space. If the customer writes again, the agent answers using what the booking record says.
+When the last thing the handover needs arrives, the agent thanks them in a sentence and the whole booking follows as one message, built from the record:
 
-**Staff clicks, from enquiry to paid booking: 2.** Mark documents checked and record the payment.
+> Here is everything for your booking:
+>
+> *Ferrari 488 Spider*
+> Thursday 24 September to Sunday 27 September (3 days)
+> Delivery: Thursday 24 September at 10:00, to Address Downtown
+> Rental: AED 15,000 · refundable deposit: AED 5,000
+> Payment: AED 20,000 — you have told us it is sent, and the team is confirming it arrived
+> Documents: received — the team checks them before the handover
+> Returning: Sunday 27 September
+>
+> Reply here if anything needs to change.
+
+It is sent again only if the plan changes (a new time, a new address), not when a payment is marked taken.
+
+### 9. The day before
+
+Between 10:00 and 20:00 the day before, your *day-before message* (Messages) goes out with the car, the time and the place under it, plus anything still unpaid or missing. If it isn't written, or the customer last wrote more than 24 hours ago (WhatsApp then only allows an approved template), the conversation shows "Waiting on you" instead.
+
+**Salesperson sees:** the car on **Handovers** under Today or Tomorrow, with the time, place, payment and documents on one line.
+
+### 10. The end of the rental
+
+The day before it's due back, your *return message* asks whether they'd like it longer or what time suits for the return. "Two more days" goes to `extend_booking`; a time (and, for a delivered car, where to collect it from) is saved with `record_booking_progress`.
+
+When the car is back, the salesperson presses **Mark returned** on Handovers. Their name goes on it, your *thank-you* message goes out (with your review link, if you added one), and the deposit is given back on Bookings.
+
+**Staff clicks, from enquiry to car back: 3.** Mark documents checked, record the payment, mark the car returned.
 
 ---
 

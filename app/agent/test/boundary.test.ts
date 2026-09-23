@@ -1072,6 +1072,7 @@ describe('request_booking_review', () => {
 
     const result = await boundary.call('record_booking_progress', {
       handover: 'collection', deliveryAddress: null, deliveryTime: null, paymentPlan: null, saysPaid: null,
+      returnTime: null, returnAddress: null,
     })
     expect(result).toMatchObject({ status: 'ok' })
     const next = (result as { data: { stillNeeded: string[] } }).data.stillNeeded

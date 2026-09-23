@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   asksToSeePhotos, asWhatsAppText, isOnlyAGreeting, buttonsFor, photosPromisedIn, detectDiscountRequest,
   type AutomatedMessage, BOOKING_CONFIRMATION, BOOKING_NOW, carChosenIn, civilDateIn,
@@ -37,8 +38,12 @@ import {
   ASK_FOR,
   activeBookingFor,
   bookingChecklist,
+  BEFORE_HANDOVER,
   DOCUMENTS_WANTED,
   fileWaitingDocuments,
+  queueOutboundText,
+  renderBookingSummary,
+  summaryKey,
   fileBookingDocument,
   bookingsOnFile,
   currentQuoteFor,
@@ -245,9 +250,51 @@ export async function fileDocumentIfBooked(
   // The photo is filed whether or not the acknowledgement survives: a newer
   // message overtaking it is the turn's business, not the document's.
   if (!accepted.accepted) return { outcome: 'rejected', reason: String(accepted.reason) }
+  // The second photo is often the last thing the booking was waiting for.
+  if (accepted.destination === 'send') {
+    await sendBookingSummaryIfComplete(deps, {
+      operatorId: context.operator.id, conversationId: context.conversation.id, bookingId,
+    }).catch(() => undefined)
+  }
   return accepted.destination === 'send'
     ? { outcome: 'queued', messageId: accepted.queued.messageId }
     : { outcome: 'drafted', noteId: accepted.noteId }
+}
+
+/**
+ * Everything about the booking, in one message, once it is all there.
+ *
+ * Until now the details arrived across a dozen messages — the price in one,
+ * the time three later, the address after that — and nothing ever put them
+ * back together. A customer checking what they had agreed to scrolled. This is
+ * sent when the last thing the handover needs arrives, rendered from the
+ * record so it cannot disagree with it.
+ *
+ * Once per plan: a changed time or address sends an updated one, a payment
+ * being marked taken does not. Only where replies are being sent — in draft
+ * mode nothing reaches a customer without a person, and this is no exception.
+ */
+export async function sendBookingSummaryIfComplete(
+  deps: Pick<TurnDependencies, 'run' | 'destination'>,
+  input: { operatorId: string; conversationId: string; bookingId: string },
+): Promise<boolean> {
+  if (deps.destination !== 'send') return false
+  const list = await bookingChecklist(deps.run, {
+    operatorId: input.operatorId, bookingId: input.bookingId,
+  })
+  if (list === null || list.returnedAt !== null) return false
+  if (list.missing.some((m) => BEFORE_HANDOVER.includes(m))) return false
+
+  const collectionPoint = list.handover === 'collection'
+    ? (await getApprovedAnswer(deps.run, input.operatorId, 'collection-point'))?.answer ?? null
+    : null
+  await queueOutboundText(deps.run, {
+    conversationId: input.conversationId,
+    operatorId: input.operatorId,
+    body: renderBookingSummary(list, { collectionPoint }),
+    idempotencyKey: `booking-summary:${createHash('sha256').update(summaryKey(list)).digest('hex').slice(0, 24)}`,
+  })
+  return true
 }
 
 export async function handleNonTextMessage(
@@ -1853,6 +1900,25 @@ const PHOTOS_PER_CAR = 6
         messageId: context.message.id,
       })
     }
+  }
+
+  /**
+   * If this reply was the last thing the booking needed, the whole of it goes
+   * next — after the reply, so it reads as the close of the exchange.
+   */
+  const summarising = await activeBookingFor(deps.run, {
+    operatorId: context.operator.id, conversationId: context.conversation.id,
+  }).catch(() => null)
+  if (summarising !== null) {
+    await sendBookingSummaryIfComplete(deps, {
+      operatorId: context.operator.id, conversationId: context.conversation.id, bookingId: summarising,
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'booking_summary.failed',
+        conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+    })
   }
 
   /**

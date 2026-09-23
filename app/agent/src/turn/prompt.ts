@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v30'
+export const PROMPT_VERSION = 'sales-v31'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -808,8 +808,10 @@ export function systemPromptFor(input: {
   const after = input.afterBooking
   const followThrough = after === undefined || after.missing.length === 0
     ? ''
-    : `\n\nThey have a confirmed booking for the ${after.vehicle ?? 'car'}. Before it can go out you `
-      + `still need: ${after.missing.join('; ')}. Answer whatever they asked first, then ask for `
+    : `\n\nThey have a confirmed booking for the ${after.vehicle ?? 'car'}. What it still needs from `
+      + `them: ${after.missing.join('; ')}. When it is the return being arranged and they would rather `
+      + `keep the car longer, that is extend_booking, not a return time. Answer whatever they asked `
+      + `first, then ask for `
       + `the first of these only, in one short sentence. Save each answer with `
       + `record_booking_progress the moment they give it. `
       + `For the documents: ask them to send photos here. Photos they send are filed against the `

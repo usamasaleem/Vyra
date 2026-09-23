@@ -309,6 +309,13 @@
       "when": 1790136669691,
       "tag": "0043_booking_checklist",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1790173354823,
+      "tag": "0044_rental_lifecycle",
+      "breakpoints": true
     }
   ]
 }

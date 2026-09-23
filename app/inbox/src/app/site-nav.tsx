@@ -17,6 +17,7 @@ import type { NavCounts } from '@vyra/db'
 const DESTINATIONS = [
   { key: 'inbox', href: '/', label: 'Conversations' },
   { key: 'bookings', href: '/bookings', label: 'Bookings' },
+  { key: 'handovers', href: '/handovers', label: 'Handovers' },
   { key: 'handoffs', href: '/handoffs', label: 'Handoffs' },
   { key: 'operations', href: '/operations', label: 'Operations' },
   { key: 'rates', href: '/rates', label: 'Rates' },

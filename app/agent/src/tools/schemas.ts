@@ -133,6 +133,14 @@ export const recordBookingProgressSchema = z.strictObject({
     + 'is handed over — "card" alone, or asking you to send the details, is not that: ask, or leave '
     + 'it null.',
   ),
+  returnTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/).nullable().describe(
+    'When the car comes back on the last day, 24-hour HH:MM. Null unless they gave one in this '
+    + 'message. If they want it longer instead, that is extend_booking, not this.',
+  ),
+  returnAddress: z.string().min(3).nullable().describe(
+    'For a delivered car: where it should be collected from at the end, as they gave it. "The '
+    + 'same place" means the delivery address — write it out. Null unless they said.',
+  ),
   saysPaid: z.boolean().nullable().describe(
     'True only when they say they have already paid, or send a transfer screenshot. A person '
     + 'checks the account; this only records that they said so.',

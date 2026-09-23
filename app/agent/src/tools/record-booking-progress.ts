@@ -1,4 +1,6 @@
-import { ASK_FOR, activeBookingFor, bookingChecklist, recordBookingProgress, recordFields } from '@vyra/db'
+import {
+  ASK_FOR, BEFORE_HANDOVER, activeBookingFor, bookingChecklist, recordBookingProgress, recordFields,
+} from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { recordBookingProgressSchema } from './schemas.js'
@@ -59,16 +61,22 @@ export async function recordBookingProgressTool(
     paymentPlan: args.paymentPlan,
     saysPaid: args.saysPaid === true,
     clearTime: switched,
+    returnTime: args.returnTime,
+    returnAddress: args.returnAddress,
   })
 
   const list = await bookingChecklist(ctx.run, { operatorId: ctx.operatorId, bookingId })
   const missing = list?.missing ?? []
+  const wasOpen = before !== null && before.missing.some((m) => BEFORE_HANDOVER.includes(m))
+  const nowReady = !missing.some((m) => BEFORE_HANDOVER.includes(m))
 
   return ok({
     stillNeeded: missing.map((m) => ASK_FOR[m]),
     guidance: missing.length === 0
-      ? 'Everything is in. Thank them, say the team checks the documents and the payment before '
-        + 'the handover, and stop — do not ask for anything else.'
+      ? (wasOpen && nowReady
+        ? 'Everything is in. A summary of the whole booking is sent to them automatically straight '
+          + 'after your reply, so do not list the details — thank them in a sentence and stop.'
+        : 'Everything is in. Thank them in a few words and stop — do not ask for anything else.')
       : `Acknowledge what they gave in a few words, then ask for ${ASK_FOR[missing[0]!]}. One thing `
         + 'at a time.',
   })

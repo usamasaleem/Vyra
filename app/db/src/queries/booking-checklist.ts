@@ -19,6 +19,11 @@ export type Checklist = {
   handover: 'delivery' | 'collection' | null
   vehicle: string | null
   startDate: string | null
+  /** The last day, inclusive — the day the car comes back. */
+  endDate: string | null
+  days: number | null
+  totalMinor: number
+  depositMinor: number | null
   deliveryWanted: boolean
   deliveryAddress: string | null
   deliveryTime: string | null
@@ -32,13 +37,27 @@ export type Checklist = {
   currency: string
   /** A link a salesperson attached to something still owed, if any. */
   paymentLink: string | null
+  /** Money a person has marked taken, rental and deposit together. */
+  paidMinor: number
+  returnTime: string | null
+  returnAddress: string | null
+  returnedAt: Date | null
   /** What the agent should ask for next, in order; empty when it is done. */
   missing: ChecklistItem[]
 }
 
+/**
+ * The items that stand between a booking and the car going out. When none of
+ * these is missing the booking is complete, and the customer is sent the whole
+ * of it in one message.
+ */
+export const BEFORE_HANDOVER: readonly ChecklistItem[] = [
+  'handover_choice', 'delivery_address', 'delivery_time', 'collection_time', 'documents', 'payment',
+]
+
 export type ChecklistItem =
   | 'handover_choice' | 'delivery_address' | 'delivery_time' | 'collection_time' | 'documents'
-  | 'payment'
+  | 'payment' | 'return_time' | 'return_address'
 
 /**
  * What each item is, in the words the agent is told to ask for it.
@@ -54,6 +73,8 @@ export const ASK_FOR: Record<ChecklistItem, string> = {
   collection_time: 'what time on the first day they will come to collect it',
   documents: 'a photo of their driving licence and of their passport or Emirates ID',
   payment: 'how they would like to pay',
+  return_time: 'what time on the last day the car should come back',
+  return_address: 'where the car should be collected from at the end — the same address, or another',
 }
 
 /** Two photos: a licence, and a passport or Emirates ID. */
@@ -66,6 +87,15 @@ export async function bookingChecklist(
   const [row] = await run(
     `select b.id, b.enquiry_id, b.delivery_address, b.delivery_time, b.payment_plan,
             b.customer_reported_paid_at, b.documents_checked_at,
+            b.return_time, b.return_address, b.returned_at,
+            coalesce(q.end_date, q.start_date)::date::text as end_date,
+            q.days, q.total_minor, q.deposit_minor,
+            -- Whether the end is near enough to arrange: the day before, in
+            -- the operator's own calendar rather than the server's.
+            (coalesce(q.end_date, q.start_date)::date - 1
+              <= (now() at time zone o.timezone)::date) as return_is_near,
+            (select coalesce(sum(p.amount_minor), 0)::bigint from payments p
+              where p.booking_id = b.id and p.state = 'paid') as paid,
             trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle,
             q.start_date::date::text as start_date, q.currency,
             -- Delivery is only asked about when they asked for delivery. A
@@ -81,6 +111,7 @@ export async function bookingChecklist(
               order by p.created_at limit 1) as link
      from bookings b
      join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
+     join operators o on o.id = b.operator_id
      left join vehicles v on v.id = q.vehicle_id
      where b.id = $1 and b.operator_id = $2 and b.state = 'confirmed'`,
     [input.bookingId, input.operatorId],
@@ -123,12 +154,26 @@ export async function bookingChecklist(
     || (plan !== null && row['customer_reported_paid_at'] != null)
   if (!paymentSettledFromTheirSide) missing.push('payment')
 
+  /**
+   * The other end, once it is near. Asked the day before, not at booking: on
+   * Tuesday nobody knows what time on Sunday suits, and a question asked five
+   * days early is asked again anyway.
+   */
+  if (row['return_is_near'] === true && row['returned_at'] == null) {
+    if (row['return_time'] == null) missing.push('return_time')
+    if (deliveryWanted && row['return_address'] == null) missing.push('return_address')
+  }
+
   return {
     bookingId: row['id'] as string,
     enquiryId: (row['enquiry_id'] as string) ?? null,
     handover: deliveryWanted ? 'delivery' : handoverKnown ? 'collection' : null,
     vehicle: (row['vehicle'] as string) ?? null,
     startDate: (row['start_date'] as string) ?? null,
+    endDate: (row['end_date'] as string) ?? null,
+    days: row['days'] == null ? null : Number(row['days']),
+    totalMinor: Number(row['total_minor']),
+    depositMinor: row['deposit_minor'] == null ? null : Number(row['deposit_minor']),
     deliveryWanted,
     deliveryAddress: (row['delivery_address'] as string) ?? null,
     deliveryTime: (row['delivery_time'] as string) ?? null,
@@ -141,6 +186,10 @@ export async function bookingChecklist(
     owedMinor: owed,
     currency: row['currency'] as string,
     paymentLink: (row['link'] as string) ?? null,
+    paidMinor: Number(row['paid']),
+    returnTime: (row['return_time'] as string) ?? null,
+    returnAddress: (row['return_address'] as string) ?? null,
+    returnedAt: row['returned_at'] == null ? null : new Date(row['returned_at'] as string),
     missing,
   }
 }
@@ -159,6 +208,7 @@ export async function activeBookingFor(
     `select b.id from bookings b
      join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
      where b.operator_id = $1 and b.conversation_id = $2 and b.state = 'confirmed'
+       and b.returned_at is null
        and coalesce(q.end_date, q.start_date)::date >= current_date
      order by q.start_date asc
      limit 1`,
@@ -188,6 +238,8 @@ export async function recordBookingProgress(
      * customer then chose delivery, and 4pm quietly became the delivery time.
      */
     clearTime?: boolean
+    returnTime?: string | null
+    returnAddress?: string | null
   },
 ): Promise<{ recorded: boolean }> {
   const rows = await run(
@@ -197,6 +249,8 @@ export async function recordBookingProgress(
          payment_plan = coalesce($5, payment_plan),
          customer_reported_paid_at = case when $6 then coalesce(customer_reported_paid_at, now())
                                           else customer_reported_paid_at end,
+         return_time = coalesce($8, return_time),
+         return_address = coalesce($9, return_address),
          updated_at = now()
      where id = $1 and operator_id = $2 and state = 'confirmed'
      returning id`,
@@ -204,6 +258,7 @@ export async function recordBookingProgress(
       input.bookingId, input.operatorId,
       input.deliveryAddress ?? null, input.deliveryTime ?? null,
       input.paymentPlan ?? null, input.saysPaid === true, input.clearTime === true,
+      input.returnTime ?? null, input.returnAddress ?? null,
     ],
   )
   return { recorded: rows.length > 0 }
@@ -281,4 +336,27 @@ export async function markDocumentsChecked(
     [input.bookingId, input.operatorId, input.membershipId],
   )
   return { checked: rows.length > 0 }
+}
+
+/**
+ * A person saw the car come back.
+ *
+ * Their name goes on it, as it does on the documents: "returned" with nobody
+ * against it is a claim, and the deposit is given back on the strength of it.
+ */
+export async function markReturned(
+  run: QueryRunner,
+  input: { operatorId: string; bookingId: string; membershipId: string },
+): Promise<{ returned: boolean; conversationId: string | null }> {
+  const rows = await run(
+    `update bookings
+     set returned_at = now(), returned_by_membership_id = $3, updated_at = now()
+     where id = $1 and operator_id = $2 and state = 'confirmed' and returned_at is null
+     returning conversation_id`,
+    [input.bookingId, input.operatorId, input.membershipId],
+  )
+  return {
+    returned: rows.length > 0,
+    conversationId: (rows[0]?.['conversation_id'] as string) ?? null,
+  }
 }

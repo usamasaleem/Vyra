@@ -270,6 +270,17 @@ export const bookings = pgTable(
     documentsCheckedAt: timestamp({ withTimezone: true }),
     documentsCheckedByMembershipId: uuid(),
 
+    /**
+     * The other end of the rental, collected by the agent the way the start
+     * was: when the car comes back, and — for a delivered car — where it is
+     * picked up from. 24-hour HH:MM on the last day.
+     */
+    returnTime: text(),
+    returnAddress: text(),
+    /** A person saw the car back. Their name goes on it, as with the documents. */
+    returnedAt: timestamp({ withTimezone: true }),
+    returnedByMembershipId: uuid(),
+
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
