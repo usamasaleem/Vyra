@@ -335,6 +335,12 @@ describe('surfaceForAsking', () => {
    * Live: Delivery / Collection under a question about paying, because the
    * word was in the sentence before it.
    */
+  it('does not offer the fleet under a question about booking', () => {
+    expect(surfaceForAsking('vehicle',
+      'The Cullinan is AED 16,000 for 2 days. Would you like me to book it now, or hold it for you for 2 hours?',
+    )).toBeNull()
+  })
+
   it('reads the question, not the statement in front of it', () => {
     expect(surfaceForAsking('delivery_preference',
       'Perfect — collection at 4:00 pm on Thursday. How would you like to pay the AED 20,000 due?',

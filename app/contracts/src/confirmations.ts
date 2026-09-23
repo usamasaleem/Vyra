@@ -212,7 +212,13 @@ export function surfaceForAsking(
    */
   const question = reply.split(/(?<=[.!?؟])\s+/).find((s) => /[?؟]\s*$/.test(s)) ?? ''
   if (askedFor === 'delivery_preference' && MENTIONS_DELIVERY.test(question)) return 'delivery_choice'
-  if (askedFor === 'vehicle' && MENTIONS_A_CHOICE.test(reply)) return 'car_list'
+  /**
+   * The question, and not a booking one. Live in simulation: "Would you like
+   * me to book it now, or hold it for you for 2 hours?" carried the fleet list,
+   * because "like" is a choosing word and the car was still on the list of
+   * things to ask. They had named the car; the question was whether to book it.
+   */
+  if (askedFor === 'vehicle' && MENTIONS_A_CHOICE.test(question) && !asksToBook(reply)) return 'car_list'
   return null
 }
 

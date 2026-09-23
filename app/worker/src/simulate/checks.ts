@@ -44,7 +44,11 @@ export function check(played: Played): Finding[] {
   // — The rules every conversation keeps.
   for (const m of agent) {
     for (const r of RULES) {
-      const hit = m.body.match(r.test)
+      // "Whether delivery is free" is about a fee, which is what the word means there.
+      const body = r.rule.startsWith('says "free"')
+        ? m.body.split(/(?<=[.!?])\s+/).filter((x) => !/deliver/i.test(x)).join(' ')
+        : m.body
+      const hit = body.match(r.test)
       if (hit !== null) out.push({ severity: r.severity, rule: r.rule, detail: `"…${hit[0]}…" — ${r.why}` })
     }
     if (m.buttons.includes('Delivery') && !/deliver|collect|pick/i.test(lastQuestion(m.body))) {

@@ -77,6 +77,11 @@ const NOT_YET_PUBLISHED: Record<string, string> = {
     'You can pay by bank transfer to Vyra Pilot LLC, Emirates NBD (IBAN AE07 0331 2345 6789 0123 456), '
     + 'by the payment link we send you, or by card or cash when the car is handed over. For a '
     + 'transfer, please send a screenshot once it is done so we can match it.',
+  'included-kilometres':
+    '250 km a day are included. Beyond that it is AED 5 per extra kilometre, charged when the car comes back.',
+  'delivery-areas':
+    'We deliver anywhere in Dubai for free, and collect from the same place at the end. Sharjah and Abu '
+    + 'Dhabi are AED 300 each way. The car may be driven anywhere in the UAE, but not across the border.',
   'collection-point':
     'Collect the car from our showroom at Al Quoz Industrial 3, Street 17 (pin: maps.app.goo.gl/vyra). '
     + 'Please message us here when you are 10 minutes away so the car is ready.',
