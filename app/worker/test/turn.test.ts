@@ -2228,7 +2228,7 @@ describe('chasing what the enquiry still needs', () => {
      */
     it('says when each was said', async () => {
       await remember([{ field: 'vehicle', value: 'Ferrari 488' }])
-      expect(await systemFor()).toMatch(/they said so (earlier today|yesterday|on \w+)/)
+      expect(await systemFor()).toMatch(/they said so (a moment ago|earlier today|yesterday|on \w+)/)
     })
 
     /**

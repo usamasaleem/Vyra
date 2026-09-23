@@ -617,8 +617,25 @@ export async function outstandingQuestions(
    */
   const ordered = [...bookings].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
 
+  /**
+   * A rental that has been booked is asked about by its checklist, not here.
+   *
+   * Live: both ran at once. The checklist asked what time they would collect
+   * while this still had "delivery or collection" outstanding for the same
+   * rental, and its buttons went out under a question about paying.
+   */
+  const booked = new Set((await run(
+    `select enquiry_id from bookings
+     -- Confirmed only: a request still waiting on a person has no checklist
+     -- yet, and what it is missing is still worth asking.
+     where operator_id = $1 and conversation_id = $2 and state = 'confirmed'
+       and enquiry_id is not null`,
+    [input.operatorId, input.conversationId],
+  )).map((r) => r['enquiry_id'] as string))
+
   const out: OutstandingQuestion[] = []
   for (const booking of ordered) {
+    if (booked.has(booking.enquiryId)) continue
     const present = new Set(booking.fields.map((f) => f.field))
     const missing = ASK_ORDER.filter((field) =>
       field === 'end_at'

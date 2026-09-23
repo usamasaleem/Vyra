@@ -80,6 +80,12 @@ export function relativeDay(at: Date, now: Date, timeZone: string): string {
     (Date.parse(`${day(now)}T00:00:00Z`) - Date.parse(`${day(at)}T00:00:00Z`)) / 86_400_000,
   )
 
+  /**
+   * Minutes, not "today". Live: photographs sent one minute earlier were
+   * described as "this morning" at six in the evening — the model was told
+   * "earlier today" and reached for the nearest phrase it knew.
+   */
+  if (now.getTime() - at.getTime() < 15 * 60_000) return 'a moment ago'
   if (days <= 0) return 'earlier today'
   if (days === 1) return 'yesterday'
   // Inside a week a weekday still locates it — "on Tuesday" is how somebody

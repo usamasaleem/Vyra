@@ -34,7 +34,8 @@ export type Checklist = {
 }
 
 export type ChecklistItem =
-  | 'delivery_address' | 'delivery_time' | 'collection_time' | 'documents' | 'payment'
+  | 'handover_choice' | 'delivery_address' | 'delivery_time' | 'collection_time' | 'documents'
+  | 'payment'
 
 /**
  * What each item is, in the words the agent is told to ask for it.
@@ -44,7 +45,8 @@ export type ChecklistItem =
  * have been asked for as its bare key by the others.
  */
 export const ASK_FOR: Record<ChecklistItem, string> = {
-  delivery_address: 'the address the car should go to',
+  handover_choice: 'whether they want it delivered or will collect it themselves',
+  delivery_address: 'the address the car should go to — a building or villa and the area, not a P.O. Box',
   delivery_time: 'what time on the first day they want it delivered',
   collection_time: 'what time on the first day they will come to collect it',
   documents: 'a photo of their driving licence and of their passport or Emirates ID',
@@ -82,11 +84,20 @@ export async function bookingChecklist(
   )
   if (row === undefined) return null
 
-  const deliveryWanted = /deliver/i.test(row['delivery_preference'] as string)
+  const preference = row['delivery_preference'] as string
+  const deliveryWanted = /deliver/i.test(preference)
+  /**
+   * Not chosen is not collection. Live: a customer who had never been asked
+   * was told "What time will you collect the Ferrari on Thursday?", answered
+   * 4pm, and then picked Delivery from the buttons on the next message — the
+   * time they gave was for a handover that was never going to happen.
+   */
+  const handoverKnown = deliveryWanted || /collect|pick/i.test(preference)
   const documents = Number(row['documents'])
   const owed = Number(row['owed'])
 
   const missing: Checklist['missing'] = []
+  if (!handoverKnown) missing.push('handover_choice')
   if (deliveryWanted && row['delivery_address'] == null) missing.push('delivery_address')
   if (deliveryWanted && row['delivery_time'] == null) missing.push('delivery_time')
   /**
@@ -95,7 +106,7 @@ export async function bookingChecklist(
    * a Ferrari prepared for nobody, or nobody there when they arrive. Stored
    * in the same column: it is the handover time either way.
    */
-  if (!deliveryWanted && row['delivery_time'] == null) missing.push('collection_time')
+  if (handoverKnown && !deliveryWanted && row['delivery_time'] == null) missing.push('collection_time')
   if (documents < DOCUMENTS_WANTED && row['documents_checked_at'] == null) missing.push('documents')
   /**
    * Payment is settled from the customer's side once they have chosen a way

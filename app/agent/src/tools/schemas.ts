@@ -114,7 +114,8 @@ export const extendBookingSchema = z.strictObject({
 export const recordBookingProgressSchema = z.strictObject({
   deliveryAddress: z.string().min(3).nullable().describe(
     'The full address the car goes to, as they gave it — building, flat or villa, area. Null '
-    + 'unless they gave one in this message.',
+    + 'unless they gave one in this message. A P.O. Box is not an address a car can be handed '
+    + 'over at: leave this null and ask for the building or villa and the area instead.',
   ),
   deliveryTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/).nullable().describe(
     'The time on the first day the car is handed over — delivered to them, or collected by them '

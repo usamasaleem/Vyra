@@ -645,7 +645,7 @@ describe('prepare_quote', () => {
       const { data } = await quoteFor()
 
       expect(data.availability).toBe('unknown')
-      expect(data.guidance).toContain('do not say the car is free')
+      expect(data.guidance).toContain('do not say the car is available')
     })
 
     /** Vouched for by the operator, and nothing against these dates. */
@@ -670,7 +670,7 @@ describe('prepare_quote', () => {
 
       const { data } = await quoteFor()
       expect(data.availability).toBe('taken')
-      expect(data.guidance).toContain('is NOT free')
+      expect(data.guidance).toContain('is NOT available')
     })
 
     it('stores the draft for a person to approve', async () => {
@@ -1046,7 +1046,7 @@ describe('request_booking_review', () => {
     expect(result).toMatchObject({ status: 'ok', data: { confirmed: true } })
     const guidance = (result as { data: { guidance: string } }).data.guidance
     expect(guidance).toContain('AED 8,000 is due')
-    expect(guidance).toContain('what time on the first day they will come to collect it')
+    expect(guidance).toContain('whether they want it delivered or will collect it themselves')
     expect(guidance).not.toMatch(/say somebody will be in touch about the details/)
   })
 

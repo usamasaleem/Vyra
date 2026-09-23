@@ -187,16 +187,42 @@ export async function fileDocumentIfBooked(
 
   const after = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
   const next = after?.missing[0]
+  /**
+   * The day by name. "What time on the first day" is how a form asks; the
+   * customer knows their rental starts on Thursday.
+   */
+  const firstDay = after?.startDate == null
+    ? 'the first day'
+    : new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: 'UTC' })
+      .format(new Date(`${after.startDate}T00:00:00Z`))
   const NEXT: Record<string, string> = {
+    handover_choice: 'Would you like it delivered, or will you collect it?',
     delivery_address: 'What address should the car go to?',
-    delivery_time: 'What time on the first day would you like it?',
-    collection_time: 'What time on the first day will you come to collect it?',
+    delivery_time: `What time on ${firstDay} would you like it?`,
+    collection_time: `What time on ${firstDay} will you come to collect it?`,
     payment: 'How would you like to pay — bank transfer, a payment link, or card or cash on delivery?',
   }
 
+  /**
+   * Which ID, from what they told us. "Passport or Emirates ID" to somebody
+   * who has just said they are visiting names a card they cannot have.
+   */
+  const [lives] = await deps.run(
+    `select fe.value from field_evidence fe
+     join bookings b on b.enquiry_id = fe.enquiry_id and b.operator_id = fe.operator_id
+     where b.id = $1 and b.operator_id = $2 and fe.field = 'residency' and fe.superseded_at is null
+     order by fe.created_at desc limit 1`,
+    [bookingId, context.operator.id],
+  ).catch(() => [])
+  const residency = String(lives?.['value'] ?? '').toLowerCase()
+  // "Non-resident" contains "resident"; the visitor test goes first.
+  const identity = /visit|tourist|non[- ]?resident|not (?:a )?resident/.test(residency)
+    ? 'your passport'
+    : residency.includes('resident') ? 'your Emirates ID' : 'your passport or Emirates ID'
+
   const body = total < DOCUMENTS_WANTED
     ? 'Got it — I have added that to your booking. Could you send the other one too? We need '
-      + 'your driving licence and your passport or Emirates ID. The team checks them before the handover.'
+      + `your driving licence and ${identity}. The team checks them before the handover.`
     : 'Got it — that is both, and they are on your booking. The team checks them before the handover.'
       + (next !== undefined && NEXT[next] !== undefined ? ` ${NEXT[next]}` : '')
 
@@ -880,7 +906,9 @@ export async function runConversationTurn(
       const residency = known.find((k) => k.field === 'residency')?.value?.toLowerCase() ?? null
       const wanted = residency === null
         ? (['driver-requirements-resident', 'driver-requirements-visitor'] as const)
-        : residency.includes('resident')
+        // "Non-resident" contains "resident", so the visitor test goes first.
+        : !/visit|tourist|non[- ]?resident|not (?:a )?resident/.test(residency)
+            && residency.includes('resident')
           ? (['driver-requirements-resident'] as const)
           : (['driver-requirements-visitor'] as const)
 

@@ -213,12 +213,12 @@ export async function prepareQuote(
           : '')
         + 'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. If they accept this price, pass quoteId to request_booking_review exactly as given here — never build one out of anything else. '
         + (availability === 'free'
-          ? 'The car IS free for these dates, from the operator\'s own calendar. Say so plainly and do not tell them availability needs confirming — it has been confirmed.'
+          ? 'The car IS available for these dates, from the operator\'s own calendar. Say it is available — plainly, and in that word: to a customer "free" reads as no charge. Do not tell them availability needs confirming — it has been confirmed.'
           : availability === 'already_theirs'
             ? 'THEY have already booked this car for these dates — the hold is their own. Say so warmly, as a reminder rather than a refusal: they are booked. Do not quote it again, do not say it is unavailable, and never offer to ask a colleague whether it can be released to them.'
           : availability === 'taken'
-            ? 'The car is NOT free for these dates. Say so, and offer other dates or another car rather than a price they cannot use.'
-            : 'Availability is not known for these dates, so do not say the car is free. Say you are checking.'),
+            ? 'The car is NOT available for these dates. Say so, and offer other dates or another car rather than a price they cannot use.'
+            : 'Availability is not known for these dates, so do not say the car is available. Say you are checking.'),
     },
     'approve or reject a draft quote',
   )

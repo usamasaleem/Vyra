@@ -337,7 +337,7 @@ export async function searchVehicles(
         checkedMinutesAgo: 0,
       },
       guidance:
-        'Nothing is booked against this car for those dates and this operator keeps their calendar current, so you may say it is free. Do not say it is held or reserved for them — that is a separate step a person takes.',
+        'Nothing is booked against this car for those dates and this operator keeps their calendar current, so you may say it is available — in that word, never "free", which a customer reads as no charge. Do not say it is held or reserved for them — that is a separate step a person takes.',
     })
   }
 
@@ -402,7 +402,7 @@ export async function searchVehicles(
  */
 const GUIDANCE_FOR: Record<string, (minutesAgo: number) => string> = {
   available: (m) =>
-    `Operations confirmed this was free, checked ${m} minute(s) ago. You may say so, and say when it was checked. Do not say it is booked or held for them — that is a separate step a person takes.`,
+    `Operations confirmed this was available, checked ${m} minute(s) ago. You may say it is available, and say when it was checked. Do not say it is booked or held for them — that is a separate step a person takes.`,
   unavailable: () =>
     'Operations confirmed this is NOT available for those dates. Say so plainly and offer to check alternatives or other dates.',
   pending_confirmation: () =>

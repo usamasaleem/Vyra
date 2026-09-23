@@ -112,6 +112,22 @@ describe('photosPromisedIn', () => {
     expect(photosPromisedIn(reply)).toBe(false)
   })
 
+  /**
+   * Live: this sentence re-sent the same four photographs forty-three seconds
+   * after the first. Pointing back at pictures is not sending them.
+   */
+  it.each([
+    'I sent you a few photos this morning. Would you like me to book it?',
+    'Sent you a few pictures earlier — want different angles?',
+    "I've already sent the photos above.",
+  ])('reads %j as pointing back, not sending', (reply) => {
+    expect(photosPromisedIn(reply)).toBe(false)
+  })
+
+  it("still reads a plain \"I've sent the photos\" as a claim", () => {
+    expect(photosPromisedIn("I've sent the photos for you.")).toBe(true)
+  })
+
   it('reads a typographic apostrophe the same as a plain one', () => {
     expect(photosPromisedIn('I\u2019ve attached the photos here.')).toBe(true)
     expect(photosPromisedIn("I've attached the photos here.")).toBe(true)

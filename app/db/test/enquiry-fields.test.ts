@@ -496,6 +496,24 @@ describe('outstandingQuestions', () => {
     expect(await outstanding()).toContain('start_at')
   })
 
+  /**
+   * Live: this and the booking checklist both asked about the same booked
+   * rental, and the delivery buttons went out under a question about paying.
+   */
+  it('leaves a booked rental to its checklist', async () => {
+    const [q] = await run(
+      `insert into quotes (operator_id, conversation_id, enquiry_id, revision, state, total_minor,
+                           lines, valid_until)
+       values ($1, $2, $3, 1, 'draft', 500000, '[]'::jsonb, now() + interval '1 day') returning id`,
+      [OP, CONV, enquiryId])
+    await run(
+      `insert into bookings (operator_id, conversation_id, enquiry_id, quote_id, state,
+                             decided_at, decided_automatically)
+       values ($1, $2, $3, $4, 'confirmed', now(), true)`,
+      [OP, CONV, enquiryId, q!['id']])
+    expect(await outstanding()).toEqual([])
+  })
+
   it('says nothing once everything required is recorded', async () => {
     await recordFields(transact, {
       operatorId: OP, enquiryId,

@@ -62,10 +62,12 @@ beforeEach(async () => {
   enquiryId = e!['id'] as string
 })
 
-const confirmed = async (preference: 'delivery' | 'collection' = 'delivery') => {
-  await run(
-    `insert into field_evidence (operator_id, enquiry_id, field, value)
-     values ($1, $2, 'delivery_preference', $3)`, [OP, enquiryId, preference])
+const confirmed = async (preference: 'delivery' | 'collection' | null = 'delivery') => {
+  if (preference !== null) {
+    await run(
+      `insert into field_evidence (operator_id, enquiry_id, field, value)
+       values ($1, $2, 'delivery_preference', $3)`, [OP, enquiryId, preference])
+  }
   const [q] = await run(
     `insert into quotes (operator_id, conversation_id, enquiry_id, vehicle_id, revision, state,
                          total_minor, deposit_minor, lines, start_date, end_date, days,
@@ -102,6 +104,15 @@ describe('what a confirmed booking still needs', () => {
   it('asks a collecting customer when, not where', async () => {
     const list = await bookingChecklist(run, { operatorId: OP, bookingId: await confirmed('collection') })
     expect(list!.missing).toEqual(['collection_time', 'documents', 'payment'])
+  })
+
+  /**
+   * Live: never asked, told "What time will you collect the Ferrari?", then
+   * chose delivery on the next message.
+   */
+  it('asks delivery or collection before any time, when nobody has said', async () => {
+    const list = await bookingChecklist(run, { operatorId: OP, bookingId: await confirmed(null) })
+    expect(list!.missing).toEqual(['handover_choice', 'documents', 'payment'])
   })
 
   it('stops asking a collecting customer once they give the time', async () => {

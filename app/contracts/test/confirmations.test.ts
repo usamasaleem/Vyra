@@ -331,6 +331,16 @@ describe('surfaceForAsking', () => {
     expect(surfaceForAsking('vehicle', 'The Cullinan is AED 8,000 per day.')).toBeNull()
   })
 
+  /**
+   * Live: Delivery / Collection under a question about paying, because the
+   * word was in the sentence before it.
+   */
+  it('reads the question, not the statement in front of it', () => {
+    expect(surfaceForAsking('delivery_preference',
+      'Perfect — collection at 4:00 pm on Thursday. How would you like to pay the AED 20,000 due?',
+    )).toBeNull()
+  })
+
   /** Only two questions have a surface. A date is open, and a menu cannot hold one. */
   it.each(['start_at', 'end_at', 'duration', 'budget'])(
     'has nothing to offer for %j', (field) => {

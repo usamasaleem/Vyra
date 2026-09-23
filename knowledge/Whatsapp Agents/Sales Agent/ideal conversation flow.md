@@ -9,9 +9,9 @@ This is the standard for reviewing live conversations. When a real transcript di
 - **The agent books.** The operator has auto-confirm on and a complete calendar, so the agent confirms and holds the car itself. It never offers to "send it to the team" and never says a colleague will confirm.
 - **One question per message.** It answers what the customer asked first, then asks the one thing it still needs. It never sends a list of questions.
 - **No repeated questions.** Anything the customer has already said is saved to the enquiry and not asked again.
-- **The record is the truth.** Whether the car is free, booked, paid for or checked comes from the database, not from what was said earlier in the chat.
+- **The record is the truth.** Whether the car is available, booked, paid for or checked comes from the database, not from what was said earlier in the chat.
 - **Staff check the work instead of chasing the customer.** They open `/bookings`, check the documents and the account, and click. They don't need to message the customer.
-- **It never claims something it can't know.** It doesn't say it has seen a document, that a payment has arrived, or that a car is free unless the calendar says so.
+- **It never claims something it can't know.** It doesn't say it has seen a document, that a payment has arrived, or that a car is available unless the calendar says so.
 
 Target: **about 10 customer messages** from "hi" to "paid", with **no hand-off to a person**.
 
@@ -48,7 +48,7 @@ The operator's written greeting is sent only when the first message is just a he
 
 ### 3. The quote
 
-> **Vyra:** The Ferrari 488 Spider is free Saturday 26 to Monday 28 September. For 2 days it's AED 10,000, plus a refundable AED 5,000 deposit. Shall I book it for you?
+> **Vyra:** The Ferrari 488 Spider is available Saturday 26 to Monday 28 September. For 2 days it's AED 10,000, plus a refundable AED 5,000 deposit. Shall I book it for you?
 > *[Yes, book it] [Not just yet]*
 
 **Behind it:** `prepare_quote` checks the calendar (`free`) and prices the rental using the return-day rule (26 → 28 is 2 days). It returns a `quoteId`, and the quote message includes the deposit. The offer is "shall I book it", not "shall I send it to the team".
@@ -121,7 +121,7 @@ Each branch should rejoin the main path. None of them should end at "someone wil
 
 | Situation | What the ideal reply does |
 |---|---|
-| **Car is taken for those dates** | Says so plainly and offers the closest alternative that is free for the same dates, with its price. Never says the car is "being checked with the team". |
+| **Car is taken for those dates** | Says so plainly and offers the closest alternative that is available for the same dates, with its price. Never says the car is "being checked with the team". |
 | **Car is already theirs** (`already_theirs`) | Tells them it's already booked for them, and doesn't call it taken. |
 | **They ask for a discount** | Doesn't make one up. A discount is the salesperson's decision: the quote shows up for them to reduce, and the agent tells the customer it will check. This is the one planned hand-off on the price. |
 | **Two cars** | Keeps a separate quote and booking for each car, and names the car whenever it asks something ("the delivery time for the Huracán"). |

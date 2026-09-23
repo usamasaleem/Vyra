@@ -119,7 +119,7 @@ const CLAIMS_ATTACHED: RegExp[] = [
    */
   /\b(?:i'?ll|i will|let me|going to|gonna)\b[^.?!]{0,30}\b(?:send|get|share|resend|forward)\b[^.?!]{0,40}\b(?:photo|photos|picture|pictures|image|images|pic|pics|angle|angles|shot|shots|them|these)\b/i,
   /\b(?:resend|resent|send (?:them |those )?(?:again|over|across))\b/i,
-  /\b(?:attached|attaching|sending|sent|here are|here's|here is)\b[^.?!]{0,40}\b(?:photo|photos|picture|pictures|image|images|pic|pics|shot|shots)\b/i,
+  /\b(?:attached|attaching|sending|here are|here's|here is)\b[^.?!]{0,40}\b(?:photo|photos|picture|pictures|image|images|pic|pics|shot|shots)\b/i,
   /\b(?:photo|photos|picture|pictures|image|images|pic|pics)\b[^.?!]{0,30}\b(?:attached|below|here|coming through)\b/i,
   /\b(?:have a look|take a look)\b[^.?!]{0,25}\b(?:photo|photos|picture|pictures|image|images|pic|pics|below|these)\b/i,
 ]
@@ -132,8 +132,25 @@ const CLAIMS_ATTACHED: RegExp[] = [
  * the old name stopped describing half of what it catches. Both are the same
  * failure: a sentence about photographs that no photographs follow.
  */
+/**
+ * "Sent", which is a claim only when it is about now.
+ *
+ * "I've sent the photos" says they are on their way. "I sent you a few photos
+ * this morning" points at ones already in the chat — which is exactly what the
+ * instructions ask it to say when a car comes up again. Live, that sentence
+ * was read as a claim, and the same four photographs went out a second time,
+ * forty-three seconds after the first.
+ */
+const SENT_PHOTOS =
+  /\bsent\b[^.?!]{0,40}\b(?:photo|photos|picture|pictures|image|images|pic|pics|shot|shots)\b/i
+const POINTS_BACK =
+  /\b(?:earlier|already|before|this morning|this afternoon|yesterday|above|ago|last|previously|on (?:mon|tues|wednes|thurs|fri|satur|sun)day)\b/i
+
 export function photosPromisedIn(reply: string | null): boolean {
   if (reply === null || reply.trim() === '') return false
   const flat = reply.replace(/[\u2018\u2019]/g, "'")
-  return CLAIMS_ATTACHED.some((p) => p.test(flat))
+  if (CLAIMS_ATTACHED.some((p) => p.test(flat))) return true
+  return flat
+    .split(/(?<=[.?!])\s+/)
+    .some((sentence) => SENT_PHOTOS.test(sentence) && !POINTS_BACK.test(sentence))
 }

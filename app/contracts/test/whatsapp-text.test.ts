@@ -77,6 +77,11 @@ describe('relativeDay', () => {
     expect(on(at)).toBe(expected)
   })
 
+  it('says a moment ago for something just sent', () => {
+    expect(on('2026-09-16T09:55:00Z')).toBe('a moment ago')
+    expect(on('2026-09-16T09:30:00Z')).toBe('earlier today')
+  })
+
   /** Never a date, and never a count beside one. That is what a database says. */
   it('never gives a date', () => {
     for (const at of ['2026-09-16T04:00:00Z', '2026-09-13T04:00:00Z', '2026-08-20T04:00:00Z']) {

@@ -203,7 +203,15 @@ export function surfaceForAsking(
   // two-question Arabic reply as having none and attached buttons to it.
   if ((reply.match(/[?؟]/g) ?? []).length > 1) return null
 
-  if (askedFor === 'delivery_preference' && MENTIONS_DELIVERY.test(reply)) return 'delivery_choice'
+  /**
+   * The question has to be about it, not the message. Live: "Perfect —
+   * collection at 4:00 pm on Thursday. How would you like to pay the AED
+   * 20,000 due?" carried Delivery / Collection, because the word was in the
+   * statement before the question. The customer tapped Delivery, which
+   * answered nothing they had been asked.
+   */
+  const question = reply.split(/(?<=[.!?؟])\s+/).find((s) => /[?؟]\s*$/.test(s)) ?? ''
+  if (askedFor === 'delivery_preference' && MENTIONS_DELIVERY.test(question)) return 'delivery_choice'
   if (askedFor === 'vehicle' && MENTIONS_A_CHOICE.test(reply)) return 'car_list'
   return null
 }
