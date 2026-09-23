@@ -1,6 +1,7 @@
 import { formatDateForMessage } from '@vyra/contracts'
 import {
-  formatMoney, getNavCounts, listBookingRequests, listConfirmedBookings, whatIsOwed,
+  bookingChecklist, formatMoney, getNavCounts, listBookingRequests, listConfirmedBookings,
+  whatIsOwed,
 } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
@@ -8,6 +9,7 @@ import { SiteNav } from '../site-nav'
 import { BookingForm } from './booking-form'
 import { CancelForm } from './cancel-form'
 import { PaymentForm } from './payment-form'
+import { checkDocuments } from './actions'
 
 /**
  * The people who said yes.
@@ -45,6 +47,9 @@ export default async function BookingsPage() {
         // What each one owes, so the diary answers "has this been paid" —
         // which is the question somebody actually has when a car is going out.
         owed: await whatIsOwed(run, { operatorId: actor.operatorId, bookingId: b.bookingId }),
+        // What the agent has collected since confirming, so this reads as a
+        // list of things to check rather than things to chase.
+        checklist: await bookingChecklist(run, { operatorId: actor.operatorId, bookingId: b.bookingId }),
       })))),
     run(`select auto_confirm_bookings, auto_confirm_limit_minor, timezone from operators
          where id = $1`,
@@ -212,6 +217,49 @@ export default async function BookingsPage() {
                     Read the conversation
                   </a>
                 </div>
+                {b.checklist !== null && (
+                  <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.25rem 0.9rem', margin: '0.7rem 0 0', fontSize: '0.9rem' }}>
+                    {b.checklist.deliveryWanted && (
+                      <>
+                        <dt className="muted">Delivery</dt>
+                        <dd style={{ margin: 0 }}>
+                          {b.checklist.deliveryAddress ?? <span className="muted">address not given yet</span>}
+                          {' · '}
+                          {b.checklist.deliveryTime ?? <span className="muted">time not given yet</span>}
+                        </dd>
+                      </>
+                    )}
+                    <dt className="muted">Payment</dt>
+                    <dd style={{ margin: 0 }}>
+                      {b.checklist.paymentPlan === null
+                        ? <span className="muted">not chosen yet</span>
+                        : { transfer: 'Bank transfer', link: 'Payment link', on_delivery: 'Card or cash on delivery' }[b.checklist.paymentPlan]}
+                      {b.checklist.customerReportedPaidAt !== null && (
+                        <strong> · customer says paid — check the account</strong>
+                      )}
+                    </dd>
+                    <dt className="muted">Documents</dt>
+                    <dd style={{ margin: 0, display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {b.checklist.documentsCheckedAt !== null
+                        ? <span>checked</span>
+                        : (
+                          <>
+                            <span>
+                              {b.checklist.documents === 0
+                                ? <span className="muted">none received yet</span>
+                                : `${b.checklist.documents} received · open the conversation to see them`}
+                            </span>
+                            {b.checklist.documents > 0 && canAnswer && (
+                              <form action={checkDocuments}>
+                                <input type="hidden" name="bookingId" value={b.bookingId} />
+                                <button className="button secondary" type="submit">Mark checked</button>
+                              </form>
+                            )}
+                          </>
+                        )}
+                    </dd>
+                  </dl>
+                )}
                 {b.owed.length > 0 && (
                   <div className="stack" style={{ gap: '0.5rem', marginTop: '0.7rem' }}>
                     {b.owed.map((o) => (

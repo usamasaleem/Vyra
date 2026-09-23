@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import {
-  attachPaymentLink, cancelBooking, decideBooking, NoDisplayName, queueOutboundText,
-  recordPayment, refundPayment,
+  attachPaymentLink, cancelBooking, decideBooking, markDocumentsChecked, NoDisplayName,
+  queueOutboundText, recordPayment, refundPayment,
 } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
@@ -245,4 +245,22 @@ export async function recordMoney(
 
   revalidatePath('/bookings')
   return { error: null }
+}
+
+/**
+ * A person has looked at the licence and passport photos.
+ *
+ * The agent files them and never judges one; this is the moment somebody
+ * does, and their name goes on it. Opening the conversation is where the
+ * photos are — this only records that they were looked at.
+ */
+export async function checkDocuments(formData: FormData): Promise<void> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canReply(actor), 'check documents')
+  await markDocumentsChecked(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    bookingId: String(formData.get('bookingId') ?? ''),
+    membershipId: actor.membershipId,
+  })
+  revalidatePath('/bookings')
 }
