@@ -302,6 +302,13 @@
       "when": 1790085952626,
       "tag": "0042_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790136669691,
+      "tag": "0043_booking_checklist",
+      "breakpoints": true
     }
   ]
 }

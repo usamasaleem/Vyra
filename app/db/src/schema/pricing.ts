@@ -236,6 +236,40 @@ export const bookings = pgTable(
      */
     decidedAutomatically: boolean().notNull().default(false),
 
+    /**
+     * Where and when the car goes, which nothing asked for.
+     *
+     * The enquiry records "delivery" and an area — "Dubai Marina" — and that
+     * was where the agent stopped. A driver cannot deliver to an area, and
+     * nobody had the time at all, so every confirmed booking needed a
+     * salesperson to message the customer again before the car could move.
+     * Collected by the agent after confirming, one question at a time.
+     */
+    deliveryAddress: text(),
+    /** 24-hour HH:MM on the first day of the rental. */
+    deliveryTime: text(),
+
+    /**
+     * How they have said they will pay, from the three the operator accepts.
+     *
+     * A plan rather than a payment: "I'll pay the driver" is an answer the
+     * agent can record, and the money itself is still marked taken by a person
+     * on the payment rows, who is the one who can see the account.
+     */
+    paymentPlan: text(),
+    /**
+     * When the customer said they had paid — a transfer screenshot, "done".
+     *
+     * Deliberately not the payment being taken. A screenshot is a claim, and
+     * the salesperson checks the account before the car leaves; this is what
+     * tells them there is something to check.
+     */
+    customerReportedPaidAt: timestamp({ withTimezone: true }),
+
+    /** Who looked at the licence and passport photos, and when. */
+    documentsCheckedAt: timestamp({ withTimezone: true }),
+    documentsCheckedByMembershipId: uuid(),
+
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -363,5 +397,48 @@ export const payments = pgTable(
       .on(table.bookingId, table.kind)
       .where(sql`state in ('due', 'paid')`),
     index('payments_operator_state_idx').on(table.operatorId, table.state, table.createdAt),
+  ],
+)
+
+/**
+ * A photo the customer sent for their booking — a licence, a passport.
+ *
+ * The agent cannot see images and never judges one. It files each photo
+ * against the booking the customer has and tells them it has been received;
+ * a person looks at them before the car leaves. The file stays where it
+ * arrived, on the message, so this row is a pointer rather than a second copy
+ * of somebody's identity document.
+ *
+ * Before this, every photo a customer sent became a handoff: "I can't view
+ * images, so a colleague will take a look." Correct for a photo of a scratch,
+ * and a dead end for the licence the agent had just asked them for.
+ */
+export const bookingDocuments = pgTable(
+  'booking_documents',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    bookingId: uuid().notNull(),
+    conversationId: uuid().notNull(),
+    /** The inbound message carrying the image. The media lives there. */
+    messageId: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.bookingId, table.operatorId],
+      foreignColumns: [bookings.id, bookings.operatorId],
+      name: 'booking_documents_booking_operator_fkey',
+    }),
+    foreignKey({
+      columns: [table.conversationId, table.operatorId],
+      foreignColumns: [conversations.id, conversations.operatorId],
+      name: 'booking_documents_conversation_operator_fkey',
+    }),
+    /** One photo is one document, however many times the job runs. */
+    uniqueIndex('booking_documents_message_key').on(table.messageId),
+    index('booking_documents_booking_idx').on(table.bookingId),
   ],
 )
