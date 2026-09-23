@@ -69,6 +69,8 @@ export type QuoteRequested = {
   lines: Array<{ label: string; amount: string }>
   /** ISO instant. A quote with no end is a promise with no end. */
   validUntil: string
+  /** The customer already has this exact price; nothing was re-quoted. */
+  alreadyGiven: boolean
   /** What the agent may say, and what it must not turn these figures into. */
   guidance: string
 }
@@ -201,8 +203,15 @@ export async function prepareQuote(
       // working out what any figure is for.
       lines: quote.lines.map((l) => ({ label: l.label, amount: money(l.amountMinor) })),
       validUntil: quote.validUntil.toISOString(),
+      alreadyGiven: quote.unchanged === true,
       guidance:
-        'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. If they accept this price, pass quoteId to request_booking_review exactly as given here — never build one out of anything else. '
+        (quote.unchanged === true
+          ? 'NOTHING HAS CHANGED: this is the same quote they already have, for the same car, dates '
+            + 'and price. Do not state the total or the deposit again unless they asked about the price '
+            + 'in this message — they have read it, and repeating it every message reads as a script. '
+            + 'Move the conversation on. '
+          : '')
+        + 'These figures come from the rate a person at this operator confirmed, and the arithmetic was done for you. You may state them exactly as written. Do NOT recalculate, round, discount, convert to another currency, or quote a per-day figure you worked out yourself. Say what the total covers and how long it holds. If they accept this price, pass quoteId to request_booking_review exactly as given here — never build one out of anything else. '
         + (availability === 'free'
           ? 'The car IS free for these dates, from the operator\'s own calendar. Say so plainly and do not tell them availability needs confirming — it has been confirmed.'
           : availability === 'already_theirs'

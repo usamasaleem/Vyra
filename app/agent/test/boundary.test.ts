@@ -1022,6 +1022,34 @@ describe('request_booking_review', () => {
     expect(result).toMatchObject({ status: 'ok' })
   })
 
+  /**
+   * Live: "Confirmed — … Someone will be in touch about the details." The
+   * guidance said to. The agent collects the details itself, so the reply that
+   * confirms says what is owed and asks for the first of them.
+   */
+  it('carries on from a confirmation instead of promising a call', async () => {
+    await run(
+      `update operators set auto_confirm_bookings = true, availability_calendar_complete = true
+       where id = $1`, [OP])
+    const [car] = await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate,
+                             chassis_number, provenance, confirmed_by)
+       values ($1, 'Ferrari', '488', 2022, 'Giallo', 'exotic', 'D 9', 'V9',
+               'operator_confirmed', 'Owner') returning id`, [OP])
+    const quoteId = await sentQuote({ state: 'draft' })
+    await run(
+      `update quotes set vehicle_id = $2, deposit_minor = 300000,
+         start_date = '2026-10-01', end_date = '2026-10-02' where id = $1`,
+      [quoteId, car!['id']])
+
+    const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId })
+    expect(result).toMatchObject({ status: 'ok', data: { confirmed: true } })
+    const guidance = (result as { data: { guidance: string } }).data.guidance
+    expect(guidance).toContain('AED 8,000 is due')
+    expect(guidance).toContain('what time on the first day they will come to collect it')
+    expect(guidance).not.toMatch(/say somebody will be in touch about the details/)
+  })
+
   it('refuses a quote somebody here has rejected', async () => {
     const rejected = await sentQuote({ state: 'rejected' })
     const result = await createToolBoundary(ctx).call('request_booking_review', { quoteId: rejected })

@@ -1,10 +1,10 @@
 import {
-  asksToSeePhotos, asWhatsAppText, buttonsFor, photosPromisedIn, detectDiscountRequest,
+  asksToSeePhotos, asWhatsAppText, isOnlyAGreeting, buttonsFor, photosPromisedIn, detectDiscountRequest,
   type AutomatedMessage, BOOKING_CONFIRMATION, BOOKING_NOW, carChosenIn, civilDateIn,
   DELIVERY_CHOICE,
   formatCivil, surfaceForAsking,
   FULL_RANGE_LABEL, isOpenAt, readServiceHours, type StopCode, mightNeedAvailability,
-  wantsToBook, invitesACarChoice, mightNeedTheFleet, offersAChoice, offersTheFullRange,
+  wantsToBook, asksToBook, invitesACarChoice, mightNeedTheFleet, offersAChoice, offersTheFullRange,
   usableWebsite,
   vehicleList,
 } from '@vyra/contracts'
@@ -34,6 +34,7 @@ import {
 import { searchVehicles } from '@vyra/agent'
 import {
   acceptTurnOutput,
+  ASK_FOR,
   activeBookingFor,
   bookingChecklist,
   DOCUMENTS_WANTED,
@@ -189,13 +190,14 @@ export async function fileDocumentIfBooked(
   const NEXT: Record<string, string> = {
     delivery_address: 'What address should the car go to?',
     delivery_time: 'What time on the first day would you like it?',
+    collection_time: 'What time on the first day will you come to collect it?',
     payment: 'How would you like to pay — bank transfer, a payment link, or card or cash on delivery?',
   }
 
   const body = total < DOCUMENTS_WANTED
     ? 'Got it — I have added that to your booking. Could you send the other one too? We need '
-      + 'your driving licence and your passport or Emirates ID. The team checks them before delivery.'
-    : 'Got it — that is both, and they are on your booking. The team checks them before delivery.'
+      + 'your driving licence and your passport or Emirates ID. The team checks them before the handover.'
+    : 'Got it — that is both, and they are on your booking. The team checks them before the handover.'
       + (next !== undefined && NEXT[next] !== undefined ? ` ${NEXT[next]}` : '')
 
   const accepted = await acceptTurnOutput(deps.transact, {
@@ -469,6 +471,23 @@ export async function greetIfNew(
   context: ConversationContext,
   now: Date = new Date(),
 ): Promise<boolean> {
+  /**
+   * Only for somebody who opened with a hello, and only on that first message.
+   * A customer who opened with a question is answered instead; the same person
+   * saying "hi" three messages later is not new, and a welcome then is a
+   * stranger's.
+   */
+  if (!isOnlyAGreeting(context.message.body)) return false
+  const [earlier] = await deps.run(
+    `select 1 from messages m
+     join conversations v on v.id = m.conversation_id and v.operator_id = m.operator_id
+     where v.contact_id = $1 and v.operator_id = $2
+       and m.direction = 'inbound' and m.id <> $3
+     limit 1`,
+    [context.contact.id, context.operator.id, context.message.id],
+  )
+  if (earlier !== undefined) return false
+
   return sendWrittenMessage(deps, context, 'greeting', `greeting:${context.contact.id}`, now)
 }
 
@@ -912,15 +931,17 @@ export async function runConversationTurn(
       if (list === null) return undefined
       const payment = await getApprovedAnswer(
         deps.run, context.operator.id, 'payment', deps.now?.() ?? new Date())
-      const ASK: Record<string, string> = {
-        delivery_address: 'the address the car should go to',
-        delivery_time: 'what time on the first day they want it',
-        documents: 'a photo of their driving licence and of their passport or Emirates ID',
-        payment: 'how they would like to pay',
-      }
+      const collecting = list.deliveryWanted
+        ? undefined
+        : {
+          where: (await getApprovedAnswer(
+            deps.run, context.operator.id, 'collection-point', deps.now?.() ?? new Date(),
+          ))?.answer ?? null,
+        }
       return {
         vehicle: list.vehicle,
-        missing: list.missing.map((m) => ASK[m] ?? m),
+        ...(collecting === undefined ? {} : { collecting }),
+        missing: list.missing.map((m) => ASK_FOR[m]),
         owed: list.owedMinor === 0 ? null : formatMoneyMinor(list.owedMinor, list.currency),
         paymentInstructions: payment?.answer ?? null,
         paymentLink: list.paymentLink,
@@ -1181,7 +1202,7 @@ export async function runConversationTurn(
       ? fitsTheReply
       : fromQuestion === 'delivery_choice'
       ? DELIVERY_CHOICE
-      : readyToBook && !offersAChoice(end.reply)
+      : (readyToBook && !offersAChoice(end.reply)) || (!bookedThisTurn && asksToBook(end.reply))
       // "Confirm with team" promises a person who is not coming when the
       // agent settles bookings itself.
       ? (context.operator.mayConfirmBookings ? BOOKING_NOW : BOOKING_CONFIRMATION)
@@ -1699,6 +1720,13 @@ const PHOTOS_PER_CAR = 6
    */
   if (!ownHandoff) {
     const items = end.toolCalls
+      /**
+       * A draft price is only waiting on a person where a person approves
+       * prices. Where the agent settles bookings itself the customer is quoted
+       * the draft and books on it, and "approve or reject a draft quote" was a
+       * to-do on every priced conversation that nobody needed to do.
+       */
+      .filter((call) => !(call.requestedName === 'prepare_quote' && context.operator.mayConfirmBookings))
       .map((call) => call.needsAPerson)
       .filter((item): item is string => item !== null)
 

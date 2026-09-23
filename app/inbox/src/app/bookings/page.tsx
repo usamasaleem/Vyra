@@ -229,6 +229,14 @@ export default async function BookingsPage() {
                         </dd>
                       </>
                     )}
+                    {!b.checklist.deliveryWanted && (
+                      <>
+                        <dt className="muted">Collection</dt>
+                        <dd style={{ margin: 0 }}>
+                          {b.checklist.deliveryTime ?? <span className="muted">time not given yet</span>}
+                        </dd>
+                      </>
+                    )}
                     <dt className="muted">Payment</dt>
                     <dd style={{ margin: 0 }}>
                       {b.checklist.paymentPlan === null

@@ -7,6 +7,7 @@ import {
   bookingsOnFile, cancelBooking, decideBooking, listBookingRequests, listConfirmedBookings,
   requestBooking,
 } from '../src/queries/bookings.ts'
+import { listDraftQuotes } from '../src/queries/quotes.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
 /**
@@ -447,6 +448,29 @@ describe('everything downstream of a confirmation', () => {
 
     const [row] = await run(`select state::text as state, cancelled_reason from follow_ups`, [])
     expect(row).toMatchObject({ state: 'cancelled', cancelled_reason: 'they said yes' })
+  })
+
+  /**
+   * Live: a booked Ferrari still read "Waiting on you: approve or reject a
+   * draft quote" on the dashboard.
+   */
+  it('clears what the dashboard said was waiting', async () => {
+    await run(
+      `update conversations set next_action = 'Waiting on you: approve or reject a draft quote'
+       where id = $1`, [CONV])
+    await confirm(await bookingFor())
+    const [row] = await run(`select next_action from conversations where id = $1`, [CONV])
+    expect(row!['next_action']).toBeNull()
+  })
+
+  /** "Approve and send" on it would send a quote to somebody already holding the car. */
+  it('takes a booked draft out of the approval queue', async () => {
+    const quoteId = await sentQuote()
+    await run(`update quotes set state = 'draft' where id = $1`, [quoteId])
+    expect(await listDraftQuotes(run, OP)).toHaveLength(1)
+
+    await request(quoteId)
+    expect(await listDraftQuotes(run, OP)).toEqual([])
   })
 
   it('marks the lead won, which nothing ever did', async () => {

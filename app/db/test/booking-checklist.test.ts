@@ -94,10 +94,21 @@ describe('what a confirmed booking still needs', () => {
     expect(list!.missing).toEqual(['delivery_address', 'delivery_time', 'documents', 'payment'])
   })
 
-  /** A customer collecting from the showroom has no address to give. */
-  it('does not ask for an address when they are collecting', async () => {
+  /**
+   * A customer collecting has no address to give, but still has a time.
+   * Live: "collection it is", "Confirmed", and nobody learned when they were
+   * coming for the car.
+   */
+  it('asks a collecting customer when, not where', async () => {
     const list = await bookingChecklist(run, { operatorId: OP, bookingId: await confirmed('collection') })
-    expect(list!.missing).toEqual(['documents', 'payment'])
+    expect(list!.missing).toEqual(['collection_time', 'documents', 'payment'])
+  })
+
+  it('stops asking a collecting customer once they give the time', async () => {
+    const id = await confirmed('collection')
+    await recordBookingProgress(run, { operatorId: OP, bookingId: id, deliveryTime: '11:00' })
+    expect((await bookingChecklist(run, { operatorId: OP, bookingId: id }))!.missing)
+      .toEqual(['documents', 'payment'])
   })
 
   it('is done once they have told it everything', async () => {
@@ -117,7 +128,8 @@ describe('what a confirmed booking still needs', () => {
   it('counts paying on delivery as settled from their side', async () => {
     const id = await confirmed('collection')
     await recordBookingProgress(run, { operatorId: OP, bookingId: id, paymentPlan: 'on_delivery' })
-    expect((await bookingChecklist(run, { operatorId: OP, bookingId: id }))!.missing).toEqual(['documents'])
+    expect((await bookingChecklist(run, { operatorId: OP, bookingId: id }))!.missing)
+      .toEqual(['collection_time', 'documents'])
   })
 
   /** Choosing to transfer is not the same as having transferred. */

@@ -438,7 +438,11 @@ async function markWon(
   input: { operatorId: string; conversationId: string; membershipId: string | null },
 ): Promise<void> {
   const moved = await tx(
-    `update conversations set sales_stage = 'won', updated_at = now()
+    // next_action goes with it, as it does when a person closes a lead by
+    // hand: live, a booked Ferrari still read "Waiting on you: approve or
+    // reject a draft quote" on the dashboard — a to-do for a price the
+    // customer had already accepted and been held a car for.
+    `update conversations set sales_stage = 'won', next_action = null, updated_at = now()
      where id = $1 and operator_id = $2 and sales_stage not in ('won', 'lost')
      returning id`,
     [input.conversationId, input.operatorId],

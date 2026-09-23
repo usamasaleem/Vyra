@@ -30,6 +30,12 @@ export type DraftQuote = {
   lines: QuoteLine[]
   days: number
   validUntil: Date
+  /**
+   * True when nothing about the price had changed and the quote the customer
+   * already has was handed back rather than a new one written. Absent means a
+   * new quote.
+   */
+  unchanged?: boolean
 }
 
 export type QuoteRefusal =
@@ -210,6 +216,53 @@ export async function calculateDraftQuote(
   const totalMinor = rental + delivery
   const depositMinor = rate['deposit_minor'] == null ? null : Number(rate['deposit_minor'])
 
+  /**
+   * The same rental at the same rate is the same price, and it is already on
+   * the table.
+   *
+   * Live: one Ferrari, one pair of dates, four quotes in four minutes — one
+   * per reply — and each new one told the model to present the figures, so the
+   * customer read "AED 5,000 total, with a AED 5,000 security deposit" three
+   * messages running. It also quietly undid a salesperson's discount: the
+   * reduced quote is `approved`, a fresh draft outranks it by revision, and
+   * the next reply went back to the full price.
+   *
+   * So a quote that still stands for this car, these dates and this rate is
+   * returned as it is — discount and all.
+   */
+  const [standing] = await run(
+    `select id, revision, currency, total_minor, deposit_minor, lines, days, valid_until
+     from quotes
+     where operator_id = $1 and conversation_id = $2
+       and enquiry_id is not distinct from $3::uuid
+       and vehicle_id = $4::uuid and rate_id = $5::uuid
+       and start_date = $6::timestamptz and end_date = $7::timestamptz
+       and state in ('draft', 'approved', 'sent')
+       and valid_until > now()
+     order by revision desc
+     limit 1`,
+    [
+      input.operatorId, input.conversationId, input.enquiryId, input.vehicleId,
+      rate['id'] as string, `${input.startDate}T00:00:00Z`, `${input.endDate}T00:00:00Z`,
+    ],
+  )
+  if (standing !== undefined) {
+    return {
+      ok: true,
+      quote: {
+        quoteId: standing['id'] as string,
+        revision: Number(standing['revision']),
+        currency: standing['currency'] as string,
+        totalMinor: Number(standing['total_minor']),
+        depositMinor: standing['deposit_minor'] == null ? null : Number(standing['deposit_minor']),
+        lines: standing['lines'] as QuoteLine[],
+        days: Number(standing['days']),
+        validUntil: new Date(standing['valid_until'] as string),
+        unchanged: true,
+      },
+    }
+  }
+
   const validUntil = new Date(Date.now() + QUOTE_VALID_HOURS * 3_600_000)
 
   /**
@@ -301,6 +354,13 @@ export async function listDraftQuotes(
      join contacts c on c.id = conv.contact_id and c.operator_id = q.operator_id
      left join vehicles v on v.id = q.vehicle_id and v.operator_id = q.operator_id
      where q.operator_id = $1 and q.state = 'draft'
+       -- A draft the customer has already booked on is not waiting for anyone.
+       -- Left in the queue, "Approve and send" would send a quote to somebody
+       -- who is already holding the car.
+       and not exists (
+         select 1 from bookings b
+         where b.quote_id = q.id and b.operator_id = q.operator_id
+           and b.state in ('requested', 'confirmed'))
      order by q.created_at`,
     [operatorId],
   )

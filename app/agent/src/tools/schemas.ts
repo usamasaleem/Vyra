@@ -117,7 +117,8 @@ export const recordBookingProgressSchema = z.strictObject({
     + 'unless they gave one in this message.',
   ),
   deliveryTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/).nullable().describe(
-    'The time on the first day, 24-hour HH:MM — "10am" is 10:00, "half two in the afternoon" is '
+    'The time on the first day the car is handed over — delivered to them, or collected by them '
+    + '— 24-hour HH:MM. "10am" is 10:00, "half two in the afternoon" is '
     + '14:30. Null unless they gave one. If they gave a range, use the start of it.',
   ),
   paymentPlan: z.enum(['transfer', 'link', 'on_delivery']).nullable().describe(

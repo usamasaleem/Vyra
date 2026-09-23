@@ -31,6 +31,14 @@ export const POLICY_TOPICS = [
   'driver-requirements-resident',
   'driver-requirements-visitor',
   'delivery-areas',
+  /**
+   * Where a customer who is collecting picks the car up, and how to find it.
+   *
+   * Live: "collection it is", "Confirmed", and the customer was never told
+   * where to go. Delivery has an address the customer gives; collection has
+   * one the operator gives, and nothing held it.
+   */
+  'collection-point',
   'business-hours',
   /**
    * How a customer pays, in the operator's words — bank details, a link, or

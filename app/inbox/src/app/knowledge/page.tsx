@@ -63,6 +63,9 @@ const STARTERS: Record<string, string> = {
   'delivery-areas':
     'We deliver anywhere in ___ for ___, and collect from the same place at the end. '
     + 'Outside that, ___. The car may not be taken ___.',
+  'collection-point':
+    'Collect the car from ___ (___ on Google Maps). Parking is ___, and please message us here '
+    + 'when you are 10 minutes away so the car is ready.',
   'business-hours':
     'Somebody is at the desk ___, and delivery is possible ___. Outside those hours the '
     + 'assistant still answers, and anything needing one of us is picked up ___.',
@@ -100,6 +103,10 @@ const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = 
   'delivery-areas': {
     question: 'Where do you deliver, what does it cost, and can the car leave Dubai?',
     placeholder: 'Areas and fees, and whether cross-emirate or cross-border travel is allowed.',
+  },
+  'collection-point': {
+    question: 'Where do customers collect the car?',
+    placeholder: 'The address, a map link, where to park, and anything they should do on arrival.',
   },
   'business-hours': {
     question: 'When are you open, and what happens to a message out of hours?',

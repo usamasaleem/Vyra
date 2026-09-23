@@ -30,7 +30,25 @@ export type Checklist = {
   /** A link a salesperson attached to something still owed, if any. */
   paymentLink: string | null
   /** What the agent should ask for next, in order; empty when it is done. */
-  missing: Array<'delivery_address' | 'delivery_time' | 'documents' | 'payment'>
+  missing: ChecklistItem[]
+}
+
+export type ChecklistItem =
+  | 'delivery_address' | 'delivery_time' | 'collection_time' | 'documents' | 'payment'
+
+/**
+ * What each item is, in the words the agent is told to ask for it.
+ *
+ * One list rather than one per caller: the booking tool, the progress tool and
+ * the turn each kept their own copy, and a checklist item added to one would
+ * have been asked for as its bare key by the others.
+ */
+export const ASK_FOR: Record<ChecklistItem, string> = {
+  delivery_address: 'the address the car should go to',
+  delivery_time: 'what time on the first day they want it delivered',
+  collection_time: 'what time on the first day they will come to collect it',
+  documents: 'a photo of their driving licence and of their passport or Emirates ID',
+  payment: 'how they would like to pay',
 }
 
 /** Two photos: a licence, and a passport or Emirates ID. */
@@ -71,6 +89,13 @@ export async function bookingChecklist(
   const missing: Checklist['missing'] = []
   if (deliveryWanted && row['delivery_address'] == null) missing.push('delivery_address')
   if (deliveryWanted && row['delivery_time'] == null) missing.push('delivery_time')
+  /**
+   * A customer collecting still has a time. Live: "collection it is",
+   * "Confirmed", and nobody ever learned when they were coming for the car —
+   * a Ferrari prepared for nobody, or nobody there when they arrive. Stored
+   * in the same column: it is the handover time either way.
+   */
+  if (!deliveryWanted && row['delivery_time'] == null) missing.push('collection_time')
   if (documents < DOCUMENTS_WANTED && row['documents_checked_at'] == null) missing.push('documents')
   /**
    * Payment is settled from the customer's side once they have chosen a way

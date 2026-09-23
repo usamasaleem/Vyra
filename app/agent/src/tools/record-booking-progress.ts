@@ -1,4 +1,4 @@
-import { activeBookingFor, bookingChecklist, recordBookingProgress } from '@vyra/db'
+import { ASK_FOR, activeBookingFor, bookingChecklist, recordBookingProgress } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { recordBookingProgressSchema } from './schemas.js'
@@ -8,13 +8,6 @@ export type BookingProgress = {
   /** What is still to collect, in the order worth asking. */
   stillNeeded: string[]
   guidance: string
-}
-
-const ASK: Record<string, string> = {
-  delivery_address: 'the address the car should go to',
-  delivery_time: 'what time on the first day they want it',
-  documents: 'a photo of their driving licence and of their passport or Emirates ID',
-  payment: 'how they would like to pay',
 }
 
 /**
@@ -52,11 +45,11 @@ export async function recordBookingProgressTool(
   const missing = list?.missing ?? []
 
   return ok({
-    stillNeeded: missing.map((m) => ASK[m] ?? m),
+    stillNeeded: missing.map((m) => ASK_FOR[m]),
     guidance: missing.length === 0
       ? 'Everything is in. Thank them, say the team checks the documents and the payment before '
-        + 'delivery, and stop — do not ask for anything else.'
-      : `Acknowledge what they gave in a few words, then ask for ${ASK[missing[0]!]}. One thing `
+        + 'the handover, and stop — do not ask for anything else.'
+      : `Acknowledge what they gave in a few words, then ask for ${ASK_FOR[missing[0]!]}. One thing `
         + 'at a time.',
   })
 }

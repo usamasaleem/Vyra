@@ -80,8 +80,9 @@ export const AUTOMATED_MESSAGE_LABELS: Record<AutomatedMessage, {
 }> = {
   greeting: {
     title: 'First message to a new customer',
-    why: 'Sent once, before the agent answers their first message. Nobody is ever '
-      + 'greeted twice, however long they have been away.',
+    why: 'Sent once, when a new customer opens with only a hello. If their first message '
+      + 'already asks for something, the answer is the welcome and this is not sent. Nobody is '
+      + 'ever greeted twice, however long they have been away.',
     starter: (business) => `Thanks for getting in touch with ${business}. Happy to help `
       + `with anything about the cars — just say what you are looking for and when.`,
   },
@@ -107,4 +108,37 @@ export const AUTOMATED_MESSAGE_LABELS: Record<AutomatedMessage, {
     starter: () => 'No rush at all. I will leave it with you — just say the word if you '
       + 'would like me to pick it back up.',
   },
+}
+
+/**
+ * Whether a message is only a hello, with nothing asked.
+ *
+ * The greeting went out ahead of every first message. Live: "Hi, do you have
+ * a Ferrari" got "Thanks for getting in touch… just say what you are looking
+ * for and when" and then, ten seconds later, the answer — a welcome asking a
+ * question the customer had already answered, in front of the reply that
+ * answered them. When somebody opens with a request, the answer is the
+ * welcome.
+ *
+ * Closed on purpose: the words that make up a hello, and nothing else. Any
+ * word that is not on the list means they said something, and that is the
+ * safe way to be wrong — a missed greeting costs nothing.
+ */
+const HELLO_WORDS = new Set([
+  'hi', 'hii', 'hiii', 'hello', 'helo', 'hallo', 'hey', 'heya', 'hiya', 'yo', 'hola', 'bonjour',
+  'salam', 'salaam', 'salām', 'salamu', 'salaamu', 'assalam', 'assalamu', 'asalamu', 'assalamualaikum', 'alaikum',
+  'alaykum', 'aleikum', 'as', 'wa', 'marhaba', 'good', 'morning', 'afternoon', 'evening', 'day',
+  'there', 'team', 'all', 'sir', 'madam', 'guys', 'dear', 'again', 'everyone', 'friend',
+  'مرحبا', 'مرحباً', 'السلام', 'عليكم', 'سلام', 'اهلا', 'أهلا', 'هلا', 'صباح', 'مساء', 'الخير', 'النور',
+])
+
+export function isOnlyAGreeting(body: string | null): boolean {
+  if (body === null) return false
+  const words = body
+    .toLowerCase()
+    // Punctuation, emoji and the like are not words; hyphens split "as-salamu".
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w !== '')
+  return words.length > 0 && words.every((w) => HELLO_WORDS.has(w))
 }

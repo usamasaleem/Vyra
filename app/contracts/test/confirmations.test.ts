@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOOKING_CONFIRMATION, DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor,
-  BOOKING_NOW, invitesACarChoice, meaningOfButton, offersAChoice, surfaceForAsking,
+  BOOKING_NOW, asksToBook, invitesACarChoice, meaningOfButton, offersAChoice, surfaceForAsking,
   vehicleList,
 } from '../src/confirmations.ts'
 
@@ -400,5 +400,34 @@ describe('a surface that cannot answer its own question', () => {
     expect(invitesACarChoice(
       'For 3 days I would take the Huracán over the Cullinan — which one shall I price?',
     )).toBe(true)
+  })
+})
+
+/**
+ * Live: "Would you like me to book the Ferrari 488 Spider for 24th–25th
+ * September?" went out as plain text, because the buttons only looked at
+ * whether the customer's message sounded like a booking.
+ */
+describe('a reply that asks to book', () => {
+  it.each([
+    'No problem — collection it is. Would you like me to book the *Ferrari 488 Spider* for 24th–25th September?',
+    'The Ferrari is free for those dates. Shall I book it for you?',
+    'Do you want me to reserve it?',
+    'Ready to book?',
+    'هل تريد أن أحجزها لك؟',
+  ])('is recognised: %s', (reply) => {
+    expect(asksToBook(reply)).toBe(true)
+  })
+
+  it.each([
+    // A choice between cars is not a yes.
+    'Shall I book the Ferrari or the Huracán?',
+    // Two questions cannot be answered by one tap.
+    'Shall I book it? And would you like it delivered?',
+    'Booked — it is confirmed and held for you.',
+    'What dates are you thinking?',
+    null,
+  ])('is not: %s', (reply) => {
+    expect(asksToBook(reply)).toBe(false)
   })
 })

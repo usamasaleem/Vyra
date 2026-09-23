@@ -202,6 +202,30 @@ describe('revisions', () => {
     expect(rows[1]).toMatchObject({ revision: 2, state: 'draft', total_minor: 600000 })
   })
 
+  /**
+   * Live: one car, one pair of dates, four quotes in four minutes, and the
+   * price said three messages running.
+   */
+  it('hands back the quote they already have when nothing changed', async () => {
+    await setRate()
+    const first = await quote()
+    const again = await quote()
+    if (!first.ok || !again.ok) throw new Error('expected quotes')
+
+    expect(again.quote).toMatchObject({ quoteId: first.quote.quoteId, unchanged: true })
+    expect(first.quote.unchanged).toBeUndefined()
+    expect(await run(`select id from quotes`, [])).toHaveLength(1)
+  })
+
+  it('writes a new one when the dates change', async () => {
+    await setRate()
+    const first = await quote('2026-09-20', '2026-09-23')
+    const moved = await quote('2026-09-21', '2026-09-23')
+    if (!first.ok || !moved.ok) throw new Error('expected quotes')
+    expect(moved.quote.quoteId).not.toBe(first.quote.quoteId)
+    expect(moved.quote.unchanged).toBeUndefined()
+  })
+
   it('leaves exactly one draft', async () => {
     await setRate()
     await quote()
@@ -480,6 +504,23 @@ describe('discounting a quote', () => {
   })
 
   /** "What was I quoted before the discount" stays answerable. */
+  /**
+   * The discounted quote is `approved`; a fresh draft used to outrank it by
+   * revision, and the next reply went back to the full price.
+   */
+  it('keeps the discount when the same rental is priced again', async () => {
+    const q = await draft()
+    const discounted = await take(q, 50_000) as { quoteId: string; totalMinor: number }
+    const again = await calculateDraftQuote(run, {
+      operatorId: OP, conversationId: CONV, enquiryId: null, vehicleId,
+      startDate: '2026-09-25', endDate: '2026-09-27', duration: null,
+    })
+    if (!again.ok) throw new Error('expected a quote')
+    expect(again.quote).toMatchObject({
+      quoteId: discounted.quoteId, totalMinor: discounted.totalMinor, unchanged: true,
+    })
+  })
+
   it('supersedes the original rather than overwriting it', async () => {
     const q = await draft()
     await take(q, 50_000)

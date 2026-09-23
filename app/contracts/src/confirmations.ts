@@ -369,6 +369,34 @@ export function offersAChoice(reply: string | null): boolean {
 }
 
 /**
+ * Whether the reply itself asks to book, as one closed question.
+ *
+ * The booking buttons used to depend only on the customer's message sounding
+ * like a booking. Live: "i want to do collection instead" did not, so the
+ * reply "Would you like me to book the Ferrari 488 Spider for 24th–25th
+ * September?" went out as plain text — the one question in the conversation
+ * that most wants a tap. The reply is where the question is.
+ *
+ * Shapes, not sentences, and only a single question that is not an either/or:
+ * "book the Ferrari or the Huracán?" is a choice between cars, not a yes.
+ */
+const ASKS_TO_BOOK: RegExp[] = [
+  /\b(?:shall|should|can|may) i\b[^?]{0,20}\b(?:book|reserve|lock|hold)\b[^?]{0,80}\?/i,
+  /\b(?:would|do) you (?:like|want) (?:me|us) to\b[^?]{0,20}\b(?:book|reserve|lock|hold)\b[^?]{0,80}\?/i,
+  /\bready (?:for me )?to (?:book|reserve)\b[^?]{0,60}\?/i,
+  // Arabic: "shall I book it?", "do you want me to book …?"
+  // ⚠️ Model-written, wanting a native speaker's eye; a miss is plain text.
+  /(?:أحجز|احجز|نحجز)[^؟?]{0,80}[؟?]/,
+]
+
+export function asksToBook(reply: string | null): boolean {
+  if (reply === null || reply.trim() === '') return false
+  if ((reply.match(/[?؟]/g) ?? []).length > 1) return false
+  if (offersAChoice(reply)) return false
+  return ASKS_TO_BOOK.some((p) => p.test(reply))
+}
+
+/**
  * What a tapped button means, as a sentence the conversation can carry.
  *
  * A button reply comes back as an id and a title. Turning it into ordinary

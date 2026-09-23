@@ -865,6 +865,12 @@ describe('the operator\u2019s own automated messages', () => {
   const deps = () => ({ run, transact, destination: 'send' as const })
 
   describe('the greeting', () => {
+    // The fixture's customer has already written "I need a Ferrari on Friday";
+    // a greeting is for somebody whose first message this is.
+    beforeEach(async () => {
+      await run(`delete from messages where conversation_id = $1`, [CONV])
+    })
+
     it('says nothing at all until somebody writes one', async () => {
       expect(await greetIfNew(deps(), await asking('hello'))).toBe(false)
       expect(await sent()).toEqual([])
@@ -886,6 +892,23 @@ describe('the operator\u2019s own automated messages', () => {
       await greetIfNew(deps(), await asking('hello'))
       await greetIfNew(deps(), await asking('still there?'))
       expect(await sent()).toHaveLength(1)
+    })
+
+    /**
+     * Live: "Hi, do you have a Ferrari" got "just say what you are looking
+     * for and when" ten seconds before the answer. Somebody who opens with a
+     * request is welcomed by the answer.
+     */
+    it('lets the answer be the welcome when the first message asks something', async () => {
+      await publish('greeting', 'Thanks for messaging Vyra Rentals.')
+      expect(await greetIfNew(deps(), await asking('Hi, do you have a Ferrari'))).toBe(false)
+      expect(await sent()).toEqual([])
+    })
+
+    it('does not welcome somebody who says hello after already writing', async () => {
+      await publish('greeting', 'Thanks for messaging Vyra Rentals.')
+      await asking('Do you have a Lamborghini?')
+      expect(await greetIfNew(deps(), await asking('hello?'))).toBe(false)
     })
   })
 

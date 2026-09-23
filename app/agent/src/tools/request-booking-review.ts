@@ -1,4 +1,4 @@
-import { requestBooking } from '@vyra/db'
+import { ASK_FOR, bookingChecklist, formatMoneyMinor, requestBooking } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { requestBookingReviewSchema } from './schemas.js'
@@ -68,6 +68,32 @@ export async function requestBookingReview(
    * record, so it is stated as one — not left to an instruction the model
    * weighs against everything else it has been told.
    */
+  /**
+   * What happens next, read from the booking rather than left to the model.
+   *
+   * Live, the confirmation ended "Someone will be in touch about the
+   * details" — because this guidance told it to say exactly that. It sent the
+   * customer off to wait at the one moment the agent was about to carry on
+   * itself: the time, the documents and the money are all its to collect.
+   */
+  const next = result.booking.confirmed
+    ? await bookingChecklist(ctx.run, {
+      operatorId: ctx.operatorId,
+      bookingId: result.booking.bookingId,
+    }).catch(() => null)
+    : null
+  const owed = next === null || next.owedMinor === 0
+    ? null
+    : formatMoneyMinor(next.owedMinor, next.currency)
+  const first = next?.missing[0]
+  const carryOn = (owed === null ? '' : `Say that ${owed} is due in total, rental and refundable deposit together. `)
+    + (first === undefined
+      ? ''
+      : `Then ask ONE question. If you were given what they need to bring and do not yet know whether `
+        + `they live in the UAE or are visiting, ask that; otherwise ask for ${ASK_FOR[first]}. `)
+    + 'You are handling the rest yourself: never say somebody will be in touch, contact them or '
+    + 'follow up with the details. '
+
   return ok({
     bookingId: result.booking.bookingId,
     quoteId: result.booking.quoteId,
@@ -80,9 +106,9 @@ export async function requestBookingReview(
         + 'heard back, apologise briefly for that and confirm the details.'
       : result.booking.confirmed
       ? 'This is CONFIRMED. The car is held for those dates and nobody else can be given '
-        + 'it. Tell them plainly that it is booked, say the car and the dates back once, and '
-        + 'say somebody will be in touch about the details. Do not say it is pending or that '
-        + 'a colleague still has to approve it.'
+        + 'it. Tell them plainly that it is booked and say the car and the dates back once. '
+        + carryOn
+        + 'Do not say it is pending or that a colleague still has to approve it.'
       : 'This is NOT confirmed. Their agreement is recorded and a colleague will confirm it. '
         + 'Say that, and do not say it is booked, held, reserved or secured.',
   })
