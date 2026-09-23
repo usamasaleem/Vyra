@@ -413,7 +413,8 @@ const ASKS_TO_BOOK: RegExp[] = [
  * "Shall I book it, or hold it for you for 2 hours?" is an either/or, and it
  * is still the booking question — the three buttons answer exactly it.
  */
-const BOOK_OR_HOLD = /\b(?:book|reserve)\b[^?]{0,80}\bor\b[^?]{0,40}\bhold\b[^?]{0,60}\?/i
+// Not always a question: "I can book it now, or hold it for you for 2 hours." is the same offer.
+const BOOK_OR_HOLD = /\b(?:book|reserve)\b[^.?!]{0,80}\bor\b[^.?!]{0,40}\bhold\b/i
 
 export function asksToBook(reply: string | null): boolean {
   if (reply === null || reply.trim() === '') return false

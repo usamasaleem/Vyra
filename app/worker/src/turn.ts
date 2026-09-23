@@ -244,6 +244,8 @@ export async function fileDocumentIfBooked(
     operatorId: context.operator.id,
     revisionAtTurnStart: context.conversation.revision,
     body,
+    // The one closed question this can end on gets its tap.
+    replyButtons: total >= DOCUMENTS_WANTED && next === 'handover_choice' ? DELIVERY_CHOICE : null,
     idempotencyKey: `document:${context.message.id}`,
     destination: deps.destination,
   })

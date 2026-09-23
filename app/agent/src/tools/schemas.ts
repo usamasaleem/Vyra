@@ -205,7 +205,10 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     + 'Dates must arrive resolved as YYYY-MM-DD: nothing downstream can price an enquiry whose dates '
     + 'were never recorded, so a rejected date is a quote the customer never gets.',
   request_handoff:
-    'Hand this conversation to a person. Stops automated replies immediately.',
+    'Hand this conversation to a person. Stops automated replies immediately, so use it only when '
+    + 'a person must take over — they ask for one, a complaint, an accident, a dispute. Not for a '
+    + 'question the operator has not answered yet: that is flagged for the team on its own, and you '
+    + 'keep selling.',
   record_booking_progress:
     'Save what they told you about a confirmed booking: the delivery address, the delivery '
     + 'time, how they will pay, or that they have paid. Call it as soon as they say any of it. '

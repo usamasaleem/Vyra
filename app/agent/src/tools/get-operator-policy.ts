@@ -39,7 +39,14 @@ export async function getOperatorPolicy(
   if (answer === null) {
     return refuse(
       'no_approved_answer',
-      `This operator has not published an approved answer for "${args.topic}". Tell the customer you will confirm it, and do not estimate.`,
+      `This operator has not published an approved answer for "${args.topic}". Tell the customer `
+        + 'the team will confirm it, and do not estimate. It is already flagged for a person — do '
+        + 'NOT hand the conversation over for it: keep helping with everything else, and if they '
+        + 'have a car and dates, price it and offer to book or hold it as usual.'
+        + (args.topic === 'deposit'
+          ? ' The deposit for a specific car is not this policy: prepare_quote returns it with the '
+            + 'price, and you may state that figure.'
+          : ''),
       `publish an approved answer for "${args.topic}"`,
     )
   }

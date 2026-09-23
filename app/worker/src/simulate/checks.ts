@@ -50,7 +50,8 @@ export function check(played: Played): Finding[] {
     if (m.buttons.includes('Delivery') && !/deliver|collect|pick/i.test(lastQuestion(m.body))) {
       out.push({ severity: 'fail', rule: 'delivery buttons under another question', detail: `"${lastQuestion(m.body) || m.body.slice(-120)}"` })
     }
-    if (m.buttons.includes('Yes, book it') && !/book|hold|reserve|أحجز|احجز/i.test(lastQuestion(m.body) || m.body)) {
+    // A chase ends on the car's status ("Still available."), which is the offer.
+    if (m.buttons.includes('Yes, book it') && !/book|hold|reserve|still (?:available|held)|أحجز|احجز/i.test(lastQuestion(m.body) || m.body)) {
       out.push({ severity: 'warn', rule: 'booking buttons without a booking question', detail: `"${m.body.slice(-140)}"` })
     }
     if (m.body.length > 900) out.push({ severity: 'warn', rule: 'very long message', detail: `${m.body.length} characters` })
