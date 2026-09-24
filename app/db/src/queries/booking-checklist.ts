@@ -32,6 +32,11 @@ export type Checklist = {
   /** Photos the customer sent against this booking. */
   documents: number
   documentsCheckedAt: Date | null
+  /**
+   * When a person checked this customer's documents for an earlier rental,
+   * within the last year. Set, the booking does not ask for them again.
+   */
+  documentsOnFileFrom: Date | null
   /** Anything still owed, formatted by the caller. */
   owedMinor: number
   currency: string
@@ -104,6 +109,11 @@ export async function bookingChecklist(
                       where fe.enquiry_id = b.enquiry_id and fe.field = 'delivery_preference'
                         and fe.superseded_at is null limit 1), '') as delivery_preference,
             (select count(*)::int from booking_documents d where d.booking_id = b.id) as documents,
+            (select max(pb.documents_checked_at) from bookings pb
+              join conversations pc on pc.id = pb.conversation_id and pc.operator_id = pb.operator_id
+              join conversations bc on bc.id = b.conversation_id and bc.operator_id = b.operator_id
+              where pb.operator_id = b.operator_id and pc.contact_id = bc.contact_id and pb.id <> b.id
+                and pb.documents_checked_at > now() - interval '365 days') as on_file,
             (select coalesce(sum(p.amount_minor), 0)::bigint from payments p
               where p.booking_id = b.id and p.state = 'due') as owed,
             (select p.link_url from payments p
@@ -141,7 +151,11 @@ export async function bookingChecklist(
    * in the same column: it is the handover time either way.
    */
   if (handoverKnown && !deliveryWanted && row['delivery_time'] == null) missing.push('collection_time')
-  if (documents < DOCUMENTS_WANTED && row['documents_checked_at'] == null) missing.push('documents')
+  // A returning customer's checked documents stand for a year; asking again is
+  // asking them to prove who they are to people who already know.
+  if (documents < DOCUMENTS_WANTED && row['documents_checked_at'] == null && row['on_file'] == null) {
+    missing.push('documents')
+  }
   /**
    * Payment is settled from the customer's side once they have chosen a way
    * to pay and, for anything but paying on delivery, said they have done it.
@@ -183,6 +197,7 @@ export async function bookingChecklist(
     documents,
     documentsCheckedAt: row['documents_checked_at'] == null
       ? null : new Date(row['documents_checked_at'] as string),
+    documentsOnFileFrom: row['on_file'] == null ? null : new Date(row['on_file'] as string),
     owedMinor: owed,
     currency: row['currency'] as string,
     paymentLink: (row['link'] as string) ?? null,

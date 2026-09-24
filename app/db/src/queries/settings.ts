@@ -21,6 +21,12 @@ export type OperatorSettings = {
   followUpAfterMinutes: number
   /** How long the agent holds a car for somebody deciding. Null: it does not. */
   holdMinutes: number | null
+  /** The longest rental the agent confirms on its own. Null: no limit. */
+  autoConfirmMaxDays: number | null
+  /** Least notice for a same-day handover, in minutes. Null: none. */
+  handoverNoticeMinutes: number | null
+  /** What the agent may take off by itself when the price is the objection. */
+  discountTiers: Array<{ minDays: number; percent: number }>
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -47,6 +53,7 @@ export async function getOperatorSettings(
   const rows = await run(
     `select o.name, o.timezone, o.website_url, o.ai_sending_enabled, o.ai_resumes_after_minutes,
             o.follow_up_after_minutes, o.hold_minutes, o.handoff_sla_minutes, o.answer_valid_minutes,
+            o.auto_confirm_max_days, o.handover_notice_minutes, o.discount_tiers,
             o.retention_days, o.fallback_owner_membership_id,
             o.auto_confirm_bookings, o.auto_confirm_limit_minor,
             o.availability_calendar_complete,
@@ -69,6 +76,9 @@ export async function getOperatorSettings(
       : Number(row['ai_resumes_after_minutes']),
     followUpAfterMinutes: Number(row['follow_up_after_minutes']),
     holdMinutes: row['hold_minutes'] == null ? null : Number(row['hold_minutes']),
+    autoConfirmMaxDays: row['auto_confirm_max_days'] == null ? null : Number(row['auto_confirm_max_days']),
+    handoverNoticeMinutes: row['handover_notice_minutes'] == null ? null : Number(row['handover_notice_minutes']),
+    discountTiers: (row['discount_tiers'] as Array<{ minDays: number; percent: number }> | null) ?? [],
     handoffSlaMinutes: Number(row['handoff_sla_minutes']),
     answerValidMinutes: Number(row['answer_valid_minutes']),
     retentionDays: Number(row['retention_days']),
@@ -90,6 +100,12 @@ export type SettingsUpdate = {
   followUpAfterMinutes: number
   /** How long the agent holds a car for somebody deciding. Null: it does not. */
   holdMinutes: number | null
+  /** The longest rental the agent confirms on its own. Null: no limit. */
+  autoConfirmMaxDays: number | null
+  /** Least notice for a same-day handover, in minutes. Null: none. */
+  handoverNoticeMinutes: number | null
+  /** What the agent may take off by itself when the price is the objection. */
+  discountTiers: Array<{ minDays: number; percent: number }>
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -110,6 +126,8 @@ export const SETTING_BOUNDS = {
   aiResumesAfterMinutes: { min: 5, max: 10_080 },
   followUpAfterMinutes: { min: 5, max: 1_440 },
   holdMinutes: { min: 15, max: 1_440 },
+  autoConfirmMaxDays: { min: 1, max: 365 },
+  handoverNoticeMinutes: { min: 0, max: 2_880 },
   handoffSlaMinutes: { min: 5, max: 1_440 },
   answerValidMinutes: { min: 15, max: 10_080 },
   retentionDays: { min: 30, max: 3_650 },
@@ -147,6 +165,25 @@ export function checkSettings(update: SettingsUpdate): SettingsProblem[] {
     }
   }
 
+  /**
+   * A discount the agent gives by itself is money the operator has agreed to
+   * lose, so it is bounded: whole days and whole percentages, at most half off,
+   * at most three tiers.
+   */
+  if (update.discountTiers.length > 3) {
+    problems.push({ field: 'discountTiers', message: 'Three tiers at most.' })
+  }
+  for (const tier of update.discountTiers) {
+    if (!Number.isInteger(tier.minDays) || tier.minDays < 1 || tier.minDays > 365
+      || !Number.isInteger(tier.percent) || tier.percent < 1 || tier.percent > 50) {
+      problems.push({
+        field: 'discountTiers',
+        message: 'Each tier needs whole days (1–365) and a whole percentage (1–50).',
+      })
+      break
+    }
+  }
+
   return problems
 }
 
@@ -181,6 +218,14 @@ export async function updateOperatorSettings(
        auto_confirm_bookings = $11,
        auto_confirm_limit_minor = $12,
        hold_minutes = $13,
+       auto_confirm_max_days = $14,
+       handover_notice_minutes = $15,
+       discount_tiers = $16::jsonb,
+       -- Whoever sets the offer stands behind every discount it gives.
+       discount_tiers_set_by_membership_id = case
+         when $16::jsonb is null then null
+         when o.discount_tiers is distinct from $16::jsonb then $17::uuid
+         else o.discount_tiers_set_by_membership_id end,
        updated_at = now()
      where o.id = $1
      returning o.id`,
@@ -190,6 +235,11 @@ export async function updateOperatorSettings(
       input.answerValidMinutes, input.retentionDays, input.fallbackOwnerMembershipId,
       usableWebsite(input.websiteUrl),
       input.autoConfirmBookings, input.autoConfirmLimitMinor, input.holdMinutes,
+      input.autoConfirmMaxDays, input.handoverNoticeMinutes,
+      input.discountTiers.length === 0
+        ? null
+        : JSON.stringify([...input.discountTiers].sort((a, b) => a.minDays - b.minDays)),
+      input.actorMembershipId,
     ],
   )
   if (rows.length === 0) return { saved: false }
@@ -210,6 +260,9 @@ export async function updateOperatorSettings(
         auto_confirm_bookings: input.autoConfirmBookings,
         auto_confirm_limit_minor: input.autoConfirmLimitMinor,
         hold_minutes: input.holdMinutes,
+        auto_confirm_max_days: input.autoConfirmMaxDays,
+        handover_notice_minutes: input.handoverNoticeMinutes,
+        discount_tiers: input.discountTiers,
       }),
     ],
   )

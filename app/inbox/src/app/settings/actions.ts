@@ -48,6 +48,15 @@ export async function saveSettings(
     followUpAfterMinutes: minutes(formData, 'followUpAfterMinutes') ?? Number.NaN,
     // Blank is off: the agent does not offer to hold cars at all.
     holdMinutes: minutes(formData, 'holdMinutes'),
+    autoConfirmMaxDays: minutes(formData, 'autoConfirmMaxDays'),
+    handoverNoticeMinutes: minutes(formData, 'handoverNoticeMinutes'),
+    // Three rows on the form; a row left blank is not a tier.
+    discountTiers: [1, 2, 3].flatMap((i) => {
+      const days = minutes(formData, `tierDays${i}`)
+      const percent = minutes(formData, `tierPercent${i}`)
+      if (days === null && percent === null) return []
+      return [{ minDays: days ?? Number.NaN, percent: percent ?? Number.NaN }]
+    }),
     handoffSlaMinutes: minutes(formData, 'handoffSlaMinutes') ?? Number.NaN,
     answerValidMinutes: minutes(formData, 'answerValidMinutes') ?? Number.NaN,
     retentionDays: minutes(formData, 'retentionDays') ?? Number.NaN,

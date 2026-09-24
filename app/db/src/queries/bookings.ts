@@ -39,6 +39,8 @@ export type BookingRequest = {
    * rather than by the model reading its own instructions.
    */
   confirmed: boolean
+  /** Set when it waits only because it is over the operator's own limits. */
+  waitsBecause?: OverTheLimit
 }
 
 export type RequestBookingResult =
@@ -301,7 +303,7 @@ export async function requestBooking(
      * unusual". The unusual booking is exactly the one worth a person's eyes,
      * and the wait is only worth removing from the ordinary ones.
      */
-    const confirmed = await autoConfirm(tx, {
+    const decided = await autoConfirm(tx, {
       operatorId: input.operatorId,
       conversationId: input.conversationId,
       bookingId,
@@ -310,10 +312,16 @@ export async function requestBooking(
 
     return {
       ok: true as const,
-      booking: { bookingId, quoteId: input.quoteId, alreadyRequested, confirmed },
+      booking: {
+        bookingId, quoteId: input.quoteId, alreadyRequested, confirmed: decided.confirmed,
+        ...(decided.waitsBecause === undefined ? {} : { waitsBecause: decided.waitsBecause }),
+      },
     }
   })
 }
+
+/** Why an ordinary booking waits for a person: the operator's own limits. */
+export type OverTheLimit = 'too_long' | 'too_large'
 
 /**
  * Whether this one can be answered without asking anybody, and doing it.
@@ -330,9 +338,10 @@ async function autoConfirm(
     bookingId: string
     quoteId: string
   },
-): Promise<boolean> {
+): Promise<{ confirmed: boolean; waitsBecause?: OverTheLimit }> {
   const [rules] = await tx(
-    `select o.auto_confirm_bookings, o.auto_confirm_limit_minor,
+    `select o.auto_confirm_bookings, o.auto_confirm_limit_minor, o.auto_confirm_max_days,
+            q.days,
             o.availability_calendar_complete,
             v.handler_mode::text as handler_mode,
             q.vehicle_id, q.total_minor,
@@ -347,30 +356,42 @@ async function autoConfirm(
      where o.id = $1`,
     [input.operatorId, input.conversationId, input.quoteId],
   )
-  if (rules === undefined) return false
+  if (rules === undefined) return { confirmed: false }
 
-  if (rules['auto_confirm_bookings'] !== true) return false
+  if (rules['auto_confirm_bookings'] !== true) return { confirmed: false }
 
   /**
    * Without a calendar the operator vouches for, "no block" means "nobody
    * knows" — and confirming on that is the double booking this system spent a
    * day learning to prevent. An automatic yes needs a real no to be possible.
    */
-  if (rules['availability_calendar_complete'] !== true) return false
+  if (rules['availability_calendar_complete'] !== true) return { confirmed: false }
 
   // A person is already holding this conversation. Theirs to answer.
-  if (rules['handler_mode'] !== 'ai') return false
-  if (Number(rules['open_handoffs']) > 0) return false
+  if (rules['handler_mode'] !== 'ai') return { confirmed: false }
+  if (Number(rules['open_handoffs']) > 0) return { confirmed: false }
 
   const vehicleId = (rules['vehicle_id'] as string) ?? null
   const startDate = (rules['start_date'] as string) ?? null
   const endDate = (rules['end_date'] as string) ?? startDate
-  if (vehicleId === null || startDate === null) return false
+  if (vehicleId === null || startDate === null) return { confirmed: false }
 
   const ceiling = rules['auto_confirm_limit_minor'] == null
     ? null
     : Number(rules['auto_confirm_limit_minor'])
-  if (ceiling !== null && Number(rules['total_minor']) > ceiling) return false
+  /**
+   * The unusual booking is the one worth a person's eyes. Live: a Lamborghini
+   * confirmed for 365 days, overnight, with nobody asked — a car off sale for
+   * a year on the strength of one chat. Too long or too large waits, and the
+   * caller holds the car while it does.
+   */
+  const maxDays = rules['auto_confirm_max_days'] == null ? null : Number(rules['auto_confirm_max_days'])
+  if (maxDays !== null && Number(rules['days'] ?? 0) > maxDays) {
+    return { confirmed: false, waitsBecause: 'too_long' }
+  }
+  if (ceiling !== null && Number(rules['total_minor']) > ceiling) {
+    return { confirmed: false, waitsBecause: 'too_large' }
+  }
 
   // The same lock and the same overlap test as a person's press.
   await tx(`select id from vehicles where id = $1 and operator_id = $2 for update`,
@@ -387,7 +408,7 @@ async function autoConfirm(
      limit 1`,
     [input.operatorId, vehicleId, startDate, endDate, input.bookingId, input.conversationId],
   )
-  if (clash !== undefined) return false
+  if (clash !== undefined) return { confirmed: false }
 
   const moved = await tx(
     `update bookings
@@ -397,7 +418,7 @@ async function autoConfirm(
      returning id`,
     [input.bookingId, input.operatorId],
   )
-  if (moved.length === 0) return false
+  if (moved.length === 0) return { confirmed: false }
 
   await tx(
     `insert into vehicle_availability
@@ -425,7 +446,7 @@ async function autoConfirm(
     bookingId: input.bookingId,
   })
 
-  return true
+  return { confirmed: true }
 }
 
 

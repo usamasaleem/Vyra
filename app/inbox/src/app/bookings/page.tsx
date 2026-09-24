@@ -258,6 +258,8 @@ export default async function BookingsPage() {
                     <dd style={{ margin: 0, display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                       {b.checklist.documentsCheckedAt !== null
                         ? <span>checked</span>
+                        : b.checklist.documents === 0 && b.checklist.documentsOnFileFrom !== null
+                        ? <span>on file — checked for a previous rental on {b.checklist.documentsOnFileFrom.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
                         : (
                           <>
                             <span>

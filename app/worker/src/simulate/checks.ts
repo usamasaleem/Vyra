@@ -86,8 +86,10 @@ export function check(played: Played): Finding[] {
   }
   for (const e of played.errors) out.push({ severity: 'fail', rule: 'run error', detail: e })
 
-  // — What this customer should have ended with.
+  // — What this customer should have ended with. A rental from before the
+  // conversation (a returning customer's last one) is history, not an outcome.
   const confirmed = facts.bookings.filter((b) => b.state === 'confirmed')
+    .filter((b) => persona.before !== 'rented_before' || b !== facts.bookings[0])
   const first = confirmed[0]
   const outcome = confirmed.length > 0 ? 'booked'
     : facts.held ? 'held'
@@ -129,6 +131,15 @@ export function check(played: Played): Finding[] {
   }
   if (expect.summary === true && !agent.some((m) => m.body.startsWith('Here is everything for your booking'))) {
     out.push({ severity: 'fail', rule: 'no booking summary', detail: 'the booking completed without the summary' })
+  }
+  if (expect.discounted === true && facts.latestQuote?.discounted !== true) {
+    out.push({ severity: 'fail', rule: 'standing discount not applied', detail: 'the price they booked at had no money off' })
+  }
+  if (expect.waits === true && !facts.bookings.some((b) => b.state === 'requested')) {
+    out.push({ severity: 'fail', rule: 'over-limit booking not left for a person', detail: facts.bookings.map((b) => b.state).join(', ') || 'no booking' })
+  }
+  if (persona.before === 'rented_before' && agent.some((m) => /photo[^.?!]{0,40}(licen[cs]e|passport|emirates id)/i.test(m.body))) {
+    out.push({ severity: 'fail', rule: 'asked a returning customer for documents on file', detail: 'their documents were checked last time' })
   }
   if (expect.extended === true && confirmed.length < 2) {
     out.push({ severity: 'fail', rule: 'not extended', detail: `${confirmed.length} confirmed booking(s)` })

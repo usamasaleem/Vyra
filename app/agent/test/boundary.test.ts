@@ -106,7 +106,7 @@ describe('the shape of the boundary', () => {
     expect(TOOL_NAMES).toEqual([
       'get_operator_policy', 'search_vehicles', 'prepare_quote',
       'record_enquiry_fields', 'request_handoff', 'request_booking_review',
-      'extend_booking', 'record_booking_progress', 'hold_car',
+      'extend_booking', 'record_booking_progress', 'hold_car', 'offer_discount',
     ])
   })
 
@@ -129,8 +129,16 @@ describe('the shape of the boundary', () => {
     }
   })
 
+  /**
+   * The model can never choose how much comes off. offer_discount exists, but
+   * it takes a quote and nothing else: the amount is the operator's standing
+   * rule, applied in the database. No argument anywhere names an amount.
+   */
   it('has no discount argument anywhere', () => {
-    expect(JSON.stringify(toolDefinitions())).not.toMatch(/discount/i)
+    for (const tool of toolDefinitions()) {
+      const names = Object.keys((tool.parameters as { properties?: object }).properties ?? {})
+      expect(names.filter((n) => /discount|percent|amount|price|total/i.test(n)), tool.name).toEqual([])
+    }
   })
 
   it.each(['issue_refund', 'confirm_booking', 'run_sql', 'fetch_url', 'verify_payment'])(

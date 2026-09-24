@@ -145,6 +145,28 @@ export const operators = pgTable('operators', {
      * a hold is a car nobody else can have.
      */
     holdMinutes: integer(),
+    /**
+     * The longest rental the agent may confirm by itself, in days. Longer is
+     * quoted and held and waits for a person. Null: no limit.
+     */
+    autoConfirmMaxDays: integer(),
+    /**
+     * The least notice for a same-day handover, in minutes: a car wanted in an
+     * hour is a car a driver may not be able to reach. Null: no limit.
+     */
+    handoverNoticeMinutes: integer(),
+    /**
+     * What the agent may take off by itself when the price is the objection:
+     * [{ "minDays": 5, "percent": 10 }, ...]. The best tier a rental reaches
+     * applies. Null or empty: any money off goes to a person.
+     */
+    discountTiers: jsonb().$type<Array<{ minDays: number; percent: number }> | null>(),
+    /**
+     * Who set those tiers. Every discount carries a name, and for a standing
+     * offer the name is the person who decided it — each quote it lowers is
+     * approved under them.
+     */
+    discountTiersSetByMembershipId: uuid(),
 
   /**
    * How long to wait before chasing a customer who has gone quiet.

@@ -147,6 +147,12 @@ export const recordBookingProgressSchema = z.strictObject({
   ),
 })
 
+export const offerDiscountSchema = z.strictObject({
+  quoteId: z.string().describe(
+    'The quote they find too expensive, exactly as prepare_quote returned it.',
+  ),
+})
+
 export const holdCarSchema = z.strictObject({
   quoteId: z.string().describe(
     'The quote for the car and dates they want held, exactly as prepare_quote returned it.',
@@ -180,6 +186,7 @@ export const TOOL_SCHEMAS = {
   extend_booking: extendBookingSchema,
   record_booking_progress: recordBookingProgressSchema,
   hold_car: holdCarSchema,
+  offer_discount: offerDiscountSchema,
 } as const
 
 export type ToolName = keyof typeof TOOL_SCHEMAS
@@ -213,6 +220,11 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Save what they told you about a confirmed booking: the delivery address, the delivery '
     + 'time, how they will pay, or that they have paid. Call it as soon as they say any of it. '
     + 'It only fills in what they gave, so call it again for each new piece.',
+  offer_discount:
+    'When the price is the objection — "too expensive", "can you do better", "any discount" — '
+    + 'apply the operator\'s standing discount to their quote, if their rental reaches one. Returns '
+    + 'the new total and a new quoteId. Once per price: it refuses a second time, and anything '
+    + 'beyond it is a person\'s decision. Never offer money off any other way.',
   hold_car:
     'Hold a quoted car for somebody who is not ready to book yet — "let me think", "I need to '
     + 'check with my wife", or a tap on Hold it for me. The car is theirs for a set time and '

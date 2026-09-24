@@ -9,7 +9,7 @@ import {
 } from '../turn.js'
 import { nextAction, type CustomerAction, type Line } from './customer.js'
 import type { Persona } from './personas.js'
-import { createSimWorld, newCustomer, OPERATOR, type SimWorld } from './world.js'
+import { createSimWorld, MEMBER, newCustomer, OPERATOR, type SimWorld } from './world.js'
 
 /**
  * One customer, played through the real pipeline.
@@ -31,7 +31,7 @@ export type Played = {
 export type RunFacts = {
   bookings: Array<{ state: string; vehicle: string | null; days: number | null; handover: string | null;
     deliveryAddress: string | null; deliveryTime: string | null; documents: number; paymentPlan: string | null }>
-  latestQuote: { vehicle: string | null; days: number; totalMinor: number } | null
+  latestQuote: { vehicle: string | null; days: number; totalMinor: number; discounted: boolean } | null
   held: boolean
   handoffs: Array<{ reason: string; summary: string }>
   runs: Array<{ state: string; ms: number; tools: string }>
@@ -71,6 +71,30 @@ async function play(
                'booked', 'another customer')`,
       [OPERATOR, world.vehicles.ferrari],
     )
+  }
+
+  if (persona.before === 'rented_before') {
+    // Their Ferrari in March, delivered, documents checked by a person.
+    const [e] = await world.run(
+      `insert into enquiries (operator_id, conversation_id) values ($1, $2) returning id`, [OPERATOR, conversationId])
+    await world.run(
+      `insert into field_evidence (operator_id, enquiry_id, field, value) values
+         ($1, $2, 'residency', 'UAE resident'), ($1, $2, 'delivery_preference', 'delivery')`,
+      [OPERATOR, e!['id']])
+    const [q] = await world.run(
+      `insert into quotes (operator_id, conversation_id, enquiry_id, vehicle_id, revision, state, total_minor,
+                           deposit_minor, lines, start_date, end_date, days, valid_until)
+       values ($1, $2, $3, $4, 1, 'superseded', 1000000, 500000, '[]'::jsonb, '2026-03-06', '2026-03-08', 2,
+               '2026-03-10')
+       returning id`,
+      [OPERATOR, conversationId, e!['id'], world.vehicles.ferrari])
+    await world.run(
+      `insert into bookings (operator_id, conversation_id, enquiry_id, quote_id, state, decided_at,
+                             decided_automatically, delivery_address, delivery_time, returned_at,
+                             returned_by_membership_id, documents_checked_at, documents_checked_by_membership_id)
+       values ($1, $2, $3, $4, 'confirmed', '2026-03-01', true, 'Jumeirah Bay, Villa 12', '11:00',
+               '2026-03-08', $5, '2026-03-05', $5)`,
+      [OPERATOR, conversationId, e!['id'], q!['id'], MEMBER])
   }
 
   const lines: Line[] = []
@@ -240,7 +264,7 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
     })
   }
   const [quote] = await run(
-    `select q.days, q.total_minor, trim(v.make || ' ' || v.model) as vehicle from quotes q
+    `select q.days, q.total_minor, q.discount_minor, trim(v.make || ' ' || v.model) as vehicle from quotes q
      left join vehicles v on v.id = q.vehicle_id
      where q.conversation_id = $1 and q.state <> 'superseded' order by q.revision desc limit 1`,
     [conversationId],
@@ -261,6 +285,7 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
     bookings,
     latestQuote: quote === undefined ? null : {
       vehicle: (quote['vehicle'] as string) ?? null, days: Number(quote['days']), totalMinor: Number(quote['total_minor']),
+      discounted: quote['discount_minor'] != null && Number(quote['discount_minor']) > 0,
     },
     held: held.length > 0,
     handoffs: handoffs.map((h) => ({ reason: h['reason'] as string, summary: String(h['summary'] ?? '') })),

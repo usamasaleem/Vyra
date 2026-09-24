@@ -92,6 +92,10 @@ export type RunTurnOptions = {
   holds?: { hours: string; active: { vehicle: string | null; until: string } | null }
   /** The youngest a driver may be, from the operator's published requirements. */
   minimumAge?: number
+  /** The operator's standing discounts, when there are any. */
+  discounts?: ReadonlyArray<{ minDays: number; percent: number }>
+  /** Somebody who has rented before. See systemPromptFor. */
+  returning?: { rentals: readonly string[]; documentsOnFile: boolean; residency: string | null; lastAddress: string | null }
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -193,6 +197,8 @@ export async function runTurn(
           ...(options.afterBooking === undefined ? {} : { afterBooking: options.afterBooking }),
           ...(options.holds === undefined ? {} : { holds: options.holds }),
           ...(options.minimumAge === undefined ? {} : { minimumAge: options.minimumAge }),
+          ...(options.discounts === undefined ? {} : { discounts: options.discounts }),
+          ...(options.returning === undefined ? {} : { returning: options.returning }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
           ...(options.customerName == null ? {} : { customerName: options.customerName }),

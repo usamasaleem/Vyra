@@ -68,7 +68,9 @@ export function renderBookingSummary(
   lines.push(`Payment: ${paymentLine(list)}`)
   lines.push(list.documentsCheckedAt !== null
     ? 'Documents: checked'
-    : `Documents: received — the team checks them before the handover`)
+    : list.documents === 0 && list.documentsOnFileFrom !== null
+      ? 'Documents: on file from your last rental — bring the originals on the day'
+      : `Documents: received — the team checks them before the handover`)
   if (list.endDate !== null && list.endDate !== list.startDate) {
     lines.push(`Returning: ${day(list.endDate)}`)
   }

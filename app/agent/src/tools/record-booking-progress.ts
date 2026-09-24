@@ -35,6 +35,39 @@ export async function recordBookingProgressTool(
   }
 
   /**
+   * Too soon to reach them. A same-day rental asked for in an hour is a car a
+   * driver may not get to; the operator says how much notice they need, and a
+   * time inside it is not saved — the agent offers the earliest that works.
+   */
+  const current = await bookingChecklist(ctx.run, { operatorId: ctx.operatorId, bookingId })
+  const tooSoon = args.deliveryTime === null || current?.startDate == null
+    ? null
+    : await (async () => {
+      const [operator] = await ctx.run(
+        `select handover_notice_minutes from operators where id = $1`, [ctx.operatorId])
+      const notice = operator?.['handover_notice_minutes']
+      if (notice == null) return null
+      const civil = (d: Date) => new Intl.DateTimeFormat('en-CA', {
+        timeZone: ctx.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(d)
+      if (current.startDate !== civil(ctx.now)) return null
+      // Rounded up to the next quarter hour, the way a person would offer it.
+      const earliest = new Date(Math.ceil((ctx.now.getTime() + Number(notice) * 60_000) / 900_000) * 900_000)
+      if (civil(earliest) !== civil(ctx.now)) return { earliest: null }
+      const hhmm = new Intl.DateTimeFormat('en-GB', {
+        timeZone: ctx.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).format(earliest)
+      return args.deliveryTime! < hhmm ? { earliest: hhmm } : null
+    })()
+  const timeRefused = tooSoon === null
+    ? null
+    : tooSoon.earliest === null
+      ? 'The time they asked for is too soon to get the car to them today, and there is not enough of '
+        + 'today left. Say so kindly and ask whether first thing tomorrow works. The time was not saved. '
+      : `The time they asked for is too soon — the earliest the car can be ready today is `
+        + `${tooSoon.earliest}. Offer ${tooSoon.earliest} or later, in a sentence. The time was not saved. `
+
+  /**
    * Delivery or collection lives on the enquiry, where the checklist reads it.
    *
    * Live: "I'll collect it" was answered in words and recorded nowhere — this
@@ -57,7 +90,7 @@ export async function recordBookingProgressTool(
     operatorId: ctx.operatorId,
     bookingId,
     deliveryAddress: args.deliveryAddress,
-    deliveryTime: args.deliveryTime,
+    deliveryTime: timeRefused === null ? args.deliveryTime : null,
     paymentPlan: args.paymentPlan,
     saysPaid: args.saysPaid === true,
     clearTime: switched,
@@ -74,6 +107,10 @@ export async function recordBookingProgressTool(
   const wasOpen = open(before).length > 0
   const nowReady = open(list).length === 0
   const onlyTheMoney = missing.length === 1 && missing[0] === 'payment' && list?.paymentPlan != null
+
+  if (timeRefused !== null) {
+    return ok({ stillNeeded: missing.map((m) => ASK_FOR[m]), guidance: timeRefused })
+  }
 
   return ok({
     stillNeeded: missing.map((m) => ASK_FOR[m]),

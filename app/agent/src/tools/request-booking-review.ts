@@ -1,4 +1,4 @@
-import { ASK_FOR, bookingChecklist, formatMoneyMinor, requestBooking } from '@vyra/db'
+import { ASK_FOR, bookingChecklist, formatMoneyMinor, holdCar, requestBooking } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
 import type { requestBookingReviewSchema } from './schemas.js'
@@ -94,6 +94,30 @@ export async function requestBookingReview(
     + 'You are handling the rest yourself: never say somebody will be in touch, contact them or '
     + 'follow up with the details. '
 
+  /**
+   * Over the operator's limits — a long rental, a large total — a person
+   * confirms it. The car should not be lost while they do, so it is held on
+   * the same terms as any customer deciding.
+   */
+  const waits = result.booking.waitsBecause
+  const heldWhileWaiting = waits === undefined || result.booking.confirmed
+    ? null
+    : await holdCar(ctx.transact, {
+      operatorId: ctx.operatorId, conversationId: ctx.conversationId, quoteId: args.quoteId, now: ctx.now,
+    }).catch(() => null)
+  const heldUntil = heldWhileWaiting?.ok === true
+    ? new Intl.DateTimeFormat('en-GB', {
+      timeZone: ctx.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(heldWhileWaiting.until)
+    : null
+  const waitingNote = waits === undefined
+    ? ''
+    : `This one waits for a colleague because it is ${waits === 'too_long' ? 'a longer rental' : 'a larger booking'} `
+      + 'than the agent confirms on its own — say that plainly, as ordinary, not as a problem. '
+      + (heldUntil === null
+        ? ''
+        : `The car is held for them until ${heldUntil} while they confirm it, so nobody else can take it; say so. `)
+
   return ok({
     bookingId: result.booking.bookingId,
     quoteId: result.booking.quoteId,
@@ -112,7 +136,10 @@ export async function requestBookingReview(
         + 'asking again. '
         + carryOn
         + 'Do not say it is pending or that a colleague still has to approve it.'
-      : 'This is NOT confirmed. Their agreement is recorded and a colleague will confirm it. '
-        + 'Say that, and do not say it is booked, held, reserved or secured.',
+      : waits !== undefined
+        ? 'This is NOT confirmed yet. Their agreement is recorded and a colleague will confirm it. '
+          + waitingNote + 'Do not say it is booked or confirmed.'
+        : 'This is NOT confirmed. Their agreement is recorded and a colleague will confirm it. '
+          + 'Say that, and do not say it is booked, held, reserved or secured.',
   })
 }

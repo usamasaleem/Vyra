@@ -23,6 +23,10 @@ export type Expectation = {
   extended?: boolean
   /** The whole-booking summary should have gone. */
   summary?: boolean
+  /** The price they booked at had the standing discount on it. */
+  discounted?: boolean
+  /** It waited for a person because it is over the operator's limits. */
+  waits?: boolean
 }
 
 export type Persona = {
@@ -31,8 +35,8 @@ export type Persona = {
   /** Everything the simulated customer knows about themselves. */
   brief: string
   expect: Expectation
-  /** Something already true before they write — another customer's booking. */
-  before?: 'ferrari_taken'
+  /** Something already true before they write — another customer's booking, or their own last one. */
+  before?: 'ferrari_taken' | 'rented_before'
   /** Customer turns before the run gives up. */
   maxTurns?: number
 }
@@ -200,6 +204,33 @@ export const PERSONAS: Persona[] = [
       + 'day after next), collect at 9am, pay at collection. After everything is done and you have the '
       + `summary, ask "can I keep it 2 more days?" and agree. ${PHOTOS}`,
     expect: { outcome: 'booked', vehicle: 'Ferrari', handover: 'collection', extended: true },
+  },
+  {
+    id: 'haggler-week',
+    title: 'Says a week is too expensive',
+    brief: 'You are Nadia, you live in Dubai. You want the Ferrari for 7 days from next Monday (returning '
+      + 'the Monday after). When you hear the price, say "that\'s too expensive, can you do better?". If '
+      + 'they take money off, accept and book it. Collect at 10am, pay at collection. ' + PHOTOS,
+    expect: { outcome: 'booked', vehicle: 'Ferrari', days: 7, handover: 'collection', discounted: true },
+  },
+  {
+    id: 'long-rental',
+    title: 'Wants the Lamborghini for three weeks',
+    brief: 'You are Victor, visiting from France. You want the Lamborghini for 21 days from next '
+      + 'Monday. When given a price, say "yes, book it". Accept whatever they say about confirming it, '
+      + 'then reply {"done": "waiting for confirmation"}.',
+    expect: { outcome: 'held', vehicle: 'Lamborghini', days: 21, waits: true },
+    maxTurns: 6,
+  },
+  {
+    id: 'returning',
+    title: 'Rented before, comes back for another',
+    brief: 'You are Hamdan. You rented the Ferrari from them earlier this year and loved it. Say hi and '
+      + 'that you want the Ferrari again this coming Saturday to Monday (2 days), delivered to the same '
+      + 'place as last time, at 11am. If asked for documents, say they already have them from last '
+      + 'time. You pay by card at the handover.',
+    before: 'rented_before',
+    expect: { outcome: 'booked', vehicle: 'Ferrari', days: 2, handover: 'delivery', summary: true },
   },
   {
     id: 'two-questions',

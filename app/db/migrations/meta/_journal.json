@@ -323,6 +323,20 @@
       "when": 1790174333935,
       "tag": "0045_holds",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1790248523879,
+      "tag": "0046_sales_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790249234374,
+      "tag": "0047_discount_owner",
+      "breakpoints": true
     }
   ]
 }

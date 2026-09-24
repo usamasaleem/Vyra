@@ -38,6 +38,7 @@ import {
   ASK_FOR,
   activeBookingFor,
   bookingChecklist,
+  customerHistory,
   activeHoldFor,
   BEFORE_HANDOVER,
   DOCUMENTS_WANTED,
@@ -971,8 +972,27 @@ export async function runConversationTurn(
       || context.conversation.bookingStatus === 'pending'
       || liveQuote !== undefined
 
+    /**
+     * Somebody who has rented before. Read every turn: cheap, and it is what
+     * stops the agent asking a regular for the licence it checked last month.
+     */
+    const history = await customerHistory(deps.run, {
+      operatorId: context.operator.id, contactId: context.contact.id,
+    }).catch(() => null)
+    const returning = history === null || history.rentals.length === 0 ? undefined : {
+      rentals: history.rentals.map((r) => {
+        const month = new Intl.DateTimeFormat('en-GB', { month: 'long', timeZone: 'UTC' })
+          .format(new Date(`${r.startDate}T12:00:00Z`))
+        return `the ${r.vehicle ?? 'car'} in ${month}`
+      }),
+      documentsOnFile: history.documentsCheckedAt !== null,
+      residency: history.residency,
+      lastAddress: history.rentals.find((r) => r.deliveryAddress !== null)?.deliveryAddress ?? null,
+    }
+
     const bringWithYou = !aboutToCommit ? undefined : await (async () => {
-      const residency = known.find((k) => k.field === 'residency')?.value?.toLowerCase() ?? null
+      const residency = (known.find((k) => k.field === 'residency')?.value ?? history?.residency ?? null)
+        ?.toLowerCase() ?? null
       const wanted = residency === null
         ? (['driver-requirements-resident', 'driver-requirements-visitor'] as const)
         // "Non-resident" contains "resident", so the visitor test goes first.
@@ -1182,6 +1202,8 @@ export async function runConversationTurn(
       ...(afterBooking === undefined ? {} : { afterBooking }),
       ...(holds === undefined ? {} : { holds }),
       ...(minimumAge === undefined ? {} : { minimumAge }),
+      ...(context.operator.discountTiers.length === 0 ? {} : { discounts: context.operator.discountTiers }),
+      ...(returning === undefined ? {} : { returning }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *
@@ -1889,7 +1911,22 @@ const PHOTOS_PER_CAR = 6
   })
 
   const discount = detectDiscountRequest(context.message.body)
-  if (discount !== null) {
+  /**
+   * The operator's standing offer answers it — or gets the first try.
+   *
+   * Every discount ask used to be a person's, even when the operator had
+   * already decided what a week's rental gets. Where they have (Settings →
+   * When the price is the objection) and it applied, nobody needs asking. On a
+   * first ask it did not reach, the agent offers a cheaper car or the next tier
+   * first; a second ask, or wanting more than the tier, is still a person's.
+   */
+  const standingOfferApplied = end.toolResults.some(
+    (r) => r.name === 'offer_discount' && r.result.status === 'ok')
+  const askedBefore = context.recentMessages
+    .slice(0, -1)
+    .some((m) => m.direction === 'inbound' && m.body !== null && detectDiscountRequest(m.body) !== null)
+  const firstTryIsTheAgents = context.operator.discountTiers.length > 0 && !askedBefore
+  if (discount !== null && !standingOfferApplied && !firstTryIsTheAgents) {
     await raiseHandoff(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,

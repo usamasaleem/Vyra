@@ -11,6 +11,9 @@ type Settings = {
   aiResumesAfterMinutes: number | null
   followUpAfterMinutes: number
   holdMinutes: number | null
+  autoConfirmMaxDays: number | null
+  handoverNoticeMinutes: number | null
+  discountTiers: Array<{ minDays: number; percent: number }>
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -220,6 +223,52 @@ export function SettingsForm({
             disabled={readOnly}
           />
         </Field>
+        <Field
+          name="autoConfirmMaxDays"
+          label="Confirm on its own up to (days)"
+          hint="Longer rentals are quoted and held, and wait for one of your people. Blank for no limit."
+          problem={problem('autoConfirmMaxDays')}
+        >
+          {number('autoConfirmMaxDays', settings.autoConfirmMaxDays)}
+        </Field>
+        <Field
+          name="handoverNoticeMinutes"
+          label="Notice needed for a same-day handover (minutes)"
+          hint="A customer wanting the car sooner than this today is offered the earliest time that works instead. Blank for none."
+          problem={problem('handoverNoticeMinutes')}
+        >
+          {number('handoverNoticeMinutes', settings.handoverNoticeMinutes)}
+        </Field>
+      </section>
+
+      <section className="card" style={{ marginBottom: '1rem' }}>
+        <h2 style={{ fontSize: '1.05rem', marginTop: 0 }}>When the price is the objection</h2>
+        <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0 }}>
+          When a customer says it is too expensive, the agent may take this much off by itself —
+          the best tier their rental reaches — or suggest a cheaper car free on the same dates.
+          Anything more still goes to one of your people. Leave all rows blank to keep every
+          discount with a person.
+        </p>
+        {problem('discountTiers') !== null && <p className="notice">{problem('discountTiers')}</p>}
+        {[1, 2, 3].map((i) => {
+          const tier = settings.discountTiers[i - 1]
+          return (
+            <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', margin: '0.4rem 0', flexWrap: 'wrap' }}>
+              <input
+                className="input" name={`tierPercent${i}`} type="number" inputMode="numeric" min={1} max={50}
+                defaultValue={tier?.percent ?? ''} disabled={readOnly} style={{ maxWidth: '6rem' }}
+                aria-label={`Tier ${i} percent off`}
+              />
+              <span>% off rentals of</span>
+              <input
+                className="input" name={`tierDays${i}`} type="number" inputMode="numeric" min={1}
+                defaultValue={tier?.minDays ?? ''} disabled={readOnly} style={{ maxWidth: '6rem' }}
+                aria-label={`Tier ${i} minimum days`}
+              />
+              <span>days or more</span>
+            </div>
+          )
+        })}
       </section>
 
       <section className="card" style={{ marginBottom: '1rem' }}>

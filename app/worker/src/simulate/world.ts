@@ -18,7 +18,7 @@ import { draftKnowledge, publishKnowledge, type QueryRunner, type Transactor } f
  */
 export const OPERATOR = '11111111-1111-1111-1111-111111111111'
 const ACCOUNT = '33333333-3333-3333-3333-333333333333'
-const MEMBER = '88888888-8888-8888-8888-888888888888'
+export const MEMBER = '88888888-8888-8888-8888-888888888888'
 
 export type SimWorld = {
   run: QueryRunner
@@ -112,6 +112,12 @@ export async function createSimWorld(options: { withAnswers: boolean }): Promise
     values ('${ACCOUNT}', '${OPERATOR}', 'waba-sim', '111');
     insert into memberships (id, operator_id, user_id, role, display_name)
     values ('${MEMBER}', '${OPERATOR}', '99999999-9999-9999-9999-999999999999', 'admin', 'Usama');
+    -- The pilot's own limits and standing offer.
+    update operators set auto_confirm_limit_minor = 5000000, auto_confirm_max_days = 14,
+      handover_notice_minutes = 180,
+      discount_tiers = '[{"minDays":5,"percent":10},{"minDays":7,"percent":15}]',
+      discount_tiers_set_by_membership_id = '${MEMBER}'
+    where id = '${OPERATOR}';
   `)
 
   const vehicles = {} as SimWorld['vehicles']

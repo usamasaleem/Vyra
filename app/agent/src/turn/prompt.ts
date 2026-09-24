@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v35'
+export const PROMPT_VERSION = 'sales-v37'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -440,6 +440,14 @@ export function systemPromptFor(input: {
   holds?: { hours: string; active: { vehicle: string | null; until: string } | null }
   /** The youngest a driver may be, from the operator's published requirements. */
   minimumAge?: number
+  /** The operator's standing discounts, when there are any. */
+  discounts?: ReadonlyArray<{ minDays: number; percent: number }>
+  /**
+   * Somebody who has rented before: what they had ("the Ferrari 488 Spider in
+   * September"), whether their documents are on file, where they live, and
+   * where the car went last time.
+   */
+  returning?: { rentals: readonly string[]; documentsOnFile: boolean; residency: string | null; lastAddress: string | null }
   bookingsOnFile?: {
     live: ReadonlyArray<{
       vehicle: string | null
@@ -828,6 +836,45 @@ export function systemPromptFor(input: {
       + `("the driver needs to be ${input.minimumAge} or over") unless they have already told you the `
       + `driver's age. If they say the driver is younger, do not book it — say it plainly and kindly.`
 
+  /**
+   * The price as the objection, with something to answer it.
+   *
+   * Without this block a discount ask is a person's, which the system prompt
+   * already says. With it the agent has the operator's own offer to give and
+   * two honest alternatives when the rental does not reach it.
+   */
+  const objection = input.discounts === undefined || input.discounts.length === 0
+    ? ''
+    : `\n\nWhen the price is the objection — "too expensive", "can you do better", a discount asked `
+      + `for — do not hand it over first. Call offer_discount with their quoteId: the operator takes `
+      + `${input.discounts.map((d) => `${d.percent}% off ${d.minDays}+ days`).join(', ')}, and the tool `
+      + `applies the one their rental reaches. If none does, offer a car that costs less and is `
+      + `available on the same dates. Never name a discount the tool did not give, and never mention `
+      + `these offers before the price has been questioned.`
+
+  /**
+   * A returning customer, remembered the way a person would remember them.
+   *
+   * Once, early, and without reciting their file: "good to have you back" is a
+   * person; "our records show you rented the Ferrari 488 Spider on 12
+   * September" is a database.
+   */
+  const back = input.returning
+  const returning = back === undefined || back.rentals.length === 0
+    ? ''
+    : `\n\nThey have rented with you before — ${back.rentals.join(', and ')}. Welcome them back like `
+      + `somebody who remembers them, once, early in the conversation, and never recite dates or `
+      + `records.`
+      + (back.documentsOnFile
+        ? ` Their licence and ID were checked last time and are still on file, so do not ask for them `
+          + `again — they only bring the originals on the day.`
+        : '')
+      + (back.residency === null ? '' : ` Last time they told you: ${back.residency}. Do not ask again.`)
+      + (back.lastAddress === null
+        ? ''
+        : ` The car went to ${back.lastAddress} last time; if they want it delivered, ask whether it `
+          + `is the same address rather than asking from scratch.`)
+
   const after = input.afterBooking
   const followThrough = after === undefined || after.missing.length === 0
     ? ''
@@ -876,7 +923,7 @@ export function systemPromptFor(input: {
         : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
           + `booked.`)
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${settlesItself}${ageRule}${confirming}${bring}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${returning}${settlesItself}${ageRule}${objection}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

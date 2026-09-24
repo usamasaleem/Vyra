@@ -161,7 +161,9 @@ function HandoverRow({
 
   const documents = list.documentsCheckedAt !== null
     ? 'checked'
-    : list.documents === 0 ? 'none yet' : `${list.documents} received, not checked`
+    : list.documents === 0 && list.documentsOnFileFrom !== null
+      ? 'on file from a previous rental'
+      : list.documents === 0 ? 'none yet' : `${list.documents} received, not checked`
 
   return (
     <div className="stack" style={{ gap: '0.35rem' }}>

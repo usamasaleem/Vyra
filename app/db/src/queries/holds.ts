@@ -63,8 +63,10 @@ export async function holdCar(
     }
 
     const [booked] = await tx(
+      // Confirmed only: a booking waiting for a person is exactly what a hold
+      // protects — a long rental must not be lost while somebody checks it.
       `select 1 from bookings where quote_id = $1 and operator_id = $2
-         and state in ('requested', 'confirmed') limit 1`,
+         and state = 'confirmed' limit 1`,
       [input.quoteId, input.operatorId],
     )
     if (booked !== undefined) {
