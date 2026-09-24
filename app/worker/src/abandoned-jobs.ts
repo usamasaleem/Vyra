@@ -24,7 +24,19 @@ import type { QueryRunner } from './relay.js'
  * retried, and the dispatcher's own pending-to-dispatching claim is what stops
  * a retry from sending the same message twice.
  */
-const ABANDONED_AFTER_SECONDS = 600
+/**
+ * Three minutes, down from ten.
+ *
+ * Live: a customer's "Delivery, please." arrived while the worker was
+ * redeploying, its job went down with the old process, and it sat locked for
+ * the full ten minutes. By the time it was released a salesperson had taken
+ * the conversation over, so it was held — and the customer, who had answered a
+ * question, heard nothing at all. A turn is a handful of model calls with a
+ * sixty-second timeout each and takes ten to twenty seconds; three minutes is
+ * still far past a live one, and a released job that was in fact running cannot
+ * send twice (the reply's idempotency key and the revision check both stop it).
+ */
+const ABANDONED_AFTER_SECONDS = 180
 
 /**
  * A send has no business holding a lock for ten minutes.

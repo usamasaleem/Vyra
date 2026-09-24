@@ -134,6 +134,33 @@ describe('a turn that spends every round on tools', () => {
  * The reply is read back before it goes: a figure nobody gave the agent, or a
  * booking that does not exist, is rewritten once with the problem named.
  */
+/**
+ * A newer message arrived while this turn was working: it stops at its next
+ * round rather than finishing a reply that would be thrown away while the
+ * newer message waits behind it in the queue.
+ */
+describe('a turn overtaken by a newer message', () => {
+  it('stops at the next round and sends nothing', async () => {
+    // The customer wrote again after this turn's message.
+    await run(
+      `insert into messages (operator_id, conversation_id, direction, kind, body, provider_id, created_at)
+       values ($1, $2, 'inbound', 'text', 'and in yellow?', 'wamid.newer', now() + interval '1 second')`,
+      [OP, CONV])
+    let calls = 0
+    const counting: typeof REPLIES = REPLIES.map((r) => r)
+    const result = await runConversationTurn(
+      {
+        run, transact, destination: 'send',
+        model: { ...scriptedModel('test', counting), complete: async (req) => { calls++; return scriptedModel('test', counting).complete(req) } },
+      },
+      context,
+    )
+    expect(result).toMatchObject({ outcome: 'rejected', reason: 'superseded' })
+    expect(calls).toBe(1)
+    expect(await run(`select id from messages where conversation_id = $1 and direction = 'outbound'`, [CONV])).toEqual([])
+  })
+})
+
 describe('checking the reply against what the agent was given', () => {
   it('rewrites a deposit it made up', async () => {
     await turn([

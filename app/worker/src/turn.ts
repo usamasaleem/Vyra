@@ -1228,6 +1228,25 @@ export async function runConversationTurn(
     }
 
     const outcome = await runTurn(deps.model, toolContext, transcript, {
+      /**
+       * Live: "Lamborghini Huracán, please" and "And how does it work?" four
+       * seconds apart. The first turn ran nine and a half seconds and was
+       * thrown away; the second waited seven and a half behind it. The reply
+       * took nineteen. Now the first stops at its next round.
+       */
+      // A newer message from the customer, specifically: the turn's own
+      // handoff also moves the revision, and must still say a colleague is coming.
+      stillCurrent: async () => {
+        const [row] = await deps.run(
+          `select exists (
+             select 1 from messages m
+             where m.conversation_id = $1 and m.operator_id = $2 and m.direction = 'inbound'
+               and m.created_at > (select created_at from messages where id = $3)
+           ) as overtaken`,
+          [context.conversation.id, context.operator.id, context.message.id],
+        )
+        return row?.['overtaken'] !== true
+      },
       // What fell out of the window. Null until a conversation is long enough
       // to have lost anything.
       summary: context.conversation.summary,
@@ -1355,6 +1374,12 @@ export async function runConversationTurn(
       usage: undefined,
       error: error instanceof Error ? error.message : String(error),
     }
+  }
+
+  // Overtaken by a newer message: the newer one's turn answers both.
+  if (end.stoppedBecause === 'superseded') {
+    await record('rejected', 'superseded')
+    return { outcome: 'rejected', reason: 'superseded' }
   }
 
   const failure = classifyTurnEnd(end)

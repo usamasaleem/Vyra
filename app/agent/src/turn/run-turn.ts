@@ -17,7 +17,7 @@ import { systemPromptFor } from './prompt.js'
 export type TurnOutcome = {
   reply: string | null
   rounds: number
-  stoppedBecause: 'replied' | 'max_rounds' | 'no_output'
+  stoppedBecause: 'replied' | 'max_rounds' | 'no_output' | 'superseded'
   /** Every tool attempt, refusals included. */
   toolCalls: readonly ToolCallRecord[]
   /** Results in call order, for checking what the reply was entitled to say. */
@@ -63,6 +63,13 @@ export type RunTurnOptions = {
    * middle. It is not enough to loop.
    */
   maxRounds?: number
+  /**
+   * Whether this turn is still the one worth finishing — false once a newer
+   * customer message has arrived. Checked before every model call after the
+   * first, so an overtaken turn stops at the next round instead of finishing a
+   * reply that will be thrown away while the newer message waits behind it.
+   */
+  stillCurrent?: () => Promise<boolean>
   maxToolCalls?: number
   system?: string
   /** What happened before the transcript starts. See ModelRequest.summary. */
@@ -211,6 +218,12 @@ export async function runTurn(
    */
   let finalWord = false
   while (rounds < maxRounds || finalWord) {
+    if (rounds > 0 && options.stillCurrent !== undefined && !(await options.stillCurrent().catch(() => true))) {
+      return {
+        reply: null, rounds, stoppedBecause: 'superseded',
+        toolCalls: boundary.history, toolResults, transcript, system, usage,
+      }
+    }
     rounds++
     const response: ModelResponse = await model.complete({
       // Composed per turn so the model is told what day it is. It was not, for

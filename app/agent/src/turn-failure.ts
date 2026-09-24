@@ -20,7 +20,7 @@ export type TurnEnd = {
   /** Null when the model produced no customer-facing text. */
   reply: string | null
   /** How the loop stopped. */
-  stoppedBecause: 'replied' | 'max_rounds' | 'no_output' | 'error'
+  stoppedBecause: 'replied' | 'max_rounds' | 'no_output' | 'error' | 'superseded'
   toolCalls: readonly ToolCallRecord[]
   /** Set when the provider itself failed. */
   error?: string | null

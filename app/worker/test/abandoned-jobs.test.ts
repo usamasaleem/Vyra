@@ -55,7 +55,8 @@ describe('releasing abandoned jobs', () => {
     const calls: unknown[][] = []
     const run: QueryRunner = async (_t, p) => { calls.push(p as unknown[]); return [] }
     await releaseAbandonedJobs(run)
-    expect(calls[0]![0]).toBeGreaterThanOrEqual(300)
+    // Three minutes: a turn is ten to twenty seconds, with sixty-second model calls.
+    expect(calls[0]![0]).toBeGreaterThanOrEqual(180)
   })
 
   it('accepts a shorter threshold when asked', async () => {
@@ -91,7 +92,7 @@ describe('how long each kind of work is given', () => {
     const [turnSeconds, sendSeconds] = params as number[]
     expect(sendSeconds).toBeLessThan(turnSeconds as number)
     expect(sendSeconds).toBe(90)
-    expect(turnSeconds).toBe(600)
+    expect(turnSeconds).toBe(180)
   })
 
   /** Both timings are the caller's to override, which is what the tests need. */
