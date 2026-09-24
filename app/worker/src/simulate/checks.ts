@@ -62,6 +62,21 @@ export function check(played: Played): Finding[] {
     }
     if (m.body.length > 900) out.push({ severity: 'warn', rule: 'very long message', detail: `${m.body.length} characters` })
   }
+  /**
+   * Every figure against the record. A price nobody set — a deposit made up, a
+   * total the agent added together itself — is the failure this system exists
+   * to prevent, so it fails the run however well the rest went.
+   */
+  const known = new Set(facts.knownAmounts)
+  for (const m of agent) {
+    for (const hit of m.body.matchAll(/(?:\b(?:AED|Dhs?|dirhams?)\s?\*?(\d[\d,]*(?:\.\d+)?))|(?:(\d[\d,]*(?:\.\d+)?)\*?\s?(?:AED|dirhams?)\b)/gi)) {
+      const n = String(Number((hit[1] ?? hit[2] ?? '').replace(/,/g, '')))
+      if (!known.has(n)) {
+        out.push({ severity: 'fail', rule: 'invented figure', detail: `"${hit[0].trim()}" is in no rate, quote, payment or answer` })
+      }
+    }
+  }
+
   for (let i = 1; i < agent.length; i++) {
     if (agent[i]!.body === agent[i - 1]!.body && agent[i]!.body.trim() !== '') {
       out.push({ severity: 'fail', rule: 'sent the same message twice', detail: `"${agent[i]!.body.slice(0, 100)}"` })

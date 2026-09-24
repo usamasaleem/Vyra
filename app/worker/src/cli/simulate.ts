@@ -68,11 +68,40 @@ const booked = results.filter((r) => r.played.facts.bookings.some((b) => b.state
 const allMs = results.flatMap((r) => r.played.turnMs)
 const avg = allMs.length === 0 ? 0 : Math.round(allMs.reduce((a, b) => a + b, 0) / allMs.length / 100) / 10
 
+/**
+ * Accuracy and consistency, the two numbers this is for.
+ *
+ * Accuracy: figures in the agent's messages that no record accounts for, and
+ * how many messages there were. Consistency: with --repeat, how often each
+ * customer passed — a customer who passes two runs in three is a flow that
+ * works by luck.
+ */
+const invented = results.flatMap((r) => r.findings.filter((f) => f.rule === 'invented figure'))
+const agentMessages = results.reduce((n, r) => n + r.played.facts.outbound.length, 0)
+const byPersona = new Map<string, { title: string; runs: number; passes: number }>()
+for (const r of results) {
+  const entry = byPersona.get(r.played.persona.id) ?? { title: r.played.persona.title, runs: 0, passes: 0 }
+  entry.runs++
+  if (r.findings.every((f) => f.severity !== 'fail')) entry.passes++
+  byPersona.set(r.played.persona.id, entry)
+}
+const consistency = [...byPersona.values()]
+
 const md: string[] = [
   `# Sales simulation — ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
   '',
   `${passed} of ${results.length} passed · ${booked} booked · average reply ${avg}s · model ${modelName}`
     + `${withAnswers ? ' · payment and collection answers published' : ''}`,
+  '',
+  `Accuracy: ${invented.length} invented figure${invented.length === 1 ? '' : 's'} in ${agentMessages} agent messages.`,
+  ...(repeat > 1
+    ? [
+      '',
+      '| Customer | Passed |',
+      '|---|---|',
+      ...consistency.map((c) => `| ${c.title} | ${c.passes} of ${c.runs}${c.passes === c.runs ? '' : ' ⚠️'} |`),
+    ]
+    : []),
   '',
   '| Customer | Result | Customer messages | Failing | Worth reading |',
   '|---|---|---|---|---|',
@@ -107,5 +136,5 @@ for (const { played, findings } of results) {
   md.push('', '</details>', '')
 }
 writeFileSync(out, md.join('\n'))
-console.log(`\n${passed} of ${results.length} passed. Report: ${out}`)
+console.log(`\n${passed} of ${results.length} passed · ${invented.length} invented figures in ${agentMessages} agent messages. Report: ${out}`)
 process.exit(passed === results.length ? 0 : 1)

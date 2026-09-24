@@ -38,6 +38,8 @@ export type RunFacts = {
   runs: Array<{ state: string; ms: number; tools: string }>
   outbound: Array<{ body: string; buttons: string[] }>
   nextAction: string | null
+  /** Every amount the record can account for, in whole currency, as plain number strings. */
+  knownAmounts: string[]
 }
 
 export async function playPersona(input: {
@@ -282,6 +284,43 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
     `select body, reply_buttons from messages where conversation_id = $1 and direction = 'outbound'
      order by created_at, (reply_image_url is null)`,
     [conversationId])
+  /**
+   * The truth to hold every figure against: rates and deposits, every quote
+   * (and its lines and discount), every payment row and any combination of a
+   * booking's rows (rental + deposit, + a chauffeur), extras, published
+   * answers, and whatever the customer said themselves.
+   */
+  const amounts = new Set<string>()
+  const addMinor = (minor: unknown) => { if (minor != null) amounts.add(String(Number(minor) / 100)) }
+  for (const r of await run(`select daily_rate_minor, deposit_minor, delivery_fee_minor from vehicle_rates`, [])) {
+    addMinor(r['daily_rate_minor']); addMinor(r['deposit_minor']); addMinor(r['delivery_fee_minor'])
+  }
+  for (const q of await run(`select total_minor, deposit_minor, discount_minor, lines from quotes where conversation_id = $1`, [conversationId])) {
+    addMinor(q['total_minor']); addMinor(q['deposit_minor']); addMinor(q['discount_minor'])
+    if (q['deposit_minor'] != null) addMinor(Number(q['total_minor']) + Number(q['deposit_minor']))
+    for (const l of (q['lines'] as Array<{ amountMinor: number }>)) addMinor(Math.abs(l.amountMinor))
+  }
+  const byBooking = new Map<string, number[]>()
+  for (const p of await run(`select booking_id, amount_minor from payments where conversation_id = $1`, [conversationId])) {
+    const list = byBooking.get(p['booking_id'] as string) ?? []
+    list.push(Number(p['amount_minor']))
+    byBooking.set(p['booking_id'] as string, list)
+  }
+  for (const list of byBooking.values()) {
+    for (let mask = 1; mask < 1 << Math.min(list.length, 6); mask++) {
+      addMinor(list.reduce((sum, v, i) => (mask & (1 << i) ? sum + v : sum), 0))
+    }
+  }
+  for (const o of await run(`select add_ons from operators`, [])) {
+    for (const a of (o['add_ons'] as Array<{ priceMinor: number }> | null) ?? []) addMinor(a.priceMinor)
+  }
+  const texts = [
+    ...(await run(`select answer from knowledge_entries`, [])).map((k) => String(k['answer'])),
+    ...(await run(`select body from messages where conversation_id = $1 and direction = 'inbound'`, [conversationId]))
+      .map((m) => String(m['body'] ?? '')),
+  ]
+  for (const t of texts) for (const m of t.matchAll(/\d[\d,]*(?:\.\d+)?/g)) amounts.add(String(Number(m[0].replace(/,/g, ''))))
+
   const [conversation] = await run(`select next_action from conversations where id = $1`, [conversationId])
   return {
     bookings,
@@ -299,5 +338,6 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
       buttons: ((o['reply_buttons'] as Array<{ title: string }> | null) ?? []).map((b) => b.title),
     })),
     nextAction: (conversation?.['next_action'] as string) ?? null,
+    knownAmounts: [...amounts],
   }
 }

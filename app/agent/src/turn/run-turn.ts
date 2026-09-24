@@ -24,6 +24,11 @@ export type TurnOutcome = {
   toolResults: Array<{ name: string; result: ToolResult<unknown> }>
   transcript: TranscriptEntry[]
   /**
+   * The instructions the turn ran under, so a reply that fails the fact check
+   * can be rewritten against exactly what the model was told.
+   */
+  system: string
+  /**
    * Every model call in this turn added together, not just the last one.
    *
    * A turn that looks up the fleet, records three fields and then answers is
@@ -163,6 +168,37 @@ export async function runTurn(
     modelCalls: 0, reportedCalls: 0,
   }
 
+  const system = options.system
+    ?? systemPromptFor({
+      now: ctx.now,
+      timezone: ctx.timezone,
+      enquiryId: ctx.enquiryId,
+      ...(options.photosShown === undefined ? {} : { photosShown: options.photosShown }),
+      ...(options.fleetOnHand === undefined ? {} : { fleetOnHand: options.fleetOnHand }),
+      ...(options.stillNeeded === undefined ? {} : { stillNeeded: options.stillNeeded }),
+      ...(options.bookings === undefined ? {} : { bookings: options.bookings }),
+      ...(options.liveQuote === undefined ? {} : { liveQuote: options.liveQuote }),
+      ...(options.bringWithYou === undefined ? {} : { bringWithYou: options.bringWithYou }),
+      ...(options.mayConfirmBookings === undefined
+        ? {}
+        : { mayConfirmBookings: options.mayConfirmBookings }),
+      ...(options.bookingsOnFile === undefined
+        ? {}
+        : { bookingsOnFile: options.bookingsOnFile }),
+      ...(options.afterBooking === undefined ? {} : { afterBooking: options.afterBooking }),
+      ...(options.holds === undefined ? {} : { holds: options.holds }),
+      ...(options.minimumAge === undefined ? {} : { minimumAge: options.minimumAge }),
+      ...(options.discounts === undefined ? {} : { discounts: options.discounts }),
+      ...(options.addOns === undefined ? {} : { addOns: options.addOns }),
+      ...(options.returning === undefined ? {} : { returning: options.returning }),
+      ...(options.known === undefined ? {} : { known: options.known }),
+      ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
+      ...(options.customerName == null ? {} : { customerName: options.customerName }),
+      ...(options.spoken === true ? { spoken: true } : {}),
+      ...(options.considering === undefined ? {} : { considering: options.considering }),
+      ...(options.readyToConfirm === true ? { readyToConfirm: true } : {}),
+    })
+
   let rounds = 0
   /**
    * The last round is for writing, not for more tools.
@@ -179,36 +215,7 @@ export async function runTurn(
     const response: ModelResponse = await model.complete({
       // Composed per turn so the model is told what day it is. It was not, for
       // every turn before this, and could not resolve "the 20th" as a result.
-      system: options.system
-        ?? systemPromptFor({
-          now: ctx.now,
-          timezone: ctx.timezone,
-          enquiryId: ctx.enquiryId,
-          ...(options.photosShown === undefined ? {} : { photosShown: options.photosShown }),
-          ...(options.fleetOnHand === undefined ? {} : { fleetOnHand: options.fleetOnHand }),
-          ...(options.stillNeeded === undefined ? {} : { stillNeeded: options.stillNeeded }),
-          ...(options.bookings === undefined ? {} : { bookings: options.bookings }),
-          ...(options.liveQuote === undefined ? {} : { liveQuote: options.liveQuote }),
-          ...(options.bringWithYou === undefined ? {} : { bringWithYou: options.bringWithYou }),
-          ...(options.mayConfirmBookings === undefined
-            ? {}
-            : { mayConfirmBookings: options.mayConfirmBookings }),
-          ...(options.bookingsOnFile === undefined
-            ? {}
-            : { bookingsOnFile: options.bookingsOnFile }),
-          ...(options.afterBooking === undefined ? {} : { afterBooking: options.afterBooking }),
-          ...(options.holds === undefined ? {} : { holds: options.holds }),
-          ...(options.minimumAge === undefined ? {} : { minimumAge: options.minimumAge }),
-          ...(options.discounts === undefined ? {} : { discounts: options.discounts }),
-          ...(options.addOns === undefined ? {} : { addOns: options.addOns }),
-          ...(options.returning === undefined ? {} : { returning: options.returning }),
-          ...(options.known === undefined ? {} : { known: options.known }),
-          ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),
-          ...(options.customerName == null ? {} : { customerName: options.customerName }),
-          ...(options.spoken === true ? { spoken: true } : {}),
-          ...(options.considering === undefined ? {} : { considering: options.considering }),
-          ...(options.readyToConfirm === true ? { readyToConfirm: true } : {}),
-        }),
+      system,
       summary: options.summary ?? null,
       transcript: [...transcript],
       tools: boundary.definitions,
@@ -243,6 +250,7 @@ export async function runTurn(
         toolCalls: boundary.history,
         toolResults,
         transcript,
+        system,
         usage,
       }
     }
@@ -257,6 +265,7 @@ export async function runTurn(
         toolCalls: boundary.history,
         toolResults,
         transcript,
+        system,
         usage,
       }
     }
@@ -272,6 +281,7 @@ export async function runTurn(
     toolCalls: boundary.history,
     toolResults,
     transcript,
+    system,
     usage,
   }
 }

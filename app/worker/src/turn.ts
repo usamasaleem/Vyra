@@ -32,7 +32,7 @@ import {
   type TurnEnd,
   type TurnUsage,
 } from '@vyra/agent'
-import { searchVehicles } from '@vyra/agent'
+import { checkReplyFacts, rewriteReply, searchVehicles, SYSTEM_PROMPT } from '@vyra/agent'
 import {
   acceptTurnOutput,
   ASK_FOR,
@@ -1275,8 +1275,51 @@ export async function runConversationTurn(
         ? { readyToConfirm: true }
         : {}),
     })
+    /**
+     * Read back before it goes. Every amount and percentage in the reply must
+     * be in something the agent was given — its instructions, the tools, the
+     * conversation — and "booked" or "held" must be true on the record. A
+     * reply that fails is rewritten once, with no tools, with the problem
+     * named. The prompt asks for this; this is what makes it so.
+     */
+    let reply = outcome.reply
+    if (reply !== null) {
+      const okResult = (r: { name: string; result: { status: string } }, name: string) =>
+        r.name === name && r.result.status === 'ok'
+      const data = (r: { result: unknown }) => (r.result as { data?: Record<string, unknown> }).data ?? {}
+      const booked = outcome.toolResults.some((r) => okResult(r, 'request_booking_review') && data(r)['confirmed'] === true)
+        || (onFile?.live ?? []).some((b) => b.state === 'confirmed')
+      const held = holds?.active != null
+        || outcome.toolResults.some((r) => okResult(r, 'hold_car')
+          || (okResult(r, 'request_booking_review') && /held for them/.test(String(data(r)['guidance'] ?? ''))))
+      const facts = {
+        sources: [
+          // What was built for this conversation, not the fixed opening: its
+          // worked examples carry figures ("can you do 3000…") that would
+          // otherwise excuse the same figure invented.
+          outcome.system.startsWith(SYSTEM_PROMPT) ? outcome.system.slice(SYSTEM_PROMPT.length) : outcome.system,
+          JSON.stringify(outcome.toolResults), context.conversation.summary ?? '',
+          ...context.recentMessages.map((m) => m.body ?? ''),
+        ],
+        booked,
+        held,
+      }
+      const problems = checkReplyFacts(reply, facts)
+      if (problems.length > 0) {
+        const rewritten = await rewriteReply(deps.model, {
+          system: outcome.system, transcript: outcome.transcript, draft: reply, problems,
+        }).catch(() => null)
+        const still = rewritten === null ? problems : checkReplyFacts(rewritten, facts)
+        console.error(JSON.stringify({
+          event: 'fact_check.rewrote', conversationId: context.conversation.id, promptVersion: PROMPT_VERSION,
+          problems, resolved: still.length === 0, draft: reply.slice(0, 400),
+        }))
+        if (rewritten !== null && rewritten.trim() !== '') reply = rewritten
+      }
+    }
+
     end = {
-      reply: outcome.reply,
+      reply,
       stoppedBecause: outcome.stoppedBecause,
       toolCalls: outcome.toolCalls,
       rounds: outcome.rounds,

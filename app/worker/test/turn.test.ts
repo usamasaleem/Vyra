@@ -130,6 +130,41 @@ describe('a turn that spends every round on tools', () => {
   })
 })
 
+/**
+ * The reply is read back before it goes: a figure nobody gave the agent, or a
+ * booking that does not exist, is rewritten once with the problem named.
+ */
+describe('checking the reply against what the agent was given', () => {
+  it('rewrites a deposit it made up', async () => {
+    await turn([
+      REPLIES[0]!,
+      { toolCalls: [], reply: 'Lovely — the deposit is AED 3,000. Which dates?' },
+      { toolCalls: [], reply: 'Lovely — I will confirm the deposit for you. Which dates?' },
+    ])
+    const [message] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV])
+    expect(message!['body']).toBe('Lovely — I will confirm the deposit for you. Which dates?')
+  })
+
+  it('rewrites "booked" when nothing is', async () => {
+    await turn([
+      REPLIES[0]!,
+      { toolCalls: [], reply: 'Booked — the Ferrari is yours for Friday.' },
+      { toolCalls: [], reply: 'Shall I book the Ferrari for Friday?' },
+    ])
+    const [message] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV])
+    expect(message!['body']).toBe('Shall I book the Ferrari for Friday?')
+  })
+
+  it('leaves an honest reply alone', async () => {
+    await turn(REPLIES)
+    const [message] = await run(
+      `select body from messages where conversation_id = $1 and direction = 'outbound'`, [CONV])
+    expect(message!['body']).toBe('Lovely — which Friday, and delivery or collection?')
+  })
+})
+
 describe('shadow mode', () => {
   /**
    * The reply becomes an internal note. Section 18.12 keeps notes away from the
