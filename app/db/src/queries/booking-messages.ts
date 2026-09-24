@@ -115,3 +115,34 @@ export function renderHandoverFacts(
 export function renderReturnFacts(list: Checklist): string {
   return `*${list.vehicle ?? 'Your car'}* — due back ${list.endDate === null ? 'soon' : day(list.endDate)}`
 }
+
+/**
+ * The one question the booking needs next, in words a customer reads — or null
+ * when it needs nothing.
+ *
+ * One place for it: the photo reply and the documents-checked message both end
+ * on it, and two copies drifted before (one asked "on the first day" while the
+ * other said the day's name).
+ */
+export function nextQuestion(list: Checklist): string | null {
+  const next = list.missing[0]
+  if (next === undefined) return null
+  const first = list.startDate === null
+    ? 'the first day'
+    : new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: 'UTC' })
+      .format(new Date(`${list.startDate}T00:00:00Z`))
+  const last = list.endDate === null
+    ? 'the last day'
+    : new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: 'UTC' })
+      .format(new Date(`${list.endDate}T00:00:00Z`))
+  switch (next) {
+    case 'handover_choice': return 'Would you like it delivered, or will you collect it?'
+    case 'delivery_address': return 'What address should the car go to — the building or villa and the area?'
+    case 'delivery_time': return `What time on ${first} would you like it?`
+    case 'collection_time': return `What time on ${first} will you come to collect it?`
+    case 'documents': return 'Could you send a photo of your driving licence and your passport or Emirates ID here?'
+    case 'payment': return 'How would you like to pay — bank transfer, a payment link, or card or cash at the handover?'
+    case 'return_time': return `What time on ${last} should the car come back?`
+    case 'return_address': return 'Where should we collect the car from at the end — the same address?'
+  }
+}

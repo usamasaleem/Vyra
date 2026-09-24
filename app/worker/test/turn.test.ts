@@ -2410,6 +2410,27 @@ describe('a photo for a booking that is waiting on documents', () => {
       .not.toBeNull()
   })
 
+  /**
+   * Live: a third photo, after both were in and before a way to pay was
+   * chosen, got "I can't view images, a colleague will take a look", a
+   * handoff, and then silence. It is filed and the booking carries on.
+   */
+  it('files a photo after the documents are in, and asks the next thing', async () => {
+    const bookingId = await bookedFerrari()
+    const deps = { run, transact, destination: 'send' as const }
+    await fileDocumentIfBooked(deps, await photo())
+    await fileDocumentIfBooked(deps, await photo())
+    const third = await photo()
+    expect(await fileDocumentIfBooked(deps, third)).toMatchObject({ outcome: 'queued' })
+
+    expect(await run(`select id from booking_documents where booking_id = $1`, [bookingId])).toHaveLength(3)
+    expect(await run(`select id from handoffs where conversation_id = $1`, [CONV])).toEqual([])
+    const [reply] = await run(
+      `select body from messages where idempotency_key = $1`, [`document:${third.message.id}`])
+    expect(reply!['body']).toMatch(/^Got it — that is on your booking too\./)
+    expect(reply!['body']).not.toMatch(/can't view|colleague/i)
+  })
+
   /** No booking, or a voice note: the ordinary handoff still runs. */
   it('leaves everything else to the handoff', async () => {
     expect(await fileDocumentIfBooked({ run, transact, destination: 'send' }, await photo()))

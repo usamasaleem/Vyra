@@ -2,8 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import {
-  attachLinkToAllDue, attachPaymentLink, cancelBooking, decideBooking, markDocumentsChecked,
-  NoDisplayName, queueOutboundText, recordAllDue, recordPayment, refundPayment,
+  attachLinkToAllDue, attachPaymentLink, bookingChecklist, cancelBooking, decideBooking,
+  markDocumentsChecked, nextQuestion, NoDisplayName, queueOutboundText, recordAllDue, recordPayment,
+  refundPayment,
 } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
@@ -329,10 +330,43 @@ export async function recordMoney(
 export async function checkDocuments(formData: FormData): Promise<void> {
   const actor = await requireActor()
   assertPermitted(permissions.canReply(actor), 'check documents')
-  await markDocumentsChecked(actorRunner(actor), {
+  const run = actorRunner(actor)
+  const bookingId = String(formData.get('bookingId') ?? '')
+  const { checked } = await markDocumentsChecked(run, {
     operatorId: actor.operatorId,
-    bookingId: String(formData.get('bookingId') ?? ''),
+    bookingId,
     membershipId: actor.membershipId,
   })
+
+  /**
+   * And tell them, then carry on.
+   *
+   * Live: the photos were checked on this page and the customer heard nothing
+   * — the check was a row, and nothing about it reached WhatsApp or woke the
+   * agent. Now it says so, and asks the one thing the booking still needs, in
+   * the assistant's voice like the photo replies. Only inside WhatsApp's
+   * 24-hour window; outside it, a free message is not allowed.
+   */
+  if (checked) {
+    const list = await bookingChecklist(run, { operatorId: actor.operatorId, bookingId })
+    const [booking] = await run(
+      `select b.conversation_id, c.last_customer_message_at from bookings b
+       join conversations c on c.id = b.conversation_id and c.operator_id = b.operator_id
+       where b.id = $1 and b.operator_id = $2`,
+      [bookingId, actor.operatorId],
+    )
+    const last = booking?.['last_customer_message_at']
+    const inWindow = last != null && Date.now() - new Date(last as string).getTime() < 24 * 60 * 60 * 1000
+    if (list !== null && booking !== undefined && inWindow) {
+      const ask = nextQuestion(list)
+      await queueOutboundText(run, {
+        conversationId: booking['conversation_id'] as string,
+        operatorId: actor.operatorId,
+        body: `Thank you — your documents have been checked.${ask === null ? '' : ` ${ask}`}`,
+        idempotencyKey: `documents-checked:${bookingId}`,
+      })
+      revalidatePath(`/conversations/${booking['conversation_id'] as string}`)
+    }
+  }
   revalidatePath('/bookings')
 }

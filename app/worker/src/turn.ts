@@ -46,6 +46,7 @@ import {
   fileWaitingDocuments,
   queueOutboundText,
   renderBookingSummary,
+  nextQuestion,
   summaryKey,
   fileBookingDocument,
   bookingsOnFile,
@@ -196,7 +197,33 @@ export async function fileDocumentIfBooked(
    * which is what a screenshot is; a person still checks the account.
    */
   if (!before.missing.includes('documents')) {
-    if (before.owedMinor === 0 || (before.paymentPlan !== 'transfer' && before.paymentPlan !== 'link')) return null
+    /**
+     * Documents in, and not paying by transfer or link: another picture is
+     * still about this booking — a second angle of the licence, a visa page.
+     * Live: a third photo got "I can't view images, a colleague will take a
+     * look", a handoff, and then silence. It is filed with the others and the
+     * booking carries on.
+     */
+    if (before.owedMinor === 0 || (before.paymentPlan !== 'transfer' && before.paymentPlan !== 'link')) {
+      await fileBookingDocument(deps.run, {
+        operatorId: context.operator.id, bookingId,
+        conversationId: context.conversation.id, messageId: context.message.id,
+      })
+      const ask = nextQuestion(before)
+      const filed = await acceptTurnOutput(deps.transact, {
+        conversationId: context.conversation.id,
+        operatorId: context.operator.id,
+        revisionAtTurnStart: context.conversation.revision,
+        body: `Got it — that is on your booking too.${ask === null ? '' : ` ${ask}`}`,
+        replyButtons: before.missing[0] === 'handover_choice' ? DELIVERY_CHOICE : null,
+        idempotencyKey: `document:${context.message.id}`,
+        destination: deps.destination,
+      })
+      if (!filed.accepted) return { outcome: 'rejected', reason: String(filed.reason) }
+      return filed.destination === 'send'
+        ? { outcome: 'queued', messageId: filed.queued.messageId }
+        : { outcome: 'drafted', noteId: filed.noteId }
+    }
     await recordBookingProgress(deps.run, {
       operatorId: context.operator.id, bookingId, saysPaid: true,
     })
@@ -229,21 +256,7 @@ export async function fileDocumentIfBooked(
 
   const after = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
   const next = after?.missing[0]
-  /**
-   * The day by name. "What time on the first day" is how a form asks; the
-   * customer knows their rental starts on Thursday.
-   */
-  const firstDay = after?.startDate == null
-    ? 'the first day'
-    : new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: 'UTC' })
-      .format(new Date(`${after.startDate}T00:00:00Z`))
-  const NEXT: Record<string, string> = {
-    handover_choice: 'Would you like it delivered, or will you collect it?',
-    delivery_address: 'What address should the car go to?',
-    delivery_time: `What time on ${firstDay} would you like it?`,
-    collection_time: `What time on ${firstDay} will you come to collect it?`,
-    payment: 'How would you like to pay — bank transfer, a payment link, or card or cash on delivery?',
-  }
+  const ask = after === null ? null : nextQuestion(after)
 
   /**
    * Which ID, from what they told us. "Passport or Emirates ID" to somebody
@@ -266,7 +279,7 @@ export async function fileDocumentIfBooked(
     ? 'Got it — I have added that to your booking. Could you send the other one too? We need '
       + `your driving licence and ${identity}. The team checks them before the handover.`
     : 'Got it — that is both, and they are on your booking. The team checks them before the handover.'
-      + (next !== undefined && NEXT[next] !== undefined ? ` ${NEXT[next]}` : '')
+      + (ask === null || next === 'documents' ? '' : ` ${ask}`)
 
   const accepted = await acceptTurnOutput(deps.transact, {
     conversationId: context.conversation.id,

@@ -7,6 +7,7 @@ import {
   activeBookingFor, bookingChecklist, fileBookingDocument, markDocumentsChecked,
   recordBookingProgress, fileWaitingDocuments,
 } from '../src/queries/booking-checklist.ts'
+import { nextQuestion } from '../src/queries/booking-messages.ts'
 import { decideBooking, requestBooking } from '../src/queries/bookings.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
@@ -235,5 +236,23 @@ describe('changing between delivery and collection', () => {
     await recordBookingProgress(run, { operatorId: OP, bookingId: id, deliveryTime: '16:00' })
     await recordBookingProgress(run, { operatorId: OP, bookingId: id, clearTime: true })
     expect((await bookingChecklist(run, { operatorId: OP, bookingId: id }))!.deliveryTime).toBeNull()
+  })
+})
+
+/** The one question the booking needs next, in the words a customer reads. */
+describe('what to ask next', () => {
+  it('asks the first thing still missing, with the day by name', async () => {
+    const id = await confirmed()
+    const list = (await bookingChecklist(run, { operatorId: OP, bookingId: id }))!
+    expect(nextQuestion(list)).toMatch(/^What address should the car go to/)
+  })
+
+  it('asks how they will pay once the rest is in', async () => {
+    const id = await confirmed('collection')
+    await recordBookingProgress(run, { operatorId: OP, bookingId: id, deliveryTime: '10:00' })
+    await fileBookingDocument(run, { operatorId: OP, bookingId: id, conversationId: CONV, messageId: await photo() })
+    await fileBookingDocument(run, { operatorId: OP, bookingId: id, conversationId: CONV, messageId: await photo() })
+    const list = (await bookingChecklist(run, { operatorId: OP, bookingId: id }))!
+    expect(nextQuestion(list)).toMatch(/^How would you like to pay/)
   })
 })
