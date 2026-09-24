@@ -18,6 +18,11 @@ describe('figures', () => {
     expect(check('The total is *AED 10,000*, with a AED 5,000 deposit.')).toEqual([])
   })
 
+  /** Simulated: "twin-turbo V8, AED 5,000 per day" was read as "8 AED". */
+  it('does not read an engine name as an amount', () => {
+    expect(check('The Ferrari — 3.9 L twin-turbo V8, AED 10,000 for the two days.')).toEqual([])
+  })
+
   it('catches a figure nobody gave it', () => {
     expect(check('The deposit is AED 3,000.')).toEqual([{ kind: 'amount', said: 'AED 3,000' }])
   })

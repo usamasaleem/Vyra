@@ -18,7 +18,9 @@ import type { ModelAdapter, TranscriptEntry } from './model.js'
 export type FactProblem = { kind: 'amount' | 'percent' | 'booked' | 'held'; said: string }
 
 /** "AED 12,500", "12,500 AED", "Dhs 800", "AED 1,649.85" — as a plain number string. */
-const AMOUNT = /(?:\b(?:AED|Dhs?|dirhams?)\s?\*?(\d[\d,]*(?:\.\d+)?))|(?:(\d[\d,]*(?:\.\d+)?)\*?\s?(?:AED|dirhams?)\b)/gi
+// A number is digits with commas inside it, never at its end, and never glued to
+// a letter: "twin-turbo V8, AED 5,000" is AED 5,000, not "8, AED".
+const AMOUNT = /(?:\b(?:AED|Dhs?|dirhams?)\s?\*?(\d(?:[\d,]*\d)?(?:\.\d+)?))|(?:(?<![\w.])(\d(?:[\d,]*\d)?(?:\.\d+)?)\*?\s?(?:AED|dirhams?)\b)/gi
 const PERCENT = /\b(\d{1,3})\s?(?:%|percent|per cent)/gi
 const NUMBER = /\d[\d,]*(?:\.\d+)?/g
 

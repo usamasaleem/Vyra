@@ -69,7 +69,7 @@ export function check(played: Played): Finding[] {
    */
   const known = new Set(facts.knownAmounts)
   for (const m of agent) {
-    for (const hit of m.body.matchAll(/(?:\b(?:AED|Dhs?|dirhams?)\s?\*?(\d[\d,]*(?:\.\d+)?))|(?:(\d[\d,]*(?:\.\d+)?)\*?\s?(?:AED|dirhams?)\b)/gi)) {
+    for (const hit of m.body.matchAll(/(?:\b(?:AED|Dhs?|dirhams?)\s?\*?(\d(?:[\d,]*\d)?(?:\.\d+)?))|(?:(?<![\w.])(\d(?:[\d,]*\d)?(?:\.\d+)?)\*?\s?(?:AED|dirhams?)\b)/gi)) {
       const n = String(Number((hit[1] ?? hit[2] ?? '').replace(/,/g, '')))
       if (!known.has(n)) {
         out.push({ severity: 'fail', rule: 'invented figure', detail: `"${hit[0].trim()}" is in no rate, quote, payment or answer` })
