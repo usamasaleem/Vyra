@@ -44,6 +44,8 @@ export function check(played: Played): Finding[] {
   // — The rules every conversation keeps.
   for (const m of agent) {
     for (const r of RULES) {
+      // A booking over the operator's limits does wait for a colleague; saying so is the truth.
+      if (r.rule === 'promises a person will follow up' && expect.waits === true) continue
       // "Whether delivery is free" is about a fee, which is what the word means there.
       const body = r.rule.startsWith('says "free"')
         ? m.body.split(/(?<=[.!?])\s+/).filter((x) => !/deliver/i.test(x)).join(' ')

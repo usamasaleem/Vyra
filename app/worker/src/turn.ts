@@ -1370,10 +1370,10 @@ export async function runConversationTurn(
    * buttons asking whether to start the thing that had already finished. An
    * offer to confirm is only honest while something is unconfirmed.
    */
+  // Confirmed or waiting on a colleague: either way the yes is in, and a
+  // "Yes, book it" under it asks for what they have just given.
   const bookedThisTurn = end.toolResults.some(
-    (r) => r.name === 'request_booking_review'
-      && r.result.status === 'ok'
-      && (r.result as { data?: { confirmed?: boolean } }).data?.confirmed === true,
+    (r) => r.name === 'request_booking_review' && r.result.status === 'ok',
   )
 
   const readyToBook = nothingOutstanding
@@ -1988,7 +1988,15 @@ const PHOTOS_PER_CAR = 6
     const aboutMoneyArriving = (context.conversation.bookingStatus === 'confirmed'
         || end.toolResults.some((r) => r.name === 'record_booking_progress'))
       && /\b(?:arriv|received|land|come through|reflect)/i.test(end.reply ?? '')
-    const promised = discount === null && items.length === 0 && !aboutMoneyArriving
+    /**
+     * A booking waiting for a person is already in front of one — on Bookings,
+     * held. "A colleague will confirm it" is the truth about that, and a
+     * handoff on top of it was the same request twice in two queues.
+     */
+    const waitingOnBookings = context.conversation.bookingStatus === 'pending'
+      || end.toolResults.some((r) => r.name === 'request_booking_review' && r.result.status === 'ok'
+        && (r.result as { data?: { confirmed?: boolean } }).data?.confirmed === false)
+    const promised = discount === null && items.length === 0 && !aboutMoneyArriving && !waitingOnBookings
       ? promiseMadeIn(end.reply)
       : null
 

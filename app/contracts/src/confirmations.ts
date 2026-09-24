@@ -424,6 +424,13 @@ const BOOK_OR_HOLD = /\b(?:book|reserve)\b[^.?!]{0,80}\bor\b[^.?!]{0,40}\bhold\b
 
 export function asksToBook(reply: string | null): boolean {
   if (reply === null || reply.trim() === '') return false
+  /**
+   * Ending on "book it now, or hold it for you?" is the booking question even
+   * after "2 days, right?" — a yes to booking confirms the dates too. Live in
+   * simulation: the first quote asked both and carried no buttons at all.
+   */
+  const closing = reply.trim().split(/(?<=[.!?؟])\s+/).pop() ?? ''
+  if (BOOK_OR_HOLD.test(closing)) return true
   if ((reply.match(/[?؟]/g) ?? []).length > 1) return false
   if (BOOK_OR_HOLD.test(reply)) return true
   if (offersAChoice(reply)) return false
