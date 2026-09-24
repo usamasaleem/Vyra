@@ -1,3 +1,4 @@
+import { checkReplyFacts } from '@vyra/agent'
 import type { Played } from './run.js'
 
 /**
@@ -74,6 +75,18 @@ export function check(played: Played): Finding[] {
       if (!known.has(n)) {
         out.push({ severity: 'fail', rule: 'invented figure', detail: `"${hit[0].trim()}" is in no rate, quote, payment or answer` })
       }
+    }
+  }
+
+  /**
+   * Policy and dates against the record: a rule nobody published, a date that
+   * is on no quote, hold or message, a weekday that is not that date's.
+   */
+  for (const m of agent) {
+    for (const p of checkReplyFacts(m.body, { sources: facts.truth, booked: true, held: true, today: facts.today })) {
+      if (p.kind === 'policy') out.push({ severity: 'fail', rule: 'policy nobody published', detail: `"${p.said}"` })
+      if (p.kind === 'date') out.push({ severity: 'fail', rule: 'date not on record', detail: `"${p.said}"` })
+      if (p.kind === 'weekday') out.push({ severity: 'fail', rule: 'wrong weekday', detail: `"${p.said}"` })
     }
   }
 

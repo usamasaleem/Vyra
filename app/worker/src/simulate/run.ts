@@ -40,6 +40,10 @@ export type RunFacts = {
   nextAction: string | null
   /** Every amount the record can account for, in whole currency, as plain number strings. */
   knownAmounts: string[]
+  /** What the record says, as text: answers, quotes, holds, what the customer wrote. */
+  truth: string[]
+  /** Today in the operator's clock. */
+  today: string
 }
 
 export async function playPersona(input: {
@@ -321,6 +325,20 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
   ]
   for (const t of texts) for (const m of t.matchAll(/\d[\d,]*(?:\.\d+)?/g)) amounts.add(String(Number(m[0].replace(/,/g, ''))))
 
+  const truth = [
+    ...texts,
+    ...(await run(`select start_date::date::text as s, end_date::date::text as e, valid_until::date::text as v
+                   from quotes where conversation_id = $1`, [conversationId]))
+      .map((q) => `${q['s']} ${q['e']} ${q['v']}`),
+    ...(await run(`select start_date, end_date from vehicle_availability`, [])).map((a) => `${a['start_date']} ${a['end_date']}`),
+    ...(await run(`select value from field_evidence fe join enquiries e on e.id = fe.enquiry_id
+                   where e.conversation_id = $1`, [conversationId])).map((f) => String(f['value'])),
+  ]
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date())
+  truth.push(today, new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(Date.now() + 86_400_000)))
+
   const [conversation] = await run(`select next_action from conversations where id = $1`, [conversationId])
   return {
     bookings,
@@ -339,5 +357,7 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
     })),
     nextAction: (conversation?.['next_action'] as string) ?? null,
     knownAmounts: [...amounts],
+    truth,
+    today,
   }
 }

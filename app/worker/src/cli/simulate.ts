@@ -77,6 +77,8 @@ const avg = allMs.length === 0 ? 0 : Math.round(allMs.reduce((a, b) => a + b, 0)
  * works by luck.
  */
 const invented = results.flatMap((r) => r.findings.filter((f) => f.rule === 'invented figure'))
+const unpublished = results.flatMap((r) => r.findings.filter((f) => f.rule === 'policy nobody published'))
+const misdated = results.flatMap((r) => r.findings.filter((f) => f.rule === 'date not on record' || f.rule === 'wrong weekday'))
 const agentMessages = results.reduce((n, r) => n + r.played.facts.outbound.length, 0)
 const byPersona = new Map<string, { title: string; runs: number; passes: number }>()
 for (const r of results) {
@@ -93,7 +95,8 @@ const md: string[] = [
   `${passed} of ${results.length} passed · ${booked} booked · average reply ${avg}s · model ${modelName}`
     + `${withAnswers ? ' · payment and collection answers published' : ''}`,
   '',
-  `Accuracy: ${invented.length} invented figure${invented.length === 1 ? '' : 's'} in ${agentMessages} agent messages.`,
+  `Accuracy, in ${agentMessages} agent messages: ${invented.length} invented figure${invented.length === 1 ? '' : 's'}, `
+    + `${unpublished.length} unpublished polic${unpublished.length === 1 ? 'y' : 'ies'}, ${misdated.length} wrong date${misdated.length === 1 ? '' : 's'}.`,
   ...(repeat > 1
     ? [
       '',
@@ -136,5 +139,6 @@ for (const { played, findings } of results) {
   md.push('', '</details>', '')
 }
 writeFileSync(out, md.join('\n'))
-console.log(`\n${passed} of ${results.length} passed · ${invented.length} invented figures in ${agentMessages} agent messages. Report: ${out}`)
+console.log(`\n${passed} of ${results.length} passed · in ${agentMessages} agent messages: ${invented.length} invented figures, `
+  + `${unpublished.length} unpublished policies, ${misdated.length} wrong dates. Report: ${out}`)
 process.exit(passed === results.length ? 0 : 1)

@@ -62,3 +62,73 @@ describe('claims', () => {
     expect(check('The Ferrari is held for you until 18:00.', { held: true })).toEqual([])
   })
 })
+
+describe('policy', () => {
+  const withAnswers = [
+    ...given,
+    'delivery-areas: We deliver anywhere in Dubai for free. Abu Dhabi is AED 300 each way. The car may be driven anywhere in the UAE, but not across the border.',
+    'included-kilometres: 250 km a day are included.',
+    'driver-requirements: The minimum age is 25.',
+  ]
+  const claims = (reply: string, sources: readonly string[] = given) =>
+    checkReplyFacts(reply, { sources, booked: false, held: false }).filter((p) => p.kind === 'policy')
+
+  it.each([
+    'Delivery is free anywhere in Dubai.',
+    'Kilometres are unlimited — unlimited mileage on every car.',
+    'Full insurance is included.',
+    'Fuel is included.',
+    'Salik is included in the price.',
+    'You can drive it to Oman.',
+    'You cannot take it to Abu Dhabi.',
+    'It comes with 300 km a day.',
+    'The driver must be 21 or over.',
+  ])('catches %j when nobody published it', (reply) => {
+    expect(claims(reply)).not.toEqual([])
+  })
+
+  it.each([
+    'Delivery is free anywhere in Dubai.',
+    'You can drive it to Abu Dhabi.',
+    '250 km a day are included.',
+    'The driver must be 25 or over.',
+  ])('passes %j when the operator said so', (reply) => {
+    expect(claims(reply, withAnswers)).toEqual([])
+  })
+
+  it.each([
+    'I will check whether you can take it to Oman.',
+    'The team will confirm whether delivery is free to your area.',
+    'Can you tell me where you would like it delivered?',
+  ])('leaves %j alone: it claims nothing', (reply) => {
+    expect(claims(reply)).toEqual([])
+  })
+})
+
+describe('dates', () => {
+  const onRecord = ['prepare_quote: {"startDate":"2026-09-25","endDate":"2026-09-27"}', 'Customer: fri-sun']
+  const dated = (reply: string, today = '2026-09-23') =>
+    checkReplyFacts(reply, { sources: onRecord, booked: false, held: false, today })
+      .filter((p) => p.kind === 'date' || p.kind === 'weekday')
+
+  it('passes the dates on the quote, however they are written', () => {
+    expect(dated('Friday 25th to Sunday 27th September — 2 days.')).toEqual([])
+    expect(dated('That is 25–27 September.')).toEqual([])
+    expect(dated('From September 25th.')).toEqual([])
+  })
+
+  it('catches a date nobody gave it', () => {
+    expect(dated('Returning Monday 28th September.')).toMatchObject([{ kind: 'date' }])
+  })
+
+  /** A right date on the wrong weekday is the classic model slip. */
+  it('catches the wrong weekday for a date', () => {
+    expect(dated('Thursday 25th September.')).toEqual([{ kind: 'weekday', said: 'Thursday 25th September' }])
+  })
+
+  it('works out the year across the new year', () => {
+    const sources = ['prepare_quote: {"startDate":"2027-01-02"}']
+    expect(checkReplyFacts('Saturday 2nd January.', { sources, booked: false, held: false, today: '2026-12-20' })
+      .filter((p) => p.kind === 'weekday')).toEqual([])
+  })
+})

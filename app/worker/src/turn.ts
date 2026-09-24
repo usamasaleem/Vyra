@@ -1303,6 +1303,10 @@ export async function runConversationTurn(
         ],
         booked,
         held,
+        // Which year a date is in, and the weekday check, go by the operator's clock.
+        today: new Intl.DateTimeFormat('en-CA', {
+          timeZone: context.operator.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(deps.now?.() ?? new Date()),
       }
       const problems = checkReplyFacts(reply, facts)
       if (problems.length > 0) {
