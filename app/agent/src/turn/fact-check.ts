@@ -98,7 +98,9 @@ const GOING = /\b(?:drive|driv(?:ing|en)|take|taking|travel|go|leave|cross)\b/i
 const RULE_NUMBERS: RegExp[] = [
   /(?<![\w.])(\d[\d,]*)\s?(?:km|kms|kilomet\w*)\b/gi,
   /\b(\d{2})\s?(?:\+|or (?:over|older|above)|years? (?:old|or over|and over|of age))/gi,
-  /\b(?:returned|refunded|released|back)\b[^.?!]{0,30}?\b(\d{1,3})\s?(?:working )?(?:days?|hours?)\b/gi,
+  // When the deposit comes back — only in a sentence about the deposit: "back
+  // Sunday 27th — 2 days" is the rental, not a refund promise.
+  /\bdeposit\b[^.?!]{0,60}\b(?:returned|refunded|released|back)\b[^.?!]{0,30}?\b(\d{1,3})\s?(?:working )?(?:days?|hours?)\b/gi,
 ]
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september',
@@ -112,7 +114,7 @@ const DAY_MONTH = new RegExp(`\\b(\\d{1,2})${ORD}(?:\\s*(?:–|-|to|and|until|ti
 const MONTH_DAY = new RegExp(`\\b${MONTH}\\s+(\\d{1,2})${ORD}\\b`, 'gi')
 /** "Thursday 25th September", "Thursday, 25 September". */
 const WEEKDAY_DATE = new RegExp(`\\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday),?\\s+(\\d{1,2})${ORD}\\s+(?:of\\s+)?${MONTH}\\b`, 'gi')
-const ISO = /\b(20\d\d)-(\d{2})-(\d{2})\b/g
+const ISO = /\b(20\d\d)-(\d{2})-(\d{2})(?!\d)/g  // "2026-09-26T19:22" too
 
 /** "month-day" keys for every date the sources mention, however they wrote it. */
 function datesIn(sources: readonly string[]): Set<string> {

@@ -96,6 +96,11 @@ describe('policy', () => {
     expect(claims(reply, withAnswers)).toEqual([])
   })
 
+  it('does not read the rental length as a deposit promise', () => {
+    expect(claims('Friday 25th, back Sunday 27th — 2 days.')).toEqual([])
+    expect(claims('The deposit is returned within 14 days.')).not.toEqual([])
+  })
+
   it.each([
     'I will check whether you can take it to Oman.',
     'The team will confirm whether delivery is free to your area.',
@@ -124,6 +129,13 @@ describe('dates', () => {
   /** A right date on the wrong weekday is the classic model slip. */
   it('catches the wrong weekday for a date', () => {
     expect(dated('Thursday 25th September.')).toEqual([{ kind: 'weekday', said: 'Thursday 25th September' }])
+  })
+
+  /** A quote's expiry arrives as a timestamp, "2026-09-26T19:22:00Z". */
+  it('reads a date inside a timestamp', () => {
+    const sources = ['prepare_quote: {"validUntil":"2026-09-26T19:22:00.000Z"}']
+    expect(checkReplyFacts('This price holds until 26 September.', { sources, booked: false, held: false })
+      .filter((p) => p.kind === 'date')).toEqual([])
   })
 
   it('works out the year across the new year', () => {

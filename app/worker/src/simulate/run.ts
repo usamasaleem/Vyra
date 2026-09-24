@@ -327,6 +327,9 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
 
   const truth = [
     ...texts,
+    // Extras by name: "Extra 100 km" is a product, not a promise about kilometres.
+    ...(await run(`select add_ons from operators`, []))
+      .flatMap((o) => ((o['add_ons'] as Array<{ name: string }> | null) ?? []).map((a) => a.name)),
     ...(await run(`select start_date::date::text as s, end_date::date::text as e, valid_until::date::text as v
                    from quotes where conversation_id = $1`, [conversationId]))
       .map((q) => `${q['s']} ${q['e']} ${q['v']}`),
