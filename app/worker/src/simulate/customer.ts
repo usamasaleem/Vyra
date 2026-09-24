@@ -52,7 +52,10 @@ export async function nextAction(input: {
   brief: string
   lines: Line[]
 }): Promise<CustomerAction> {
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  // Rate limits are the harness's problem, not the agent's: wait and try again.
+  let response: Response | undefined
+  for (let attempt = 0; attempt < 6; attempt++) {
+    response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { authorization: `Bearer ${input.apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -62,7 +65,13 @@ export async function nextAction(input: {
       input: `The chat so far:\n\n${render(input.lines)}\n\nYour next action, as JSON:`,
     }),
     signal: AbortSignal.timeout(60_000),
-  })
+    })
+    if (response.status !== 429 && response.status < 500) break
+    // Out of credit is not a rate limit: waiting will not fix it.
+    if (response.status === 429 && /insufficient_quota|credit_balance/.test(await response.clone().text())) break
+    await new Promise((resolve) => setTimeout(resolve, 2_000 * 2 ** attempt))
+  }
+  if (response === undefined) throw new Error('customer model: no response')
   if (!response.ok) throw new Error(`customer model ${response.status}: ${await response.text()}`)
   const data = await response.json() as {
     output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>

@@ -31,6 +31,14 @@ const DISCOUNT_PATTERNS: RegExp[] = [
   // "cheaper", but never "cheapest" — "what's your cheapest car" is a question
   // about the fleet, not a request for a concession.
   /\bcheaper\b/,
+  // "offer 20% off", "10 percent off" — a number off is a discount whatever
+  // else the sentence says. Missed in simulation on a customer's second push,
+  // who then said "otherwise I'll have to pass".
+  // "Off" is required: "is the 5% VAT included?" asks about tax, not for a concession.
+  /\b\d{1,2}\s?(?:%|percent|per cent)\s?(?:off|discount)\b/,
+  // The price as the objection, without asking for anything by name.
+  /\btoo (?:expensive|much|pricey|high|steep)\b/,
+  /\b(?:quite|very|so|bit|little) (?:high|expensive|pricey|steep)\b/,
   /\bany (?:deal|deals|offer|offers)\b/,
   /\b(?:do|go) better\b/,
   /\b(?:lower|reduce|drop|bring down)\b[^.?!]{0,20}\b(?:price|rate|it)\b/,

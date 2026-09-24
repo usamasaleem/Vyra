@@ -14,6 +14,10 @@ describe('detectDiscountRequest', () => {
     'whats your best price',
     'can you do better on the rate?',
     'is the price negotiable',
+    // Simulated: a second push, which was missed.
+    'Could you please check once more and offer 20% off? Otherwise I will have to pass.',
+    "that's too expensive",
+    'AED 24,000 is quite high for 3 days',
     'anything cheaper?',
     'any deals this month',
     'can you lower the price a bit',
@@ -44,5 +48,9 @@ describe('detectDiscountRequest', () => {
   it('finds nothing in an empty message', () => {
     expect(detectDiscountRequest(null)).toBeNull()
     expect(detectDiscountRequest('  ')).toBeNull()
+  })
+
+  it('does not read a question about tax as a discount ask', () => {
+    expect(detectDiscountRequest('is the 5% VAT included?')).toBeNull()
   })
 })

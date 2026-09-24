@@ -104,6 +104,18 @@ export function createToolBoundary(ctx: ToolContext, options: BoundaryOptions = 
     const started = clock()
 
     const record = (result: ToolResult<unknown>): ToolResult<unknown> => {
+      /**
+       * Why, in the log, every time. agent_runs keeps "prepare_quote:refused"
+       * and nothing else, which is how a quote refused four turns running —
+       * the customer tapping "Yes, book it" into a wall — could be seen and
+       * not explained.
+       */
+      if (result.status === 'refused') {
+        console.error(JSON.stringify({
+          event: 'tool.refused', tool: name, reason: result.reason,
+          detail: result.detail.slice(0, 300), conversationId: ctx.conversationId,
+        }))
+      }
       history.push({
         requestedName: name,
         status: result.status,

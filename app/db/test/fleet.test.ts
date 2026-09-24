@@ -54,6 +54,19 @@ describe('one car, one spelling', () => {
     expect(await resolve(spoken)).toBe(expected)
   })
 
+  /**
+   * A description of the car, which is how the agent often records it. One
+   * way round only, "Ferrari 488 Spider, Giallo Modena yellow" matched nothing
+   * and the quote was refused four turns running in simulation.
+   */
+  it.each([
+    ['Ferrari 488 Spider, Giallo Modena yellow', 'Ferrari 488 Spider'],
+    ['the yellow Ferrari 488 please', 'Ferrari 488 Spider'],
+    ['Rolls-Royce Cullinan (white)', 'Rolls-Royce Cullinan'],
+  ])('resolves the description %j to %j', async (spoken, expected) => {
+    expect(await resolve(spoken)).toBe(expected)
+  })
+
   /** A car with no variant is already its own full name. */
   it('leaves a car that has no variant alone', async () => {
     expect(await resolve('Rolls-Royce Cullinan')).toBe('Rolls-Royce Cullinan')

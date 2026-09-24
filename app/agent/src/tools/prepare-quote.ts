@@ -130,8 +130,12 @@ export async function prepareQuote(
      where operator_id = $1 and active and provenance = 'operator_confirmed'
        -- Folded, for the same reason the fleet search is: the enquiry records
        -- the customer's own wording, accents and all or neither.
-       and public.vyra_fold(make || ' ' || model || ' ' || coalesce(variant, ''))
-           like '%' || public.vyra_fold($2) || '%'
+       and (public.vyra_fold(make || ' ' || model || ' ' || coalesce(variant, ''))
+              like '%' || public.vyra_fold($2) || '%'
+            -- Either way round: a description of the car ("Ferrari 488 Spider,
+            -- Giallo Modena yellow") contains its name, and refusing it left a
+            -- customer tapping "Yes, book it" into a wall.
+            or public.vyra_fold($2) like '%' || public.vyra_fold(make || ' ' || model) || '%')
      limit 2`,
     [ctx.operatorId, value('vehicle') ?? ''],
   )

@@ -286,8 +286,13 @@ export async function canonicalVehicleName(
     `select trim(make || ' ' || model || ' ' || coalesce(variant, '')) as name
      from vehicles
      where operator_id = $1 and active and provenance = 'operator_confirmed'
-       and public.vyra_fold(make || ' ' || model || ' ' || coalesce(variant, ''))
-           like '%' || public.vyra_fold($2) || '%'
+       and (public.vyra_fold(make || ' ' || model || ' ' || coalesce(variant, ''))
+              like '%' || public.vyra_fold($2) || '%'
+            -- Either way round. "Ferrari 488 Spider, Giallo Modena yellow" is
+            -- not inside the car's name, but the car's name is inside it — and
+            -- matching one way only stored the long form, which then priced
+            -- nothing: "No single confirmed vehicle", four turns running.
+            or public.vyra_fold($2) like '%' || public.vyra_fold(make || ' ' || model) || '%')
      limit 2`,
     [operatorId, spoken],
   )
