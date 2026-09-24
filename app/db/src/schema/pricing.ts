@@ -377,6 +377,8 @@ export const payments = pgTable(
     recordedByMembershipId: uuid(),
     /** Their own reference — a transfer number, a receipt. Never sent. */
     reference: text(),
+    /** What an add-on row is for, as the customer reads it: "Chauffeur, 3 days". */
+    label: text(),
 
     paidAt: timestamp({ withTimezone: true }),
     refundedAt: timestamp({ withTimezone: true }),
@@ -404,9 +406,11 @@ export const payments = pgTable(
      * One live row per booking per kind. Confirming twice, or a sweep running
      * twice, must not ask a customer for the same deposit two ways.
      */
+    // One live rental and one live deposit per booking; add-ons (which always
+    // carry a label) are one row each.
     uniqueIndex('payments_live_kind_key')
       .on(table.bookingId, table.kind)
-      .where(sql`state in ('due', 'paid')`),
+      .where(sql`state in ('due', 'paid') and label is null`),
     index('payments_operator_state_idx').on(table.operatorId, table.state, table.createdAt),
   ],
 )

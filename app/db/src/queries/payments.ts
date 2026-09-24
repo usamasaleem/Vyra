@@ -22,7 +22,7 @@ import type { QueryRunner, Transactor } from '../runner.js'
  * default I should pick for them.
  */
 
-export type PaymentKind = 'rental' | 'deposit'
+export type PaymentKind = 'rental' | 'deposit' | 'add_on'
 export type PaymentMethod = 'link' | 'bank_transfer' | 'cash' | 'card_in_person'
 
 export type Owed = {
@@ -36,6 +36,8 @@ export type Owed = {
   reference: string | null
   paidAt: Date | null
   refundedAt: Date | null
+  /** What an add-on is, as the customer reads it. Null for the rental and deposit. */
+  label: string | null
 }
 
 /**
@@ -91,10 +93,10 @@ export async function whatIsOwed(
 ): Promise<Owed[]> {
   const rows = await run(
     `select id, kind::text as kind, state::text as state, amount_minor, currency,
-            method::text as method, link_url, reference, paid_at, refunded_at
+            method::text as method, link_url, reference, paid_at, refunded_at, label
      from payments
      where operator_id = $1 and booking_id = $2 and state <> 'cancelled'
-     order by case kind when 'rental' then 0 else 1 end`,
+     order by case kind when 'rental' then 0 when 'deposit' then 1 else 2 end, created_at`,
     [input.operatorId, input.bookingId],
   )
   return rows.map((r) => ({
@@ -108,6 +110,7 @@ export async function whatIsOwed(
     reference: (r['reference'] as string) ?? null,
     paidAt: r['paid_at'] == null ? null : new Date(r['paid_at'] as string),
     refundedAt: r['refunded_at'] == null ? null : new Date(r['refunded_at'] as string),
+    label: (r['label'] as string) ?? null,
   }))
 }
 

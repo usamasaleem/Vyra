@@ -65,6 +65,7 @@ export function renderBookingSummary(
   if (handover !== null) lines.push(handover)
   lines.push(`Rental: ${money(list.totalMinor)}`
     + (list.depositMinor === null ? '' : ` · refundable deposit: ${money(list.depositMinor)}`))
+  for (const extra of list.addOns) lines.push(`Extra: ${extra.label} — ${money(extra.amountMinor)}`)
   lines.push(`Payment: ${paymentLine(list)}`)
   lines.push(list.documentsCheckedAt !== null
     ? 'Documents: checked'
@@ -87,7 +88,7 @@ export function renderBookingSummary(
 export function summaryKey(list: Checklist): string {
   return [
     list.bookingId, list.startDate, list.endDate, list.handover, list.deliveryTime,
-    list.deliveryAddress,
+    list.deliveryAddress, ...list.addOns.map((a) => a.label),
   ].join('|')
 }
 

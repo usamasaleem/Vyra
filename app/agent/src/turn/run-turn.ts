@@ -94,6 +94,8 @@ export type RunTurnOptions = {
   minimumAge?: number
   /** The operator's standing discounts, when there are any. */
   discounts?: ReadonlyArray<{ minDays: number; percent: number }>
+  /** Extras the agent may add after booking: "Chauffeur (chauffeur): AED 800 a day". */
+  addOns?: readonly string[]
   /** Somebody who has rented before. See systemPromptFor. */
   returning?: { rentals: readonly string[]; documentsOnFile: boolean; residency: string | null; lastAddress: string | null }
   bookingsOnFile?: {
@@ -198,6 +200,7 @@ export async function runTurn(
           ...(options.holds === undefined ? {} : { holds: options.holds }),
           ...(options.minimumAge === undefined ? {} : { minimumAge: options.minimumAge }),
           ...(options.discounts === undefined ? {} : { discounts: options.discounts }),
+          ...(options.addOns === undefined ? {} : { addOns: options.addOns }),
           ...(options.returning === undefined ? {} : { returning: options.returning }),
           ...(options.known === undefined ? {} : { known: options.known }),
           ...(options.noPhotosOf === undefined ? {} : { noPhotosOf: options.noPhotosOf }),

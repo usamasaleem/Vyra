@@ -147,6 +147,12 @@ export const recordBookingProgressSchema = z.strictObject({
   ),
 })
 
+export const addToBookingSchema = z.strictObject({
+  addOnId: z.string().describe(
+    'The id of the add-on they want, exactly as listed in your instructions — for example "chauffeur".',
+  ),
+})
+
 export const offerDiscountSchema = z.strictObject({
   quoteId: z.string().describe(
     'The quote they find too expensive, exactly as prepare_quote returned it.',
@@ -187,6 +193,7 @@ export const TOOL_SCHEMAS = {
   record_booking_progress: recordBookingProgressSchema,
   hold_car: holdCarSchema,
   offer_discount: offerDiscountSchema,
+  add_to_booking: addToBookingSchema,
 } as const
 
 export type ToolName = keyof typeof TOOL_SCHEMAS
@@ -220,6 +227,10 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Save what they told you about a confirmed booking: the delivery address, the delivery '
     + 'time, how they will pay, or that they have paid. Call it as soon as they say any of it. '
     + 'It only fills in what they gave, so call it again for each new piece.',
+  add_to_booking:
+    'Add one of the operator\'s extras — a chauffeur, more kilometres — to their confirmed booking '
+    + 'when they say they want it. Priced from the operator\'s list; returns the new amount due. '
+    + 'Only the add-ons listed in your instructions exist.',
   offer_discount:
     'When the price is the objection — "too expensive", "can you do better", "any discount" — '
     + 'apply the operator\'s standing discount to their quote, if their rental reaches one. Returns '

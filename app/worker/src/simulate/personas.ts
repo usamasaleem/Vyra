@@ -27,6 +27,8 @@ export type Expectation = {
   discounted?: boolean
   /** It waited for a person because it is over the operator's limits. */
   waits?: boolean
+  /** Extras that should be on the booking, by label prefix. */
+  addOns?: string[]
 }
 
 export type Persona = {
@@ -231,6 +233,14 @@ export const PERSONAS: Persona[] = [
       + 'time. You pay by card at the handover.',
     before: 'rented_before',
     expect: { outcome: 'booked', vehicle: 'Ferrari', days: 2, handover: 'delivery', summary: true },
+  },
+  {
+    id: 'wants-chauffeur',
+    title: 'Takes the chauffeur when it is offered',
+    brief: 'You are Mr. Al Mansoori, you live in Dubai. Book the Rolls-Royce from this Saturday to Monday '
+      + '(2 days), delivered to Emirates Hills, Villa 44, at 10am. Pay by bank transfer. When they mention '
+      + 'a chauffeur, say yes please, you want the chauffeur. ' + PHOTOS,
+    expect: { outcome: 'booked', vehicle: 'Rolls-Royce', days: 2, handover: 'delivery', addOns: ['Chauffeur'] },
   },
   {
     id: 'two-questions',

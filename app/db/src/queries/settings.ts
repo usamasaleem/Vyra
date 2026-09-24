@@ -27,6 +27,8 @@ export type OperatorSettings = {
   handoverNoticeMinutes: number | null
   /** What the agent may take off by itself when the price is the objection. */
   discountTiers: Array<{ minDays: number; percent: number }>
+  /** Extras the agent may add to a booking, at these prices. */
+  addOns: Array<{ id: string; name: string; priceMinor: number; per: 'day' | 'rental' }>
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -53,7 +55,7 @@ export async function getOperatorSettings(
   const rows = await run(
     `select o.name, o.timezone, o.website_url, o.ai_sending_enabled, o.ai_resumes_after_minutes,
             o.follow_up_after_minutes, o.hold_minutes, o.handoff_sla_minutes, o.answer_valid_minutes,
-            o.auto_confirm_max_days, o.handover_notice_minutes, o.discount_tiers,
+            o.auto_confirm_max_days, o.handover_notice_minutes, o.discount_tiers, o.add_ons,
             o.retention_days, o.fallback_owner_membership_id,
             o.auto_confirm_bookings, o.auto_confirm_limit_minor,
             o.availability_calendar_complete,
@@ -79,6 +81,7 @@ export async function getOperatorSettings(
     autoConfirmMaxDays: row['auto_confirm_max_days'] == null ? null : Number(row['auto_confirm_max_days']),
     handoverNoticeMinutes: row['handover_notice_minutes'] == null ? null : Number(row['handover_notice_minutes']),
     discountTiers: (row['discount_tiers'] as Array<{ minDays: number; percent: number }> | null) ?? [],
+    addOns: (row['add_ons'] as OperatorSettings['addOns'] | null) ?? [],
     handoffSlaMinutes: Number(row['handoff_sla_minutes']),
     answerValidMinutes: Number(row['answer_valid_minutes']),
     retentionDays: Number(row['retention_days']),
@@ -106,6 +109,8 @@ export type SettingsUpdate = {
   handoverNoticeMinutes: number | null
   /** What the agent may take off by itself when the price is the objection. */
   discountTiers: Array<{ minDays: number; percent: number }>
+  /** Extras the agent may add to a booking, at these prices. */
+  addOns: Array<{ id: string; name: string; priceMinor: number; per: 'day' | 'rental' }>
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -184,6 +189,16 @@ export function checkSettings(update: SettingsUpdate): SettingsProblem[] {
     }
   }
 
+  /** An extra the agent sells is a price the operator stands behind: named, positive, per day or per rental. */
+  if (update.addOns.length > 6) problems.push({ field: 'addOns', message: 'Six extras at most.' })
+  for (const addOn of update.addOns) {
+    if (addOn.name.trim() === '' || addOn.name.length > 40 || !Number.isInteger(addOn.priceMinor)
+      || addOn.priceMinor <= 0 || (addOn.per !== 'day' && addOn.per !== 'rental')) {
+      problems.push({ field: 'addOns', message: 'Each extra needs a name and a price above zero.' })
+      break
+    }
+  }
+
   return problems
 }
 
@@ -222,6 +237,7 @@ export async function updateOperatorSettings(
        handover_notice_minutes = $15,
        discount_tiers = $16::jsonb,
        -- Whoever sets the offer stands behind every discount it gives.
+       add_ons = $18::jsonb,
        discount_tiers_set_by_membership_id = case
          when $16::jsonb is null then null
          when o.discount_tiers is distinct from $16::jsonb then $17::uuid
@@ -240,6 +256,7 @@ export async function updateOperatorSettings(
         ? null
         : JSON.stringify([...input.discountTiers].sort((a, b) => a.minDays - b.minDays)),
       input.actorMembershipId,
+      input.addOns.length === 0 ? null : JSON.stringify(input.addOns),
     ],
   )
   if (rows.length === 0) return { saved: false }
@@ -263,6 +280,7 @@ export async function updateOperatorSettings(
         auto_confirm_max_days: input.autoConfirmMaxDays,
         handover_notice_minutes: input.handoverNoticeMinutes,
         discount_tiers: input.discountTiers,
+        add_ons: input.addOns,
       }),
     ],
   )

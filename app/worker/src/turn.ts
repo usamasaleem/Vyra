@@ -39,6 +39,7 @@ import {
   activeBookingFor,
   bookingChecklist,
   customerHistory,
+  recordBookingProgress,
   activeHoldFor,
   BEFORE_HANDOVER,
   DOCUMENTS_WANTED,
@@ -184,7 +185,34 @@ export async function fileDocumentIfBooked(
   if (bookingId === null) return null
 
   const before = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
-  if (before === null || !before.missing.includes('documents')) return null
+  if (before === null) return null
+
+  /**
+   * The documents are in and they are paying by transfer or link: a picture
+   * now is the screenshot they were asked for. Simulated: "please send a
+   * screenshot once it is done", the customer did, and was told "I can't view
+   * images, a colleague will take a look" — a handoff for exactly what the
+   * agent had asked them to send. It is recorded as them saying they paid,
+   * which is what a screenshot is; a person still checks the account.
+   */
+  if (!before.missing.includes('documents')) {
+    if (before.owedMinor === 0 || (before.paymentPlan !== 'transfer' && before.paymentPlan !== 'link')) return null
+    await recordBookingProgress(deps.run, {
+      operatorId: context.operator.id, bookingId, saysPaid: true,
+    })
+    const thanked = await acceptTurnOutput(deps.transact, {
+      conversationId: context.conversation.id,
+      operatorId: context.operator.id,
+      revisionAtTurnStart: context.conversation.revision,
+      body: 'Thanks — I have put that on your booking as the payment. The team will confirm it arrived.',
+      idempotencyKey: `payment-screenshot:${context.message.id}`,
+      destination: deps.destination,
+    })
+    if (!thanked.accepted) return { outcome: 'rejected', reason: String(thanked.reason) }
+    return thanked.destination === 'send'
+      ? { outcome: 'queued', messageId: thanked.queued.messageId }
+      : { outcome: 'drafted', noteId: thanked.noteId }
+  }
 
   await fileBookingDocument(deps.run, {
     operatorId: context.operator.id,
@@ -1204,6 +1232,10 @@ export async function runConversationTurn(
       ...(minimumAge === undefined ? {} : { minimumAge }),
       ...(context.operator.discountTiers.length === 0 ? {} : { discounts: context.operator.discountTiers }),
       ...(returning === undefined ? {} : { returning }),
+      ...(context.operator.addOns.length === 0 ? {} : {
+        addOns: context.operator.addOns.map((a) =>
+          `${a.name} (id "${a.id}"): ${formatMoneyMinor(a.priceMinor, 'AED')} ${a.per === 'day' ? 'a day' : 'per rental'}`),
+      }),
       /**
        * The fleet is already in the prompt, so do not offer to look it up.
        *

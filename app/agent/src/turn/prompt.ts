@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v37'
+export const PROMPT_VERSION = 'sales-v39'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -442,6 +442,8 @@ export function systemPromptFor(input: {
   minimumAge?: number
   /** The operator's standing discounts, when there are any. */
   discounts?: ReadonlyArray<{ minDays: number; percent: number }>
+  /** Extras the agent may add after booking: "Chauffeur (chauffeur): AED 800 a day". */
+  addOns?: readonly string[]
   /**
    * Somebody who has rented before: what they had ("the Ferrari 488 Spider in
    * September"), whether their documents are on file, where they live, and
@@ -875,6 +877,17 @@ export function systemPromptFor(input: {
         : ` The car went to ${back.lastAddress} last time; if they want it delivered, ask whether it `
           + `is the same address rather than asking from scratch.`)
 
+  /**
+   * Extras, offered the way a salesperson would: once, as the booking lands,
+   * in a line — not a menu before the customer has even said yes.
+   */
+  const extras = input.addOns === undefined || input.addOns.length === 0
+    ? ''
+    : `\n\nExtras we offer, at these prices only: ${input.addOns.join('; ')}. In the reply that `
+      + `confirms a booking, mention them once, in one short line that is not a question (for `
+      + `example "If you'd like a chauffeur or extra kilometres, just say"). Never again unless they `
+      + `ask. When they want one, add it with add_to_booking and its id.`
+
   const after = input.afterBooking
   const followThrough = after === undefined || after.missing.length === 0
     ? ''
@@ -923,7 +936,7 @@ export function systemPromptFor(input: {
         : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
           + `booked.`)
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${returning}${settlesItself}${ageRule}${objection}${confirming}${bring}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${returning}${settlesItself}${ageRule}${objection}${extras}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

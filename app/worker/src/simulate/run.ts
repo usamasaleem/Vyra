@@ -30,7 +30,8 @@ export type Played = {
 
 export type RunFacts = {
   bookings: Array<{ state: string; vehicle: string | null; days: number | null; handover: string | null;
-    deliveryAddress: string | null; deliveryTime: string | null; documents: number; paymentPlan: string | null }>
+    deliveryAddress: string | null; deliveryTime: string | null; documents: number; paymentPlan: string | null;
+    addOns: string[] }>
   latestQuote: { vehicle: string | null; days: number; totalMinor: number; discounted: boolean } | null
   held: boolean
   handoffs: Array<{ reason: string; summary: string }>
@@ -261,6 +262,7 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
       deliveryTime: list?.deliveryTime ?? null,
       documents: list?.documents ?? 0,
       paymentPlan: list?.paymentPlan ?? null,
+      addOns: (list?.addOns ?? []).map((a) => a.label),
     })
   }
   const [quote] = await run(

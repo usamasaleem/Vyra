@@ -85,7 +85,9 @@ export async function nextAction(input: {
   try {
     return JSON.parse(json) as CustomerAction
   } catch {
+    // Almost-JSON: take the message out of it rather than sending the braces.
+    const said = text.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/)?.[1]
     // A customer who says something unparseable still said something.
-    return { message: text.trim() || 'ok' }
+    return { message: said ?? (text.trim() || 'ok') }
   }
 }

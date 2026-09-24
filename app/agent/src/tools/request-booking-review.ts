@@ -86,6 +86,21 @@ export async function requestBookingReview(
     ? null
     : formatMoneyMinor(next.owedMinor, next.currency)
   const first = next?.missing[0]
+  /**
+   * The extras, said once, here — the moment the booking lands. Asked for in
+   * the instructions, the line never appeared in simulation; said by the tool
+   * that confirms, it is part of the confirming.
+   */
+  const extras = !result.booking.confirmed || result.booking.alreadyRequested
+    ? []
+    : await ctx.run(`select add_ons from operators where id = $1`, [ctx.operatorId])
+      .then((rows) => (rows[0]?.['add_ons'] as Array<{ name: string; priceMinor: number; per: string }> | null) ?? [])
+      .catch(() => [])
+  const extrasLine = extras.length === 0 || next === null
+    ? ''
+    : 'Also add one short line, not a question, offering the extras: '
+      + extras.map((a) => `${a.name.toLowerCase()} (${formatMoneyMinor(a.priceMinor, next.currency)}${a.per === 'day' ? ' a day' : ''})`).join(' or ')
+      + ' — e.g. "If you\'d like a chauffeur or extra kilometres, just say." Once only. '
   const carryOn = (owed === null ? '' : `Say that ${owed} is due in total, rental and refundable deposit together. `)
     + (first === undefined
       ? ''
@@ -93,6 +108,7 @@ export async function requestBookingReview(
         + `they live in the UAE or are visiting, ask that; otherwise ask for ${ASK_FOR[first]}. `)
     + 'You are handling the rest yourself: never say somebody will be in touch, contact them or '
     + 'follow up with the details. '
+    + extrasLine
 
   /**
    * Over the operator's limits — a long rental, a large total — a person

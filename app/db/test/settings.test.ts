@@ -37,7 +37,7 @@ const valid: SettingsUpdate = {
   aiResumesAfterMinutes: 60, followUpAfterMinutes: 10, handoffSlaMinutes: 30,
   answerValidMinutes: 240, retentionDays: 730, fallbackOwnerMembershipId: null,
   autoConfirmBookings: false, autoConfirmLimitMinor: null, holdMinutes: null,
-  autoConfirmMaxDays: null, handoverNoticeMinutes: null, discountTiers: [],
+  autoConfirmMaxDays: null, handoverNoticeMinutes: null, discountTiers: [], addOns: [],
 }
 
 const save = (over: Partial<SettingsUpdate> = {}) =>

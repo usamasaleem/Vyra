@@ -50,6 +50,20 @@ export async function saveSettings(
     holdMinutes: minutes(formData, 'holdMinutes'),
     autoConfirmMaxDays: minutes(formData, 'autoConfirmMaxDays'),
     handoverNoticeMinutes: minutes(formData, 'handoverNoticeMinutes'),
+    // Up to four extras; a row with no name is not an extra. The id is the name,
+    // lower-cased, which is what the agent passes back to add it.
+    addOns: [1, 2, 3, 4].flatMap((i) => {
+      const name = String(formData.get(`addOnName${i}`) ?? '').trim()
+      if (name === '') return []
+      const raw = String(formData.get(`addOnPrice${i}`) ?? '').trim()
+      const major = raw === '' ? Number.NaN : Number(raw)
+      return [{
+        id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+        name,
+        priceMinor: Number.isFinite(major) ? Math.round(major * 100) : Number.NaN,
+        per: String(formData.get(`addOnPer${i}`) ?? 'rental') === 'day' ? 'day' as const : 'rental' as const,
+      }]
+    }),
     // Three rows on the form; a row left blank is not a tier.
     discountTiers: [1, 2, 3].flatMap((i) => {
       const days = minutes(formData, `tierDays${i}`)

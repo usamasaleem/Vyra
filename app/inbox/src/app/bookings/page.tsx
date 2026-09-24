@@ -287,6 +287,7 @@ export default async function BookingsPage() {
                       key={o.paymentId}
                       paymentId={o.paymentId}
                       kind={o.kind}
+                      label={o.label}
                       amount={formatMoney(o.amountMinor, o.currency)}
                       state={o.state}
                       linkUrl={o.linkUrl}
@@ -300,7 +301,7 @@ export default async function BookingsPage() {
                         <AllOwedForm
                           bookingId={b.bookingId}
                           total={formatMoney(due.reduce((sum, o) => sum + o.amountMinor, 0), due[0]!.currency)}
-                          breakdown={due.map((o) => `${o.kind === 'deposit' ? 'deposit' : 'rental'} ${formatMoney(o.amountMinor, o.currency)}`).join(' · ')}
+                          breakdown={due.map((o) => `${o.kind === 'deposit' ? 'deposit' : o.kind === 'add_on' ? (o.label ?? 'extra') : 'rental'} ${formatMoney(o.amountMinor, o.currency)}`).join(' · ')}
                           linkUrl={links.size === 1 ? [...links][0]! : null}
                           vehicle={b.vehicle}
                         />
@@ -319,7 +320,7 @@ export default async function BookingsPage() {
                         oneForm(o)
                       ) : (
                         <span key={o.paymentId} className="muted" style={{ fontSize: '0.88rem' }}>
-                          {o.kind === 'deposit' ? 'Deposit' : 'Rental'}{' '}
+                          {o.kind === 'deposit' ? 'Deposit' : o.kind === 'add_on' ? (o.label ?? 'Extra') : 'Rental'}{' '}
                           {formatMoney(o.amountMinor, o.currency)} · {o.state}
                         </span>
                       )

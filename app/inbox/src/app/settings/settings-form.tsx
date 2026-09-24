@@ -14,6 +14,7 @@ type Settings = {
   autoConfirmMaxDays: number | null
   handoverNoticeMinutes: number | null
   discountTiers: Array<{ minDays: number; percent: number }>
+  addOns: Array<{ id: string; name: string; priceMinor: number; per: 'day' | 'rental' }>
   handoffSlaMinutes: number
   answerValidMinutes: number
   retentionDays: number
@@ -266,6 +267,40 @@ export function SettingsForm({
                 aria-label={`Tier ${i} minimum days`}
               />
               <span>days or more</span>
+            </div>
+          )
+        })}
+      </section>
+
+      <section className="card" style={{ marginBottom: '1rem' }}>
+        <h2 style={{ fontSize: '1.05rem', marginTop: 0 }}>Extras</h2>
+        <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0 }}>
+          Offered once, in a line, when a booking is confirmed, and added at these prices when the
+          customer asks. Leave a name blank to remove that extra.
+        </p>
+        {problem('addOns') !== null && <p className="notice">{problem('addOns')}</p>}
+        {[1, 2, 3, 4].map((i) => {
+          const addOn = settings.addOns[i - 1]
+          return (
+            <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', margin: '0.4rem 0', flexWrap: 'wrap' }}>
+              <input
+                className="input" name={`addOnName${i}`} placeholder="Name, e.g. Chauffeur"
+                defaultValue={addOn?.name ?? ''} disabled={readOnly} style={{ maxWidth: '14rem' }}
+                aria-label={`Extra ${i} name`}
+              />
+              <span>AED</span>
+              <input
+                className="input" name={`addOnPrice${i}`} type="number" inputMode="numeric" min={1}
+                defaultValue={addOn === undefined ? '' : addOn.priceMinor / 100} disabled={readOnly}
+                style={{ maxWidth: '7rem' }} aria-label={`Extra ${i} price`}
+              />
+              <select
+                className="input" name={`addOnPer${i}`} defaultValue={addOn?.per ?? 'rental'}
+                disabled={readOnly} style={{ width: 'auto' }} aria-label={`Extra ${i} charged`}
+              >
+                <option value="day">a day</option>
+                <option value="rental">per rental</option>
+              </select>
             </div>
           )
         })}

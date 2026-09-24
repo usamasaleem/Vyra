@@ -44,6 +44,8 @@ export type Checklist = {
   paymentLink: string | null
   /** Money a person has marked taken, rental and deposit together. */
   paidMinor: number
+  /** Extras on the booking — a chauffeur, more kilometres — as the customer reads them. */
+  addOns: Array<{ label: string; amountMinor: number }>
   returnTime: string | null
   returnAddress: string | null
   returnedAt: Date | null
@@ -101,6 +103,10 @@ export async function bookingChecklist(
               <= (now() at time zone o.timezone)::date) as return_is_near,
             (select coalesce(sum(p.amount_minor), 0)::bigint from payments p
               where p.booking_id = b.id and p.state = 'paid') as paid,
+            (select coalesce(jsonb_agg(jsonb_build_object('label', p.label, 'amountMinor', p.amount_minor)
+                                       order by p.created_at), '[]'::jsonb)
+              from payments p where p.booking_id = b.id and p.kind = 'add_on'
+                and p.state in ('due', 'paid')) as add_ons,
             trim(v.make || ' ' || v.model || ' ' || coalesce(v.variant, '')) as vehicle,
             q.start_date::date::text as start_date, q.currency,
             -- Delivery is only asked about when they asked for delivery. A
@@ -202,6 +208,7 @@ export async function bookingChecklist(
     currency: row['currency'] as string,
     paymentLink: (row['link'] as string) ?? null,
     paidMinor: Number(row['paid']),
+    addOns: (row['add_ons'] as Array<{ label: string; amountMinor: number }> | null) ?? [],
     returnTime: (row['return_time'] as string) ?? null,
     returnAddress: (row['return_address'] as string) ?? null,
     returnedAt: row['returned_at'] == null ? null : new Date(row['returned_at'] as string),

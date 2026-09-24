@@ -61,7 +61,8 @@ export const bookingState = pgEnum('booking_state', [
  * refund against a rental is an argument; a refund against a deposit is
  * Tuesday.
  */
-export const paymentKind = pgEnum('payment_kind', ['rental', 'deposit'])
+/** 'add_on': something extra the customer chose after booking — a chauffeur, more kilometres. */
+export const paymentKind = pgEnum('payment_kind', ['rental', 'deposit', 'add_on'])
 
 /**
  * Deliberately small, and deliberately without 'pending'.

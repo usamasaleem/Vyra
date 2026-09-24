@@ -134,7 +134,17 @@ export function check(played: Played): Finding[] {
   if (expect.summary === true && !agent.some((m) => m.body.startsWith('Here is everything for your booking'))) {
     out.push({ severity: 'fail', rule: 'no booking summary', detail: 'the booking completed without the summary' })
   }
-  if (expect.discounted === true && facts.latestQuote?.discounted !== true) {
+  for (const wanted of expect.addOns ?? []) {
+    if (!(first?.addOns ?? []).some((a) => a.startsWith(wanted))) {
+      out.push({ severity: 'fail', rule: 'extra not added', detail: `${wanted} missing from the booking` })
+    }
+  }
+  // Offered once: the extras line in more than one message is a salesperson repeating themselves.
+  const offers = agent.filter((m) => /chauffeur/i.test(m.body) && !/Here is everything|^Extra:/m.test(m.body)).length
+  if (expect.addOns === undefined && offers > 1) {
+    out.push({ severity: 'warn', rule: 'extras offered more than once', detail: `${offers} messages` })
+  }
+    if (expect.discounted === true && facts.latestQuote?.discounted !== true) {
     out.push({ severity: 'fail', rule: 'standing discount not applied', detail: 'the price they booked at had no money off' })
   }
   if (expect.waits === true && !facts.bookings.some((b) => b.state === 'requested')) {

@@ -17,13 +17,16 @@ import { recordMoney, type MoneyState } from './actions'
 export function PaymentForm({
   paymentId,
   kind,
+  label: extraLabel,
   amount,
   state,
   linkUrl,
   vehicle,
 }: {
   paymentId: string
-  kind: 'rental' | 'deposit'
+  kind: 'rental' | 'deposit' | 'add_on'
+  /** An add-on's own name, "Chauffeur, 3 days". */
+  label?: string | null
   amount: string
   state: string
   linkUrl: string | null
@@ -34,7 +37,7 @@ export function PaymentForm({
     recordMoney, { error: null },
   )
 
-  const label = kind === 'deposit' ? 'Deposit' : 'Rental'
+  const label = kind === 'deposit' ? 'Deposit' : kind === 'add_on' ? (extraLabel ?? 'Extra') : 'Rental'
 
   if (state === 'paid') {
     return (

@@ -116,7 +116,8 @@ export async function createSimWorld(options: { withAnswers: boolean }): Promise
     update operators set auto_confirm_limit_minor = 5000000, auto_confirm_max_days = 14,
       handover_notice_minutes = 180,
       discount_tiers = '[{"minDays":5,"percent":10},{"minDays":7,"percent":15}]',
-      discount_tiers_set_by_membership_id = '${MEMBER}'
+      discount_tiers_set_by_membership_id = '${MEMBER}',
+      add_ons = '[{"id":"chauffeur","name":"Chauffeur","priceMinor":80000,"per":"day"},{"id":"extra-100-km","name":"Extra 100 km","priceMinor":50000,"per":"rental"}]'
     where id = '${OPERATOR}';
   `)
 

@@ -167,6 +167,12 @@ export const operators = pgTable('operators', {
      * approved under them.
      */
     discountTiersSetByMembershipId: uuid(),
+    /**
+     * What the agent may add to a booking when the customer wants it, at the
+     * operator's own price: [{ "id": "chauffeur", "name": "Chauffeur",
+     * "priceMinor": 80000, "per": "day" }, ...]. Offered once, after "Booked".
+     */
+    addOns: jsonb().$type<Array<{ id: string; name: string; priceMinor: number; per: 'day' | 'rental' }> | null>(),
 
   /**
    * How long to wait before chasing a customer who has gone quiet.
