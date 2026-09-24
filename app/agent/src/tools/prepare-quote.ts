@@ -123,7 +123,14 @@ export async function prepareQuote(
    * asserted rather than a thing the customer said.
    */
   const fields = await getEnquiryFields(ctx.run, ctx.operatorId, ctx.enquiryId)
-  const value = (name: string) => fields.find((f) => f.field === name)?.value ?? null
+  const value = (name: string) => {
+    const found = fields.find((f) => f.field === name)?.value ?? null
+    // A date field is read as its date: a value stored with a time before
+    // that was refused must not reach a query as "…11:00T00:00:00Z".
+    return found !== null && (name === 'start_at' || name === 'end_at')
+      ? (found.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? found)
+      : found
+  }
 
   const vehicleRows = await ctx.run(
     `select id from vehicles

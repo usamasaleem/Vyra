@@ -741,6 +741,26 @@ describe('record_enquiry_fields', () => {
     })
   })
 
+  /**
+   * Live: "11 AM at the airport" became start_at "2026-09-26 11:00", and the
+   * next quote crashed the turn on "2026-09-26 11:00T00:00:00Z".
+   */
+  it('records a date with a time as the date', async () => {
+    const result = await createToolBoundary(ctx).call('record_enquiry_fields', { forVehicle: null,
+      fields: [{ field: 'start_at', value: '2026-09-26 11:00', originalWording: '11 AM' }],
+    })
+    expect(result).toMatchObject({ status: 'ok' })
+    const [row] = await run(
+      `select value from field_evidence where enquiry_id = $1 and field = 'start_at'`, [ctx.enquiryId])
+    expect(row!['value']).toBe('2026-09-26')
+  })
+
+  it('still refuses something that is not a date', async () => {
+    expect(await createToolBoundary(ctx).call('record_enquiry_fields', { forVehicle: null,
+      fields: [{ field: 'start_at', value: '2026-09-26 in the morning', originalWording: null }],
+    })).toMatchObject({ status: 'refused' })
+  })
+
   it('reports a correction as a conflict instead of overwriting silently', async () => {
     const boundary = createToolBoundary(ctx)
     await boundary.call('record_enquiry_fields', { forVehicle: null, fields: [{ field: 'start_at', value: '2026-09-18', originalWording: 'Friday' }] })

@@ -38,6 +38,7 @@ import {
   ASK_FOR,
   activeBookingFor,
   bookingChecklist,
+  closeStaleFailures,
   customerHistory,
   recordBookingProgress,
   activeHoldFor,
@@ -681,6 +682,12 @@ export async function runConversationTurn(
 
   const enquiryId = await ensureEnquiry(deps.run, context.operator.id, context.conversation.id)
   if (enquiryId === null) return { outcome: 'skipped', reason: 'no_enquiry' }
+
+  // The agent is answering, so a failure it reported earlier is over — and must
+  // not keep blocking what an open handoff blocks, like confirming a booking.
+  await closeStaleFailures(deps.run, {
+    operatorId: context.operator.id, conversationId: context.conversation.id,
+  }).catch(() => 0)
 
   const toolContext: ToolContext = {
     operatorId: context.operator.id,

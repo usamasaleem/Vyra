@@ -92,6 +92,10 @@ export async function calculateDraftQuote(
     duration?: string | null
   },
 ): Promise<QuoteResult> {
+  // The date, whatever else came with it: "2026-09-26 11:00" priced as a date
+  // rather than crashing the query that turns it into a timestamp.
+  const dateOnly = (v: string | null) => (v === null ? null : (v.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? v))
+  input = { ...input, startDate: dateOnly(input.startDate), endDate: dateOnly(input.endDate) }
   if (input.vehicleId === null) {
     return { ok: false, refusal: { reason: 'no_vehicle', detail: 'No confirmed vehicle to price.' } }
   }

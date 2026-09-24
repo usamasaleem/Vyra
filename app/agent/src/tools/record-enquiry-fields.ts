@@ -65,7 +65,17 @@ export async function recordEnquiryFields(
 
   for (const field of args.fields) {
     if (!DATE_FIELDS.has(field.field)) continue
-    if (!ISO_DATE.test(field.value)) {
+    /**
+     * A date, and only a date. Live: "11 AM at the airport" was recorded as
+     * start_at "2026-09-26 11:00"; the prefix check let it through, and the
+     * next quote asked the database for "2026-09-26 11:00T00:00:00Z", which
+     * crashed the turn — "AI unavailable" at the moment the customer said
+     * "confirm this booking". The time is the handover's, asked for after
+     * booking; here it is dropped.
+     */
+    const withTime = field.value.match(/^(\d{4}-\d{2}-\d{2})[ T]\d{1,2}:\d{2}(?::\d{2})?\S*$/)
+    if (withTime !== null) (field as { value: string }).value = withTime[1]!
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(field.value)) {
       return refuse(
         'invalid_arguments',
         `"${field.value}" is not a resolved date for ${field.field}. Resolve it against today (${today}) and confirm it with the customer before recording it.`,

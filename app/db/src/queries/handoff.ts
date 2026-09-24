@@ -91,3 +91,38 @@ export async function requestHandoff(
     cancelledDrafts: Number(row?.['cancelled_drafts'] ?? 0),
   }
 }
+
+/**
+ * The agent is answering again, so a failure it reported is over.
+ *
+ * Live: one turn crashed, which opened a "turn failed" handoff and set "AI
+ * unavailable — reply manually". The AI was resumed and answered the next
+ * message fine — but the stale handoff was still open, and auto-confirm
+ * refuses while any handoff is open, so an ordinary 6-day booking went to a
+ * person to confirm. Only failures nobody has picked up are closed: a person
+ * who accepted one is working it.
+ */
+export async function closeStaleFailures(
+  run: QueryRunner,
+  input: { operatorId: string; conversationId: string },
+): Promise<number> {
+  const rows = await run(
+    `with closed as (
+       update handoffs
+       set state = 'resolved', resolved_at = now(), updated_at = now(),
+           resolution = 'The agent is answering again.'
+       where operator_id = $1 and conversation_id = $2 and reason = 'turn_failed'
+         and state in ('waiting', 'escalated') and accepted_at is null
+       returning id
+     ),
+     cleared as (
+       update conversations set next_action = null, updated_at = now()
+       where id = $2 and operator_id = $1 and next_action = 'AI unavailable — reply manually'
+         and exists (select 1 from closed)
+       returning id
+     )
+     select id from closed`,
+    [input.operatorId, input.conversationId],
+  )
+  return rows.length
+}

@@ -139,6 +139,26 @@ describe('a turn that spends every round on tools', () => {
  * round rather than finishing a reply that would be thrown away while the
  * newer message waits behind it in the queue.
  */
+/**
+ * Live: a crashed turn left a "turn failed" handoff open; the AI was resumed
+ * and answered fine, but auto-confirm still refused the booking because a
+ * handoff was open.
+ */
+describe('after a failure, the agent answering again', () => {
+  it('closes the failure nobody picked up, and clears "AI unavailable"', async () => {
+    await run(
+      `insert into handoffs (operator_id, conversation_id, reason, state, summary, due_at)
+       values ($1, $2, 'turn_failed', 'waiting', 'The agent could not reply', now() + interval '15 minutes')`,
+      [OP, CONV])
+    await run(`update conversations set next_action = 'AI unavailable — reply manually' where id = $1`, [CONV])
+    await turn(REPLIES)
+    expect(await run(`select state::text as state from handoffs where conversation_id = $1`, [CONV]))
+      .toEqual([{ state: 'resolved' }])
+    const [conversation] = await run(`select next_action from conversations where id = $1`, [CONV])
+    expect(conversation!['next_action']).toBeNull()
+  })
+})
+
 describe('a turn overtaken by a newer message', () => {
   it('stops at the next round and sends nothing', async () => {
     // The customer wrote again after this turn's message.
