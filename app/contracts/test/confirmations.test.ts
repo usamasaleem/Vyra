@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BOOKING_CONFIRMATION, DATE_CONFIRMATION, DELIVERY_CHOICE, HIGHLIGHT_LIMIT, LIST_LIMITS, buttonsFor,
   BOOKING_NOW, asksToBook, invitesACarChoice, meaningOfButton, offersAChoice, surfaceForAsking,
-  vehicleList,
+  vehicleList, withoutDateCheck,
 } from '../src/confirmations.ts'
 
 describe("Meta's limits", () => {
@@ -448,5 +448,30 @@ describe('a reply that asks to book', () => {
     null,
   ])('is not: %s', (reply) => {
     expect(asksToBook(reply)).toBe(false)
+  })
+})
+
+describe('one question when the booking is offered', () => {
+  it('drops a date check that is a sentence of its own', () => {
+    const reply = 'The *Ferrari 488 Spider* is available — Friday 25th to Sunday 27th September, returning Sunday, 2 days. Is that right?\n\n'
+      + 'Total: *AED 10,000*\n\nI can book it now, or hold it for you for 2 hours.'
+    const out = withoutDateCheck(reply)
+    expect(out).toBe('The *Ferrari 488 Spider* is available — Friday 25th to Sunday 27th September, returning Sunday, 2 days.\n\n'
+      + 'Total: *AED 10,000*\n\nI can book it now, or hold it for you for 2 hours.')
+    expect(buttonsFor(out)).toBeNull()
+    expect(asksToBook(out)).toBe(true)
+  })
+
+  it.each([
+    ['15th to 18th September, Tuesday to Friday — that right? Shall I book it?', '15th to 18th September, Tuesday to Friday. Shall I book it?'],
+    ['Thursday 24th, back Friday 25th — 1 day. That right? Book it now, or hold it?', 'Thursday 24th, back Friday 25th — 1 day. Book it now, or hold it?'],
+    ['Saturday to Monday, 2 days. Does that sound right?\nShall I book it?', 'Saturday to Monday, 2 days.\nShall I book it?'],
+  ])('%s', (reply, expected) => {
+    expect(withoutDateCheck(reply)).toBe(expected)
+  })
+
+  it('leaves the rest of the message alone', () => {
+    const reply = 'That is the right car for a wedding. Shall I book it?'
+    expect(withoutDateCheck(reply)).toBe(reply)
   })
 })

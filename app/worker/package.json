@@ -12,12 +12,14 @@
     "simulate": "tsx --env-file-if-exists=../inbox/.env.local src/cli/simulate.ts"
   },
   "dependencies": {
-    "graphile-worker": "^0.18.0",
+    "@vyra/agent": "*",
     "@vyra/contracts": "*",
     "@vyra/db": "*",
-    "@vyra/agent": "*"
+    "graphile-worker": "^0.18.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8"
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/web-push": "^3.6.4"
   }
 }

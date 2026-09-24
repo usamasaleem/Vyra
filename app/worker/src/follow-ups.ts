@@ -1,6 +1,6 @@
 import { BOOKING_NOW, BOOKING_NOW_OR_HOLD } from '@vyra/contracts'
 import {
-  findDueFollowUps, followUpFacts, markFollowUpNeedsAPerson, markFollowUpSent, queueOutboundText,
+  cancelFollowUpsWaitingOnTheTeam, findDueFollowUps, followUpFacts, markFollowUpNeedsAPerson, markFollowUpSent, queueOutboundText,
   raiseHandoff, scheduleFollowUp, type QueryRunner,
 } from '@vyra/db'
 
@@ -60,6 +60,8 @@ export async function sendDueFollowUps(
   run: QueryRunner,
   log: (fields: Record<string, unknown>) => void,
 ): Promise<FollowUpSweep> {
+  const { cancelled } = await cancelFollowUpsWaitingOnTheTeam(run)
+  if (cancelled > 0) log({ event: 'followups.cancelled', reason: 'waiting on the team', count: cancelled })
   const due = await findDueFollowUps(run)
   let sent = 0
   let raisedForAPerson = 0

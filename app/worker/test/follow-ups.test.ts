@@ -205,4 +205,25 @@ describe('chasing more than once', () => {
     )
     expect(message!['body']).toBe('Just checking whether you are still looking at those dates.')
   })
+
+  /**
+   * Simulated: "I'm checking both with the team", then "Still thinking it
+   * over?" four times to somebody waiting for that answer.
+   */
+  it('does not chase somebody waiting on the team, and does not save the chase for later', async () => {
+    await scheduleDue(1)
+    await run(
+      `insert into handoffs (operator_id, conversation_id, reason, summary, due_at)
+       values ($1, $2, 'agent_uncertain', 'Km and Abu Dhabi', now() + interval '15 minutes')`, [OP, CONV])
+
+    expect(await sendDueFollowUps(run, silently)).toMatchObject({ sent: 0, rescheduled: 0 })
+    expect(await chases()).toEqual([{ attempt: 1, state: 'cancelled' }])
+  })
+
+  it('does not chase somebody the agent promised an answer from the team', async () => {
+    await scheduleDue(1)
+    await run(`update conversations set next_action = 'Waiting on you: confirm the km' where id = $1`, [CONV])
+    expect(await sendDueFollowUps(run, silently)).toMatchObject({ sent: 0 })
+    expect(await chases()).toEqual([{ attempt: 1, state: 'cancelled' }])
+  })
 })

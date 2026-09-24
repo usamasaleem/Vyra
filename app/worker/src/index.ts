@@ -12,6 +12,7 @@ import {
 } from '@vyra/db'
 import { sendDueFollowUps } from './follow-ups.js'
 import { sendDueReminders } from './reminders.js'
+import { sendTeamAlerts, TEAM_ALERT_INTERVAL_MS } from './team-alerts.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
@@ -182,6 +183,7 @@ const IDLE_INTERVAL_MS = 250
  */
 const REAP_INTERVAL_MS = 60_000
 let lastReapAt = 0
+let lastAlertAt = 0
 
 let running = true
 let relayInFlight: Promise<unknown> = Promise.resolve()
@@ -194,6 +196,18 @@ async function relayLoop(): Promise<void> {
       if (result.claimed > 0) {
         log({ event: 'relay.pass', ...result })
         continue
+      }
+
+      /**
+       * A person's phone, told that a customer is waiting on them. After the
+       * relay pass, so a handoff raised by the turn that just finished is in
+       * the next sweep rather than the one after.
+       */
+      if (Date.now() - lastAlertAt > TEAM_ALERT_INTERVAL_MS) {
+        lastAlertAt = Date.now()
+        await sendTeamAlerts(query, log).catch((error: unknown) => {
+          log({ event: 'team_alert.error', error: messageOf(error) })
+        })
       }
 
       if (Date.now() - lastReapAt > REAP_INTERVAL_MS) {

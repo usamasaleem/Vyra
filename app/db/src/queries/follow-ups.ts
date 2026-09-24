@@ -13,6 +13,23 @@ import type { QueryRunner } from '../runner.js'
 /** WhatsApp free-form replies are only permitted inside this window. */
 const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000
 
+/**
+ * The customer is waiting on the team, not the other way round.
+ *
+ * Simulated, and exactly as bad as it sounds: the agent said "I'm checking
+ * both with the team" about the kilometres and Abu Dhabi, then sent "Still
+ * thinking it over?" four times to somebody who had said, each time, that
+ * they were waiting for that answer. A chase asks whether they have decided;
+ * they cannot decide until we answer. An open handoff or work the agent
+ * recorded for a person means the next message is ours to send.
+ */
+const WAITING_ON_THE_TEAM = `(
+  exists (select 1 from handoffs h
+          where h.conversation_id = v.id and h.operator_id = v.operator_id
+            and h.state in ('waiting', 'accepted', 'escalated'))
+  or coalesce(v.next_action, '') like 'Waiting on you:%'
+)`
+
 export type ScheduledFollowUp = {
   followUpId: string | null
   /** False when one was already scheduled — a repeat is not a second chase. */
@@ -50,6 +67,7 @@ export async function scheduleFollowUp(
        and v.handler_mode = 'ai'
        and c.opted_out_at is null
        and v.sales_stage not in ('won', 'lost')
+       and not ${WAITING_ON_THE_TEAM}
      on conflict do nothing
      returning id, due_at`,
     [input.operatorId, input.conversationId, input.reason, input.afterMinutes, input.attempt ?? 1],
@@ -81,6 +99,27 @@ export async function cancelFollowUps(
      where operator_id = $1 and conversation_id = $2 and state = 'scheduled'
      returning id`,
     [input.operatorId, input.conversationId, input.reason],
+  )
+  return { cancelled: rows.length }
+}
+
+/**
+ * Chases that came due while the team owed the customer an answer.
+ *
+ * Cancelled rather than left waiting. Kept, they would fire the moment the
+ * team answered — "Still thinking it over?" straight after the answer they
+ * were waiting for. The next reply schedules a fresh one if it is needed.
+ */
+export async function cancelFollowUpsWaitingOnTheTeam(run: QueryRunner): Promise<{ cancelled: number }> {
+  const rows = await run(
+    `update follow_ups f
+     set state = 'cancelled', cancelled_reason = 'waiting on the team', cancelled_at = now(), updated_at = now()
+     from conversations v
+     where v.id = f.conversation_id and v.operator_id = f.operator_id
+       and f.state = 'scheduled' and f.due_at <= now()
+       and ${WAITING_ON_THE_TEAM}
+     returning f.id`,
+    [],
   )
   return { cancelled: rows.length }
 }
@@ -151,6 +190,7 @@ export async function findDueFollowUps(
        -- your team is worse still — they said yes and the chase asks whether
        -- they have made up their mind.
        and v.booking_status not in ('pending', 'confirmed')
+       and not ${WAITING_ON_THE_TEAM}
      order by f.due_at
      limit $1`,
     [limit],

@@ -344,6 +344,13 @@
       "when": 1790271942762,
       "tag": "0048_add_ons",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790282366264,
+      "tag": "0049_team_alerts",
+      "breakpoints": true
     }
   ]
 }

@@ -26,6 +26,7 @@ const DESTINATIONS = [
   { key: 'messages', href: '/messages', label: 'Messages' },
   { key: 'reports', href: '/reports', label: 'Reports' },
   { key: 'team', href: '/team', label: 'Team' },
+  { key: 'alerts', href: '/alerts', label: 'Alerts' },
   { key: 'settings', href: '/settings', label: 'Settings' },
   { key: 'setup', href: '/setup', label: 'Setup' },
 ] as const

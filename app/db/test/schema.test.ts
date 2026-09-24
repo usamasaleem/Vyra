@@ -80,7 +80,13 @@ describe('schema v1 applies', () => {
       'operators',
       'outbox',
       'payments',
+      // One key pair for the whole deployment: push services check the sender,
+      // not the operator. The only table without operator_id, on purpose.
+      'push_keys',
+      // A phone that asked to be told a customer is waiting on the team.
+      'push_subscriptions',
       'quotes',
+      'team_alerts',
       // When each car is taken, recorded once rather than asked every time.
       'vehicle_availability',
       'vehicle_rates',
@@ -94,6 +100,8 @@ describe('schema v1 applies', () => {
       `select t.table_name from information_schema.tables t
        where t.table_schema = 'public'
          and t.table_name <> 'operators'
+         -- Belongs to the deployment rather than any operator: see push_keys above.
+         and t.table_name <> 'push_keys'
          and not exists (
            select 1 from information_schema.columns c
            where c.table_schema = 'public'

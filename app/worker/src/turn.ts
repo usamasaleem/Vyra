@@ -3,7 +3,7 @@ import {
   asksToSeePhotos, asWhatsAppText, isOnlyAGreeting, buttonsFor, photosPromisedIn, detectDiscountRequest,
   type AutomatedMessage, BOOKING_CONFIRMATION, BOOKING_NOW, BOOKING_NOW_OR_HOLD, carChosenIn, civilDateIn,
   DELIVERY_CHOICE,
-  formatCivil, surfaceForAsking,
+  formatCivil, surfaceForAsking, withoutDateCheck, DATE_CONFIRMATION,
   FULL_RANGE_LABEL, isOpenAt, readServiceHours, type StopCode, mightNeedAvailability,
   wantsToBook, asksToBook, invitesACarChoice, mightNeedTheFleet, offersAChoice, offersTheFullRange,
   usableWebsite,
@@ -1524,7 +1524,19 @@ export async function runConversationTurn(
    * again. Offering to confirm is only honest when the reply is not itself
    * waiting on an answer.
    */
-  const fitsTheReply = buttonsFor(end.reply)
+  let fitsTheReply = buttonsFor(end.reply)
+
+  /**
+   * One decision, one tap. A reply that checks the dates and then offers the
+   * booking asks the same thing twice: "Yes, correct" was followed by "book it
+   * now, or hold it?" on every booking. The booking question is the one that
+   * moves the sale, and the dates are written out above it, so the check goes
+   * and the booking buttons stay.
+   */
+  if (fitsTheReply === DATE_CONFIRMATION && !bookedThisTurn && asksToBook(end.reply)) {
+    end.reply = withoutDateCheck(end.reply as string)
+    fitsTheReply = buttonsFor(end.reply)
+  }
 
   const offered = {
     buttons: fitsTheReply !== null

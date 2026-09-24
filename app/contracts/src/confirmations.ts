@@ -438,6 +438,30 @@ export function asksToBook(reply: string | null): boolean {
 }
 
 /**
+ * The reply without its "that right?" about the dates.
+ *
+ * Used only when the same reply ends on the booking question. Live in
+ * simulation: "…Friday 25th to Sunday 27th, 2 days. Is that right?" carried
+ * Yes, correct / Different dates, and the tap was answered with "Would you like
+ * me to book it now, or hold it?" — two taps for one decision, on every
+ * booking. The dates are written out in the message and "Yes, book it" is the
+ * yes to them; a wrong date is something the customer types.
+ */
+export function withoutDateCheck(reply: string): string {
+  return reply
+    // "Tuesday to Friday — that right?" keeps the dates and loses the question.
+    .replace(/[ \t]*[—–-][ \t]*(?:is[ \t]+)?that(?:'s)?[ \t]+(?:right|correct)[ \t]*\?/gi, '.')
+    // "2 days. Is that right?" / "That right?" as a sentence of its own.
+    .replace(
+      /(^|[.!]|\n)[ \t]*(?:(?:is|does)[ \t]+(?:that|this)[ \t]+(?:look[ \t]+|sound[ \t]+)?|that(?:'s)?[ \t]+)(?:right|correct)[ \t]*\?/gim,
+      '$1',
+    )
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
  * What a tapped button means, as a sentence the conversation can carry.
  *
  * A button reply comes back as an id and a title. Turning it into ordinary

@@ -1549,6 +1549,34 @@ describe('showing a car the model did not look up', () => {
       expect(sent!['reply_buttons']).not.toBeNull()
     })
 
+    /**
+     * One decision, one tap. "Is that right?" and then "book it now, or hold
+     * it?" was two taps on every booking; the booking question wins and the
+     * date check goes, because the dates are written out above it.
+     */
+    it('asks to book rather than checking the dates first', async () => {
+      await addHuracan()
+      await shownAlready(PHOTOS[0]!)
+      await shownAlready(PHOTOS[1]!)
+      const ctx = await asking('the lambo please')
+
+      await turn([{
+        toolCalls: [],
+        reply: 'The Huracán Tecnica is available, Saturday 19th to Monday 21st September, 2 days. Is that right?\n\n'
+          + 'I can book it now, or hold it for you for 2 hours.',
+      }], 'send', ctx)
+
+      const [sent] = await run(
+        `select body, reply_buttons from messages
+         where direction = 'outbound' and delivery_state = 'pending'
+         order by created_at desc limit 1`, [],
+      )
+      expect(sent!['body']).not.toMatch(/that right/i)
+      expect(sent!['body']).toMatch(/2 days\.\n\nI can book it now/)
+      expect(JSON.stringify(sent!['reply_buttons'])).toMatch(/booking_confirm/)
+      expect(JSON.stringify(sent!['reply_buttons'])).not.toMatch(/dates_confirmed/)
+    })
+
     /** Restraint intact: the same car twice unasked is what a bot does. */
     it('does not show the same car again unasked', async () => {
       await addHuracan()

@@ -26,7 +26,10 @@ export const config = {
      * broken test command, not a platform problem — the deployed webhook was
      * verifying signatures correctly the whole time. The change is kept
      * because it is right on its own terms, not because it fixed anything.
+     *
+     * sw.js and the manifest are fetched by the browser itself, to install the
+     * inbox on a phone and to show alerts; a sign-in redirect breaks both.
      */
-    '/((?!api/webhooks|api/fleet-photo|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api/webhooks|api/fleet-photo|_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
