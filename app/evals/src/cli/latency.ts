@@ -48,7 +48,7 @@ if (key === undefined || key === '') {
   process.exit(1)
 }
 
-const model = process.env['AI_MODEL'] ?? 'gpt-5.6-luna'
+const model = process.env['AI_MODEL'] ?? 'gpt-6-luna'
 const effort = (process.env['AI_REASONING_EFFORT'] ?? 'low') as 'low'
 const rounds = Number(process.argv[2] ?? 3)
 /** WITHHOLD=0 measures the other side of the change in the same build. */

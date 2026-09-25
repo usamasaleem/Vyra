@@ -32,7 +32,7 @@ if (apiKey === undefined || apiKey === '') {
   console.error('OPENAI_API_KEY is not set (it is read from app/inbox/.env.local).')
   process.exit(2)
 }
-const modelName = process.env['AI_MODEL'] ?? 'gpt-5.6-luna'
+const modelName = process.env['AI_MODEL'] ?? 'gpt-6-luna'
 const effort = process.env['AI_REASONING_EFFORT'] as 'low' | 'medium' | 'high' | undefined
 const model = openaiModel({ apiKey, model: modelName, ...(effort === undefined ? {} : { effort }) })
 

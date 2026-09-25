@@ -69,8 +69,14 @@ export const serverEnvSchema = z.object({
    * those is the one to pay for. At `none` it stayed safe but grew sloppy,
    * missing 8 expectations, so `low` is the floor rather than the default.
    * Re-run `npm run evals:compare` before changing either.
+   *
+   * gpt-6-luna since 25 September 2026: half the price of gpt-5.6-luna, and 23
+   * of 24 simulated customers passed on it with no invented figures, policies
+   * or dates in 203 messages — the same as gpt-5.6-luna. Its rate limit on
+   * this account is 200k tokens a minute against 500k, about seven replies a
+   * minute; past that the fallback below answers.
    */
-  AI_MODEL: z.string().default('gpt-5.6-luna'),
+  AI_MODEL: z.string().default('gpt-6-luna'),
   /**
    * Low, and 'none' was tried and rejected on measurement.
    *
@@ -148,9 +154,14 @@ export const serverEnvSchema = z.object({
    * The model a turn falls back to when the main one has failed twice or timed
    * out, before a person is asked to take over. A different family on purpose:
    * one model's outage is rarely another's. `none` turns the fallback off.
-   * Measured on the simulated customers before being set as the default.
+   *
+   * gpt-5.6-luna: the previous main model, measured on every simulated
+   * customer, a quarter of gpt-5.5's price per reply, and a higher rate limit
+   * than gpt-6-luna — which matters, because a busy minute on the new model is
+   * the likeliest reason this is ever used. gpt-5.5 also passed (23 of 24) and
+   * stays a sensible choice if the whole 5.6 line is ever the problem.
    */
-  AI_FALLBACK_MODEL: z.string().default('gpt-5.5'),
+  AI_FALLBACK_MODEL: z.string().default('gpt-5.6-luna'),
 
   /**
    * Whether an accepted reply is sent, or written as an internal note for a
