@@ -94,7 +94,7 @@ describe('switching the agent to autonomous', () => {
 
   it('says plainly what still reaches a person, without blocking on it', async () => {
     const later = (await getAutonomyState(run, OP)).items.filter((i) => i.later === true)
-    expect(later.map((i) => i.key)).toEqual(['documents', 'payments', 'templates'])
+    expect(later.map((i) => i.key)).toEqual(['payments', 'templates'])
     expect(later.every((i) => !i.blocking)).toBe(true)
   })
 

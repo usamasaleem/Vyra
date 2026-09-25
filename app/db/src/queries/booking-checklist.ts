@@ -32,6 +32,10 @@ export type Checklist = {
   /** Photos the customer sent against this booking. */
   documents: number
   documentsCheckedAt: Date | null
+  /** Checked by the automatic check rather than a person. */
+  documentsCheckedAutomatically: boolean
+  /** What the automatic check last decided, and why. Null when it has not run. */
+  documentsCheck: { verdict: string; reasons: string[] } | null
   /**
    * When a person checked this customer's documents for an earlier rental,
    * within the last year. Set, the booking does not ask for them again.
@@ -93,7 +97,8 @@ export async function bookingChecklist(
 ): Promise<Checklist | null> {
   const [row] = await run(
     `select b.id, b.enquiry_id, b.delivery_address, b.delivery_time, b.payment_plan,
-            b.customer_reported_paid_at, b.documents_checked_at,
+            b.customer_reported_paid_at, b.documents_checked_at, b.documents_checked_automatically,
+            b.documents_check,
             b.return_time, b.return_address, b.returned_at,
             coalesce(q.end_date, q.start_date)::date::text as end_date,
             q.days, q.total_minor, q.deposit_minor,
@@ -203,6 +208,11 @@ export async function bookingChecklist(
     documents,
     documentsCheckedAt: row['documents_checked_at'] == null
       ? null : new Date(row['documents_checked_at'] as string),
+    documentsCheckedAutomatically: row['documents_checked_automatically'] === true,
+    documentsCheck: row['documents_check'] == null ? null : {
+      verdict: String((row['documents_check'] as Record<string, unknown>)['verdict'] ?? ''),
+      reasons: ((row['documents_check'] as Record<string, unknown>)['reasons'] as string[] | undefined) ?? [],
+    },
     documentsOnFileFrom: row['on_file'] == null ? null : new Date(row['on_file'] as string),
     owedMinor: owed,
     currency: row['currency'] as string,
@@ -380,5 +390,62 @@ export async function markReturned(
   return {
     returned: rows.length > 0,
     conversationId: (rows[0]?.['conversation_id'] as string) ?? null,
+  }
+}
+
+/**
+ * What the automatic check read and decided, kept on the booking.
+ *
+ * Approved marks the documents checked, attributed to the system rather than
+ * a person. Anything else records the reasons and leaves the check to a
+ * person, who sees why on the booking.
+ */
+export async function recordDocumentCheck(
+  run: QueryRunner,
+  input: { operatorId: string; bookingId: string; approved: boolean; check: Record<string, unknown> },
+): Promise<{ checked: boolean }> {
+  const rows = await run(
+    `update bookings
+     set documents_check = $3::jsonb,
+         documents_checked_at = case when $4 then now() else documents_checked_at end,
+         documents_checked_automatically = case when $4 then true else documents_checked_automatically end,
+         updated_at = now()
+     where id = $1 and operator_id = $2 and documents_checked_at is null
+     returning id`,
+    [input.bookingId, input.operatorId, JSON.stringify(input.check), input.approved],
+  )
+  return { checked: input.approved && rows.length > 0 }
+}
+
+/** Everything the automatic check needs about one booking: its dates and its photos. */
+export async function documentsToCheck(
+  run: QueryRunner,
+  input: { operatorId: string; bookingId: string },
+): Promise<{
+  rentalStart: string | null
+  rentalEnd: string | null
+  alreadyChecked: boolean
+  photos: Array<{ messageId: string; mediaId: string }>
+} | null> {
+  const [booking] = await run(
+    `select q.start_date::date::text as start_date, coalesce(q.end_date, q.start_date)::date::text as end_date,
+            b.documents_checked_at is not null as checked
+     from bookings b join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
+     where b.id = $1 and b.operator_id = $2`,
+    [input.bookingId, input.operatorId],
+  )
+  if (booking === undefined) return null
+  const photos = await run(
+    `select m.id, m.media ->> 'mediaId' as media_id
+     from booking_documents d join messages m on m.id = d.message_id and m.operator_id = d.operator_id
+     where d.booking_id = $1 and d.operator_id = $2 and m.kind = 'image' and m.media ->> 'mediaId' is not null
+     order by m.created_at desc limit 4`,
+    [input.bookingId, input.operatorId],
+  )
+  return {
+    rentalStart: (booking['start_date'] as string) ?? null,
+    rentalEnd: (booking['end_date'] as string) ?? null,
+    alreadyChecked: booking['checked'] === true,
+    photos: photos.map((p) => ({ messageId: p['id'] as string, mediaId: p['media_id'] as string })),
   }
 }

@@ -18,8 +18,9 @@ import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
 import { transcribeVoiceNote } from './transcribe-voice-note.js'
 import { describePhoto } from './describe-photo.js'
+import { documentChecker } from './document-check.js'
 import {
-  openaiModel, openaiPhotoReader, openaiTranscriber, PROMPT_VERSION, resilientModel,
+  openaiDocumentReader, openaiModel, openaiPhotoReader, openaiTranscriber, PROMPT_VERSION, resilientModel,
   type ModelAdapter, type PhotoReader, type Transcriber,
 } from '@vyra/agent'
 import {
@@ -107,6 +108,14 @@ const whatsapp = createWhatsAppClient({
   phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
   accessToken: env.WHATSAPP_ACCESS_TOKEN,
 })
+
+/** Licence and ID photos, read into fields for the automatic check. */
+const checkDocuments = env.OPENAI_API_KEY === undefined
+  ? undefined
+  : documentChecker({
+      run: query, whatsapp, log,
+      reader: openaiDocumentReader({ apiKey: env.OPENAI_API_KEY, model: env.AI_MODEL }),
+    })
 
 /**
  * One client per number, built once and kept.
@@ -626,7 +635,7 @@ const runner: Runner = await runWorker({
         // A photo for a booking that is waiting on documents is filed, not
         // handed to a person. Anything else falls through to the handoff.
         const filed = await fileDocumentIfBooked(
-          { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
+          { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft', checkDocuments },
           context,
         ).catch((error: unknown) => {
           log({ event: 'document.filing_failed', error: error instanceof Error ? error.message : String(error) })

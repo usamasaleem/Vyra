@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getAutonomyState, getNavCounts } from '@vyra/db'
 import { SiteNav } from '../site-nav'
 import { SwitchForm } from './switch-form'
+import { switchDocumentChecks } from './actions'
 import { permissions, requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 
@@ -32,6 +33,14 @@ export default async function AutonomyPage() {
         </span>
         <strong>{i.title}</strong>
         {i.href !== null && !i.done && <Link href={i.href} style={{ fontSize: '0.88rem' }}>Fix</Link>}
+        {i.key === 'documents' && permissions.canAdminister(actor) && (
+          <form action={switchDocumentChecks}>
+            <input type="hidden" name="on" value={i.done ? 'false' : 'true'} />
+            <button className="button secondary" type="submit" style={{ padding: '0.25rem 0.6rem', fontSize: '0.85rem' }}>
+              {i.done ? 'Turn off' : 'Turn on'}
+            </button>
+          </form>
+        )}
       </div>
       {i.detail !== null && <div style={{ fontSize: '0.9rem', marginTop: '0.2rem' }}>{i.detail}</div>}
       <div className="muted" style={{ fontSize: '0.85rem', marginTop: '0.2rem' }}>{i.why}</div>

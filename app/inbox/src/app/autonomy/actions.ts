@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { setAutonomous } from '@vyra/db'
+import { setAutoCheckDocuments, setAutonomous } from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner } from '@/lib/db'
 
@@ -17,4 +17,13 @@ export async function switchAutonomy(_previous: AutonomyResult, formData: FormDa
   })
   revalidatePath('/autonomy')
   return result.ok ? null : { missing: result.missing }
+}
+
+export async function switchDocumentChecks(formData: FormData): Promise<void> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canAdminister(actor), 'change how documents are checked')
+  await setAutoCheckDocuments(actorRunner(actor), {
+    operatorId: actor.operatorId, on: String(formData.get('on') ?? '') === 'true',
+  })
+  revalidatePath('/autonomy')
 }

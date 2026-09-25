@@ -269,6 +269,16 @@ export const bookings = pgTable(
     /** Who looked at the licence and passport photos, and when. */
     documentsCheckedAt: timestamp({ withTimezone: true }),
     documentsCheckedByMembershipId: uuid(),
+    /**
+     * Checked by the system rather than a person: the licence and ID were read,
+     * every rule passed, and nothing was unclear. A person can still look.
+     */
+    documentsCheckedAutomatically: boolean().notNull().default(false),
+    /**
+     * What the automatic check read and decided — the verdict, its reasons,
+     * and the fields it relied on — so whoever looks next sees why.
+     */
+    documentsCheck: jsonb(),
 
     /**
      * The other end of the rental, collected by the agent the way the start

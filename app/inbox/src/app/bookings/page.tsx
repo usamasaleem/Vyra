@@ -257,7 +257,12 @@ export default async function BookingsPage() {
                     <dt className="muted">Documents</dt>
                     <dd style={{ margin: 0, display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                       {b.checklist.documentsCheckedAt !== null
-                        ? <span>checked</span>
+                        ? <span>
+                            {b.checklist.documentsCheckedAutomatically ? 'checked automatically' : 'checked'}
+                            {b.checklist.documentsCheckedAutomatically && b.checklist.documentsCheck !== null && (
+                              <span className="muted"> — {b.checklist.documentsCheck.reasons.join(' ')}</span>
+                            )}
+                          </span>
                         : b.checklist.documents === 0 && b.checklist.documentsOnFileFrom !== null
                         ? <span>on file — checked for a previous rental on {b.checklist.documentsOnFileFrom.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
                         : (
@@ -266,6 +271,14 @@ export default async function BookingsPage() {
                               {b.checklist.documents === 0
                                 ? <span className="muted">none received yet</span>
                                 : `${b.checklist.documents} received · open the conversation to see them`}
+                              {b.checklist.documentsCheck !== null && b.checklist.documentsCheck.verdict !== 'approved' && (
+                                <strong style={{ display: 'block' }}>
+                                  {b.checklist.documentsCheck.verdict === 'unreadable'
+                                    ? 'Automatic check could not read them — a clearer photo was asked for: '
+                                    : 'Automatic check needs you: '}
+                                  {b.checklist.documentsCheck.reasons.join(' ')}
+                                </strong>
+                              )}
                             </span>
                             {b.checklist.documents > 0 && canAnswer && (
                               <form action={checkDocuments}>

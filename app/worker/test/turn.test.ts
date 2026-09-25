@@ -10,6 +10,8 @@ import {
   noticeOutOfHours, runConversationTurn,
 } from '../src/turn.ts'
 import { draftKnowledge, publishKnowledge } from '../../db/src/queries/knowledge.ts'
+import { recordDocumentCheck } from '../../db/src/queries/booking-checklist.ts'
+import type { DocumentVerdict } from '../../contracts/src/document-check.ts'
 import {
   acceptHandoff, raiseHandoff, resolveHandoff,
 } from '../../db/src/queries/handoff-queue.ts'
@@ -2516,6 +2518,76 @@ describe('a photo for a booking that is waiting on documents', () => {
       `select body from messages where idempotency_key = $1`, [`document:${third.message.id}`])
     expect(reply!['body']).toMatch(/^Got it — that is on your booking too\./)
     expect(reply!['body']).not.toMatch(/can't view|colleague/i)
+  })
+
+  describe('checked automatically', () => {
+    const checked = async (verdict: DocumentVerdict, bookingId: string) => {
+      await run(`update operators set auto_check_documents = true where id = $1`, [OP])
+      const calls: Array<{ visitor: boolean }> = []
+      const checkDocuments = async (input: { operatorId: string; bookingId: string; visitor: boolean }) => {
+        calls.push({ visitor: input.visitor })
+        await recordDocumentCheck(run, {
+          operatorId: OP, bookingId: input.bookingId, approved: verdict.verdict === 'approved', check: verdict,
+        })
+        return verdict
+      }
+      const deps = { run, transact, destination: 'send' as const, checkDocuments }
+      await fileDocumentIfBooked(deps, await photo())
+      const second = await photo()
+      await fileDocumentIfBooked(deps, second)
+      const [reply] = await run(`select body from messages where idempotency_key = $1`, [`document:${second.message.id}`])
+      const [booking] = await run(
+        `select documents_checked_at is not null as checked, documents_checked_automatically as auto from bookings where id = $1`,
+        [bookingId])
+      return { reply: reply!['body'] as string, booking: booking!, calls, deps }
+    }
+
+    it('says they are checked when every rule passes, and marks them checked by the system', async () => {
+      const bookingId = await bookedFerrari()
+      const { reply, booking, calls } = await checked({ verdict: 'approved', reasons: ['Same name on both.'] }, bookingId)
+      expect(calls).toHaveLength(1)
+      expect(reply).toMatch(/checked your licence and ID, and everything is in order/)
+      expect(booking).toEqual({ checked: true, auto: true })
+    })
+
+    it('asks again for a photo it could not read, and checks the new one', async () => {
+      const bookingId = await bookedFerrari()
+      const { reply, booking, deps } = await checked(
+        { verdict: 'unreadable', reasons: ['No readable driving licence.'], ask: 'a clear photo of the front of your driving licence' },
+        bookingId)
+      expect(reply).toBe('Thanks — I could not read one of them clearly. Could you send a clear photo of the front of your driving licence?')
+      expect(booking['checked']).toBe(false)
+
+      // The clearer one comes in: checked again, not filed as a spare.
+      const approve = async (input: { operatorId: string; bookingId: string; visitor: boolean }) => {
+        await recordDocumentCheck(run, { operatorId: OP, bookingId: input.bookingId, approved: true, check: { verdict: 'approved' } })
+        return { verdict: 'approved' as const, reasons: [] }
+      }
+      const clearer = await photo()
+      await fileDocumentIfBooked({ ...deps, checkDocuments: approve }, clearer)
+      const [again] = await run(`select body from messages where idempotency_key = $1`, [`document:${clearer.message.id}`])
+      expect(again!['body']).toMatch(/everything is in order/)
+    })
+
+    it('puts a problem in front of a person, never argues it with the customer', async () => {
+      const bookingId = await bookedFerrari()
+      const { reply, booking } = await checked(
+        { verdict: 'problem', reasons: ['The driver is 22 on the first day; the minimum is 25.'] }, bookingId)
+      expect(reply).toMatch(/The team will look them over before the handover/)
+      expect(reply).not.toMatch(/22|age/)
+      expect(booking['checked']).toBe(false)
+      const [conversation] = await run(`select next_action from conversations where id = $1`, [CONV])
+      expect(conversation!['next_action']).toMatch(/Check the documents: The driver is 22/)
+    })
+
+    it('does nothing new when the operator has not switched it on', async () => {
+      await bookedFerrari()
+      let called = false
+      const deps = { run, transact, destination: 'send' as const, checkDocuments: async () => { called = true; return null } }
+      await fileDocumentIfBooked(deps, await photo())
+      await fileDocumentIfBooked(deps, await photo())
+      expect(called).toBe(false)
+    })
   })
 
   /** No booking, or a voice note: the ordinary handoff still runs. */

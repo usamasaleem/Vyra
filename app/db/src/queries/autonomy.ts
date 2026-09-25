@@ -36,7 +36,7 @@ const REQUIRED_HERE = new Set(['calendar', 'autosend'])
 export async function getAutonomyState(run: QueryRunner, operatorId: string): Promise<AutonomyState> {
   const setup = await getSetupState(run, operatorId)
   const [row] = await run(
-    `select o.autonomous, o.autonomous_set_at, o.auto_confirm_bookings, o.auto_confirm_limit_minor,
+    `select o.autonomous, o.autonomous_set_at, o.auto_check_documents, o.auto_confirm_bookings, o.auto_confirm_limit_minor,
             o.auto_confirm_max_days, o.hold_minutes, jsonb_array_length(coalesce(o.discount_tiers, '[]'::jsonb)) as tiers,
             coalesce(m.display_name, m.id::text) as set_by,
             (select count(*)::int from push_subscriptions s
@@ -104,10 +104,13 @@ export async function getAutonomyState(run: QueryRunner, operatorId: string): Pr
       blocking: false,
     },
     {
-      key: 'documents', later: true, blocking: false, done: false, href: null,
-      title: 'Documents are still checked by a person',
-      why: 'The agent collects the licence and ID and files them on the booking; a person marks them checked. Automatic checking is the next step.',
-      detail: 'Coming next.',
+      key: 'documents',
+      title: 'Check documents automatically',
+      why: 'The agent reads the licence and ID when they arrive and approves clear cases itself: valid through the rental, the driver old enough, the licence held long enough, the same name on both. Anything unclear or wrong still comes to a person, with the reasons; a blurred photo is asked for again.',
+      done: row?.['auto_check_documents'] === true,
+      detail: row?.['auto_check_documents'] === true ? 'On.' : 'Off: a person checks every booking’s documents.',
+      href: null,
+      blocking: false,
     },
     {
       key: 'payments', later: true, blocking: false, done: false, href: null,
@@ -154,4 +157,12 @@ export async function setAutonomous(
     [input.operatorId, input.on, input.membershipId],
   )
   return { ok: true, on: input.on }
+}
+
+export async function setAutoCheckDocuments(
+  run: QueryRunner,
+  input: { operatorId: string; on: boolean },
+): Promise<void> {
+  await run(`update operators set auto_check_documents = $2, updated_at = now() where id = $1`,
+    [input.operatorId, input.on])
 }

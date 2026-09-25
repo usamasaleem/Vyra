@@ -88,3 +88,82 @@ export function photoAsWords(description: string, caption: string | null): strin
   const said = caption !== null && caption.trim() !== '' ? `\nTheir caption: "${caption.trim()}"` : ''
   return `[Photo from the customer, described automatically: ${description}]${said}`
 }
+
+/**
+ * A licence or ID, read into fields for the rules to decide on.
+ *
+ * Separate from the description above, which is for the conversation and
+ * copies nothing personal. This is for the booking record only: the fields the
+ * operator needs to check a driver — name, date of birth, expiry — and nothing
+ * else. It never reaches the model that talks to the customer.
+ */
+const DOCUMENT_INSTRUCTIONS = `This is a photo a car rental customer sent as a driving document.
+Read it into the fields exactly as printed. Dates as YYYY-MM-DD.
+- kind: driving_licence, passport, emirates_id, visa, or other.
+- legible: false if it is blurred, cropped, covered, a photo of a screen you cannot read, or not a document at all.
+- country: the issuing country in English.
+- fullName: the holder's full name as printed.
+- dateOfBirth, expiryDate: as printed; null if not shown or not readable.
+- issueDate: for a driving licence, the date it was first issued, if shown; otherwise null.
+Never guess a field. Null is the right answer for anything you cannot read with certainty.`
+
+const DOCUMENT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['kind', 'legible', 'country', 'fullName', 'dateOfBirth', 'expiryDate', 'issueDate'],
+  properties: {
+    kind: { type: 'string', enum: ['driving_licence', 'passport', 'emirates_id', 'visa', 'other'] },
+    legible: { type: 'boolean' },
+    country: { type: ['string', 'null'] },
+    fullName: { type: ['string', 'null'] },
+    dateOfBirth: { type: ['string', 'null'] },
+    expiryDate: { type: ['string', 'null'] },
+    issueDate: { type: ['string', 'null'] },
+  },
+} as const
+
+export type DocumentReader = (input: {
+  bytes: Uint8Array<ArrayBuffer>
+  mimeType: string
+}) => Promise<import('@vyra/contracts').ReadDocument | null>
+
+export function openaiDocumentReader(options: {
+  apiKey: string
+  model: string
+  baseUrl?: string
+  timeoutMs?: number
+  fetchImpl?: typeof fetch
+}): DocumentReader {
+  const baseUrl = options.baseUrl ?? 'https://api.openai.com'
+  const doFetch = options.fetchImpl ?? fetch
+  return async ({ bytes, mimeType }) => {
+    if (!/^image\/(?:jpeg|png|webp|gif)$/.test(mimeType)) return null
+    const response = await doFetch(`${baseUrl}/v1/responses`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS),
+      headers: { authorization: `Bearer ${options.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: options.model,
+        store: false,
+        reasoning: { effort: 'low' },
+        instructions: DOCUMENT_INSTRUCTIONS,
+        text: { format: { type: 'json_schema', name: 'document', strict: true, schema: DOCUMENT_SCHEMA } },
+        input: [{
+          role: 'user',
+          content: [{ type: 'input_image', image_url: `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}` }],
+        }],
+      }),
+    })
+    if (!response.ok) throw new Error(`document reader ${response.status}: ${(await response.text()).slice(0, 300)}`)
+    const body = (await response.json()) as {
+      output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>
+    }
+    const text = (body.output ?? []).filter((o) => o.type === 'message')
+      .flatMap((o) => o.content ?? []).map((c) => c.text ?? '').join('').trim()
+    try {
+      return JSON.parse(text) as import('@vyra/contracts').ReadDocument
+    } catch {
+      return null
+    }
+  }
+}

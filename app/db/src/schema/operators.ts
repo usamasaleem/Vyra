@@ -161,6 +161,8 @@ export const operators = pgTable('operators', {
      * when the readiness checklist is complete, and by a named person.
      */
     autonomous: boolean().notNull().default(false),
+    /** Read the licence and ID photos and approve clear cases without a person. */
+    autoCheckDocuments: boolean().notNull().default(false),
     autonomousSetByMembershipId: uuid(),
     autonomousSetAt: timestamp({ withTimezone: true }),
     /**

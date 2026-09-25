@@ -83,6 +83,7 @@ import {
 } from '@vyra/db'
 import type { QueryRunner, Transactor } from '@vyra/db'
 import type { ConversationContext } from './context.js'
+import type { CheckDocuments } from './document-check.js'
 
 /**
  * The AI turn — where every piece built for it finally meets.
@@ -176,7 +177,10 @@ const DEFAULT_ACKNOWLEDGEMENT =
 const DOCUMENT_KINDS = new Set(['image', 'document'])
 
 export async function fileDocumentIfBooked(
-  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'>,
+  deps: Pick<TurnDependencies, 'run' | 'transact' | 'destination'> & {
+    /** Reads the licence and ID and decides; absent where no reader is configured. */
+    checkDocuments?: CheckDocuments
+  },
   context: ConversationContext,
 ): Promise<TurnResult | null> {
   if (!DOCUMENT_KINDS.has(context.message.kind)) return null
@@ -190,6 +194,60 @@ export async function fileDocumentIfBooked(
   if (before === null) return null
 
   /**
+   * Which ID, from what they told us. "Passport or Emirates ID" to somebody
+   * who has just said they are visiting names a card they cannot have.
+   */
+  const [lives] = await deps.run(
+    `select fe.value from field_evidence fe
+     join bookings b on b.enquiry_id = fe.enquiry_id and b.operator_id = fe.operator_id
+     where b.id = $1 and b.operator_id = $2 and fe.field = 'residency' and fe.superseded_at is null
+     order by fe.created_at desc limit 1`,
+    [bookingId, context.operator.id],
+  ).catch(() => [])
+  const residency = String(lives?.['value'] ?? '').toLowerCase()
+  // "Non-resident" contains "resident"; the visitor test goes first.
+  const visitor = /visit|tourist|non[- ]?resident|not (?:a )?resident/.test(residency)
+  const identity = visitor
+    ? 'your passport'
+    : residency.includes('resident') ? 'your Emirates ID' : 'your passport or Emirates ID'
+
+  const checking = context.operator.autoCheckDocuments && deps.checkDocuments !== undefined
+  /**
+   * Read, decided, and said — in place of "the team checks them".
+   *
+   * Approved is said as done. A photo that could not be read is asked for
+   * again, as a person at the desk would. Anything wrong or unconfirmable is
+   * not argued with the customer by a machine: it goes to a person with the
+   * reasons, and the customer hears that the team is looking.
+   */
+  const checkAndSay = async (): Promise<{ body: string; ask: string | null; next: string | undefined } | null> => {
+    const verdict = await deps.checkDocuments!({ operatorId: context.operator.id, bookingId, visitor })
+      .catch((error: unknown) => {
+        console.error(JSON.stringify({
+          event: 'documents.check_failed', bookingId, error: error instanceof Error ? error.message : String(error),
+        }))
+        return null
+      })
+    if (verdict === null) return null
+    const now = await bookingChecklist(deps.run, { operatorId: context.operator.id, bookingId })
+    const ask = now === null ? null : nextQuestion(now)
+    const next = now?.missing[0]
+    if (verdict.verdict === 'approved') {
+      return { body: 'Got it — I have checked your licence and ID, and everything is in order.', ask, next }
+    }
+    if (verdict.verdict === 'unreadable') {
+      return { body: `Thanks — I could not read one of them clearly. Could you send ${verdict.ask}?`, ask: null, next: 'documents' }
+    }
+    await recordOutstandingWork(deps.run, {
+      conversationId: context.conversation.id,
+      operatorId: context.operator.id,
+      items: [`Check the documents: ${verdict.reasons.join(' ')}`],
+      messageId: context.message.id,
+    })
+    return { body: 'Got it — they are on your booking. The team will look them over before the handover.', ask, next }
+  }
+
+  /**
    * The documents are in and they are paying by transfer or link: a picture
    * now is the screenshot they were asked for. Simulated: "please send a
    * screenshot once it is done", the customer did, and was told "I can't view
@@ -198,6 +256,44 @@ export async function fileDocumentIfBooked(
    * which is what a screenshot is; a person still checks the account.
    */
   if (!before.missing.includes('documents')) {
+    /**
+     * They were asked for a clearer photo, and this is it. Checked again with
+     * the others rather than taken as a payment screenshot or a spare angle.
+     */
+    if (checking) {
+      const [last] = await deps.run(
+        `select documents_check ->> 'verdict' as verdict, documents_checked_at is not null as checked
+         from bookings where id = $1 and operator_id = $2`,
+        [bookingId, context.operator.id],
+      )
+      if (last?.['verdict'] === 'unreadable' && last['checked'] !== true) {
+        await fileBookingDocument(deps.run, {
+          operatorId: context.operator.id, bookingId,
+          conversationId: context.conversation.id, messageId: context.message.id,
+        })
+        const said = await checkAndSay()
+        if (said !== null) {
+          const again = await acceptTurnOutput(deps.transact, {
+            conversationId: context.conversation.id,
+            operatorId: context.operator.id,
+            revisionAtTurnStart: context.conversation.revision,
+            body: `${said.body}${said.ask === null || said.next === 'documents' ? '' : ` ${said.ask}`}`,
+            replyButtons: said.next === 'handover_choice' ? DELIVERY_CHOICE : null,
+            idempotencyKey: `document:${context.message.id}`,
+            destination: deps.destination,
+          })
+          if (!again.accepted) return { outcome: 'rejected', reason: String(again.reason) }
+          if (again.destination === 'send') {
+            await sendBookingSummaryIfComplete(deps, {
+              operatorId: context.operator.id, conversationId: context.conversation.id, bookingId,
+            }).catch(() => undefined)
+          }
+          return again.destination === 'send'
+            ? { outcome: 'queued', messageId: again.queued.messageId }
+            : { outcome: 'drafted', noteId: again.noteId }
+        }
+      }
+    }
     /**
      * Documents in, and not paying by transfer or link: another picture is
      * still about this booking — a second angle of the licence, a visa page.
@@ -259,24 +355,11 @@ export async function fileDocumentIfBooked(
   const next = after?.missing[0]
   const ask = after === null ? null : nextQuestion(after)
 
-  /**
-   * Which ID, from what they told us. "Passport or Emirates ID" to somebody
-   * who has just said they are visiting names a card they cannot have.
-   */
-  const [lives] = await deps.run(
-    `select fe.value from field_evidence fe
-     join bookings b on b.enquiry_id = fe.enquiry_id and b.operator_id = fe.operator_id
-     where b.id = $1 and b.operator_id = $2 and fe.field = 'residency' and fe.superseded_at is null
-     order by fe.created_at desc limit 1`,
-    [bookingId, context.operator.id],
-  ).catch(() => [])
-  const residency = String(lives?.['value'] ?? '').toLowerCase()
-  // "Non-resident" contains "resident"; the visitor test goes first.
-  const identity = /visit|tourist|non[- ]?resident|not (?:a )?resident/.test(residency)
-    ? 'your passport'
-    : residency.includes('resident') ? 'your Emirates ID' : 'your passport or Emirates ID'
+  const said = total >= DOCUMENTS_WANTED && checking ? await checkAndSay() : null
 
-  const body = total < DOCUMENTS_WANTED
+  const body = said !== null
+    ? `${said.body}${said.ask === null || said.next === 'documents' ? '' : ` ${said.ask}`}`
+    : total < DOCUMENTS_WANTED
     ? 'Got it — I have added that to your booking. Could you send the other one too? We need '
       + `your driving licence and ${identity}. The team checks them before the handover.`
     : 'Got it — that is both, and they are on your booking. The team checks them before the handover.'
@@ -288,7 +371,7 @@ export async function fileDocumentIfBooked(
     revisionAtTurnStart: context.conversation.revision,
     body,
     // The one closed question this can end on gets its tap.
-    replyButtons: total >= DOCUMENTS_WANTED && next === 'handover_choice' ? DELIVERY_CHOICE : null,
+    replyButtons: total >= DOCUMENTS_WANTED && (said?.next ?? next) === 'handover_choice' ? DELIVERY_CHOICE : null,
     idempotencyKey: `document:${context.message.id}`,
     destination: deps.destination,
   })
