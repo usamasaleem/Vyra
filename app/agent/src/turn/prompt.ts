@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v42'
+export const PROMPT_VERSION = 'sales-v43'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 

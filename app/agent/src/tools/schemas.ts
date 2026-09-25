@@ -149,6 +149,24 @@ export const recordBookingProgressSchema = z.strictObject({
   ),
 })
 
+export const cancelBookingSchema = z.strictObject({
+  customerConfirmed: z.boolean().describe(
+    'false the first time: nothing is cancelled, and you get what cancelling means under the '
+    + 'operator\'s policy to tell them and ask "Shall I cancel it?". true only after they have '
+    + 'answered yes to that question in their latest message.',
+  ),
+})
+
+export const changeBookingDatesSchema = z.strictObject({
+  newStartDate: z.string().describe('The new first day, YYYY-MM-DD, resolved against the operator\'s today.'),
+  newEndDate: z.string().describe('The new last day, inclusive, YYYY-MM-DD — the day the car comes back.'),
+  customerConfirmed: z.boolean().describe(
+    'false the first time: nothing changes, and you get whether the car is available and the new '
+    + 'price to put to them with "Shall I move it?". true only after they said yes to exactly '
+    + 'those dates in their latest message.',
+  ),
+})
+
 export const addToBookingSchema = z.strictObject({
   addOnId: z.string().describe(
     'The id of the add-on they want, exactly as listed in your instructions — for example "chauffeur".',
@@ -196,6 +214,8 @@ export const TOOL_SCHEMAS = {
   hold_car: holdCarSchema,
   offer_discount: offerDiscountSchema,
   add_to_booking: addToBookingSchema,
+  cancel_booking: cancelBookingSchema,
+  change_booking_dates: changeBookingDatesSchema,
 } as const
 
 export type ToolName = keyof typeof TOOL_SCHEMAS
@@ -248,7 +268,18 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     + 'asks to keep it — it checks the car is free for the extra days, prices them at the '
     + 'operator\'s own rates and, where the operator allows it, settles it on the spot. It '
     + 'refuses if the car is promised to somebody else, and tells you until when. Not for '
-    + 'changing the dates of a rental that has not started, and not for a second car.',
+    + 'changing the dates of a rental that has not started — that is change_booking_dates — and '
+    + 'not for a second car.',
+  cancel_booking:
+    'Cancel their booking when they clearly say they want to cancel it. Call it first with '
+    + 'customerConfirmed false: nothing is cancelled, and it tells you what the operator\'s '
+    + 'cancellation policy means for them. Tell them that, ask "Shall I cancel it?", and call it '
+    + 'again with true only on their yes. A question about the policy is not a request to cancel.',
+  change_booking_dates:
+    'Move a booking that has not started to new dates — same car, new first and last day. Call it '
+    + 'first with customerConfirmed false: nothing changes, and it tells you whether the car is '
+    + 'available and the new price. Put that to them and call again with true on their yes. To '
+    + 'keep a car they already have for longer, use extend_booking instead.',
   /**
    * Deliberately says nothing about who confirms.
    *

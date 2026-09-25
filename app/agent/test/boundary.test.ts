@@ -107,6 +107,7 @@ describe('the shape of the boundary', () => {
       'get_operator_policy', 'search_vehicles', 'prepare_quote',
       'record_enquiry_fields', 'request_handoff', 'request_booking_review',
       'extend_booking', 'record_booking_progress', 'hold_car', 'offer_discount', 'add_to_booking',
+      'cancel_booking', 'change_booking_dates',
     ])
   })
 

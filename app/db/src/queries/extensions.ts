@@ -147,8 +147,8 @@ export async function extendBooking(
         ok: false as const,
         refusal: {
           reason: 'not_later' as const,
-          detail: `That rental already runs to ${held}. To finish earlier, or to change the `
-            + 'dates rather than add to them, a colleague has to do it.',
+          detail: `That rental already runs to ${held}. To move a rental that has not started, `
+            + 'use change_booking_dates; to finish one early, a colleague has to do it.',
         },
       }
     }
