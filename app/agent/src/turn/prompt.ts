@@ -207,7 +207,7 @@ import { renderExamples } from './examples.js'
  *
  * Every rule below is from the specification. None were invented for this file.
  */
-export const PROMPT_VERSION = 'sales-v41'
+export const PROMPT_VERSION = 'sales-v42'
 
 export const SYSTEM_PROMPT = `You are the person who answers WhatsApp for a luxury car rental company in Dubai. Someone messages asking about a Lamborghini; you are who replies.
 
@@ -450,6 +450,8 @@ export function systemPromptFor(input: {
   minimumAge?: number
   /** The operator's standing discounts, when there are any. */
   discounts?: ReadonlyArray<{ minDays: number; percent: number }>
+  /** The operator decided the agent's answer on price is final: nobody else is asked. */
+  autonomous?: boolean
   /** Extras the agent may add after booking: "Chauffeur (chauffeur): AED 800 a day". */
   addOns?: readonly string[]
   /**
@@ -863,6 +865,27 @@ export function systemPromptFor(input: {
       + `these offers before the price has been questioned.`
 
   /**
+   * Autonomous: the agent's answer on price is the last word.
+   *
+   * Otherwise a second push, or wanting more than the tier, goes to a manager,
+   * and the customer waits for somebody the operator has said is not needed.
+   * Here the agent closes it the way a salesperson without authority to go
+   * lower would: warmly, with what is genuinely available.
+   */
+  const finalWordOnPrice = input.autonomous !== true
+    ? ''
+    : `\n\nNobody else decides prices here: your answer on price is final, so never say you will ask a `
+      + `colleague or a manager about a discount. `
+      + (input.discounts === undefined || input.discounts.length === 0
+        ? `There is no discount to give. When the price is the objection, say warmly that this is the `
+          + `best price, and offer a car that costs less and is available on the same dates.`
+        : `When they push for more than offer_discount gave, or their rental reaches no tier, say warmly `
+          + `that this is the best you can do — and, if it is true for them, which tier a longer rental `
+          + `would reach (${input.discounts.map((d) => `${d.percent}% off ${d.minDays}+ days`).join(', ')}), `
+          + `and a car that costs less and is available on the same dates. Never offer a figure outside `
+          + `those tiers.`)
+
+  /**
    * A returning customer, remembered the way a person would remember them.
    *
    * Once, early, and without reciting their file: "good to have you back" is a
@@ -944,7 +967,7 @@ export function systemPromptFor(input: {
         : `Then ask them to confirm. You cannot book anything yourself and must not say it is `
           + `booked.`)
 
-  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${returning}${settlesItself}${ageRule}${objection}${extras}${confirming}${bring}
+  return `${SYSTEM_PROMPT}${alreadySeen}${nothingToShow}${onHand}${named}${heard}${comparing}${remembered}${alongside}${priced}${outstanding}${onTheBooks}${followThrough}${returning}${settlesItself}${ageRule}${objection}${finalWordOnPrice}${extras}${confirming}${bring}
 
 Today is ${today} in the operator's timezone (${input.timezone}), which is ${iso}.
 Resolve every relative date against that — "tomorrow", "this weekend", "the 20th" — and record the resolved YYYY-MM-DD. A bare day number means the next one still to come.

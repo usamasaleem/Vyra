@@ -1270,6 +1270,7 @@ export async function runConversationTurn(
       ...(holds === undefined ? {} : { holds }),
       ...(minimumAge === undefined ? {} : { minimumAge }),
       ...(context.operator.discountTiers.length === 0 ? {} : { discounts: context.operator.discountTiers }),
+      ...(context.operator.autonomous ? { autonomous: true } : {}),
       ...(returning === undefined ? {} : { returning }),
       ...(context.operator.addOns.length === 0 ? {} : {
         addOns: context.operator.addOns.map((a) =>
@@ -2062,7 +2063,13 @@ const PHOTOS_PER_CAR = 6
     .slice(0, -1)
     .some((m) => m.direction === 'inbound' && m.body !== null && detectDiscountRequest(m.body) !== null)
   const firstTryIsTheAgents = context.operator.discountTiers.length > 0 && !askedBefore
-  if (discount !== null && !standingOfferApplied && !firstTryIsTheAgents) {
+  /**
+   * Autonomous: the agent's answer is the answer. It has the tiers, the tier
+   * more days would reach, and a cheaper car; beyond those it says no warmly,
+   * the way a salesperson with no authority to go lower would. Nobody is
+   * asked, because the operator decided in advance that nobody needs to be.
+   */
+  if (discount !== null && !standingOfferApplied && !firstTryIsTheAgents && !context.operator.autonomous) {
     await raiseHandoff(deps.run, {
       operatorId: context.operator.id,
       conversationId: context.conversation.id,

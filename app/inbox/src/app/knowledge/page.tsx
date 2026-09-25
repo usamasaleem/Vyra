@@ -73,6 +73,9 @@ const STARTERS: Record<string, string> = {
     'You can pay by bank transfer to ___ (IBAN ___), by the payment link we send you, or by card '
     + 'or cash when the car is delivered. For a transfer, please send a screenshot once it is '
     + 'done so we can match it.',
+  cancellation:
+    'Cancel more than ___ before the handover and it is free. Inside that, ___. Changing the dates '
+    + 'is free while the car is available for the new ones.',
   'driver-requirements-resident':
     'You will need your Emirates ID and your UAE driving licence, both in the driver\u2019s own '
     + 'name. Minimum age for this car is ___, and the licence must have been held for at least '
@@ -107,6 +110,10 @@ const TOPIC_LABELS: Record<string, { question: string; placeholder: string }> = 
   'collection-point': {
     question: 'Where do customers collect the car?',
     placeholder: 'The address, a map link, where to park, and anything they should do on arrival.',
+  },
+  cancellation: {
+    question: 'What happens if a customer cancels or changes the dates?',
+    placeholder: 'How much notice for a free cancellation, what is kept inside that, and whether date changes cost anything.',
   },
   'business-hours': {
     question: 'When are you open, and what happens to a message out of hours?',

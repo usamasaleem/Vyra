@@ -28,6 +28,7 @@ const DESTINATIONS = [
   { key: 'team', href: '/team', label: 'Team' },
   { key: 'alerts', href: '/alerts', label: 'Alerts' },
   { key: 'settings', href: '/settings', label: 'Settings' },
+  { key: 'autonomy', href: '/autonomy', label: 'Autonomous' },
   { key: 'setup', href: '/setup', label: 'Setup' },
 ] as const
 

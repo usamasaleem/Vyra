@@ -49,6 +49,11 @@ export const POLICY_TOPICS = [
    * account number is the operator's and never the agent's to compose.
    */
   'payment',
+  /**
+   * What happens when they cancel or change their mind — the question somebody
+   * asks right before paying a deposit on a car worth more than their own.
+   */
+  'cancellation',
 ] as const
 
 export type PolicyTopic = (typeof POLICY_TOPICS)[number]

@@ -82,6 +82,9 @@ const NOT_YET_PUBLISHED: Record<string, string> = {
   'delivery-areas':
     'We deliver anywhere in Dubai for free, and collect from the same place at the end. Sharjah and Abu '
     + 'Dhabi are AED 300 each way. The car may be driven anywhere in the UAE, but not across the border.',
+  cancellation:
+    'Cancel more than 48 hours before the handover and it is free. Inside 48 hours the first day is kept. '
+    + 'Changing the dates is free while the car is available for the new ones.',
   'collection-point':
     'Collect the car from our showroom at Al Quoz Industrial 3, Street 17 (pin: maps.app.goo.gl/vyra). '
     + 'Please message us here when you are 10 minutes away so the car is ready.',

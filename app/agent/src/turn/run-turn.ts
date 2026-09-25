@@ -106,6 +106,8 @@ export type RunTurnOptions = {
   minimumAge?: number
   /** The operator's standing discounts, when there are any. */
   discounts?: ReadonlyArray<{ minDays: number; percent: number }>
+  /** The operator lets the agent sell without waiting on anyone. */
+  autonomous?: boolean
   /** Extras the agent may add after booking: "Chauffeur (chauffeur): AED 800 a day". */
   addOns?: readonly string[]
   /** Somebody who has rented before. See systemPromptFor. */
@@ -196,6 +198,7 @@ export async function runTurn(
       ...(options.holds === undefined ? {} : { holds: options.holds }),
       ...(options.minimumAge === undefined ? {} : { minimumAge: options.minimumAge }),
       ...(options.discounts === undefined ? {} : { discounts: options.discounts }),
+      ...(options.autonomous === true ? { autonomous: true } : {}),
       ...(options.addOns === undefined ? {} : { addOns: options.addOns }),
       ...(options.returning === undefined ? {} : { returning: options.returning }),
       ...(options.known === undefined ? {} : { known: options.known }),

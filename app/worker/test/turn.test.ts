@@ -403,6 +403,18 @@ describe('a customer asking for a discount', () => {
     expect(handoffs).toHaveLength(1)
   })
 
+  /** Autonomous: the operator decided nobody needs asking, so nobody is. */
+  it('does not hand it to a person when the operator runs autonomously', async () => {
+    const ctx = await askForDiscount('can you do 3000 for the weekend instead?')
+    const autonomous = { ...ctx, operator: { ...ctx.operator, autonomous: true } }
+    await turn(
+      [{ toolCalls: [], reply: 'AED 5,000 a day is the best I can do on the 488, I am afraid.' }],
+      'send',
+      autonomous,
+    )
+    expect(await run(`select id from handoffs where conversation_id = $1`, [CONV])).toHaveLength(0)
+  })
+
   it('leaves an ordinary price question alone', async () => {
     const ctx = await askForDiscount('what is your cheapest car?')
     await turn([{ toolCalls: [], reply: 'The Ferrari 488 Spider is AED 5,000 per day.' }], 'send', ctx)

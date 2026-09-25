@@ -156,6 +156,14 @@ export const operators = pgTable('operators', {
      */
     handoverNoticeMinutes: integer(),
     /**
+     * The agent sells and books without waiting on a person: a discount ask
+     * beyond the tiers is answered rather than handed over. Turned on only
+     * when the readiness checklist is complete, and by a named person.
+     */
+    autonomous: boolean().notNull().default(false),
+    autonomousSetByMembershipId: uuid(),
+    autonomousSetAt: timestamp({ withTimezone: true }),
+    /**
      * What the agent may take off by itself when the price is the objection:
      * [{ "minDays": 5, "percent": 10 }, ...]. The best tier a rental reaches
      * applies. Null or empty: any money off goes to a person.

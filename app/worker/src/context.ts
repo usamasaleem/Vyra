@@ -43,6 +43,8 @@ export type ConversationContext = {
     holdMinutes: number | null
     /** Money off the agent may give by itself when the price is the objection. */
     discountTiers: Array<{ minDays: number; percent: number }>
+    /** Sells and books without waiting on a person; a discount beyond the tiers is answered, not handed over. */
+    autonomous: boolean
     /** Extras the agent may add to a booking, at the operator's price. */
     addOns: Array<{ id: string; name: string; priceMinor: number; per: 'day' | 'rental' }>
     policyVersion: number
@@ -86,7 +88,7 @@ const CONTEXT_SQL = `
   select
     o.id as operator_id, o.name as operator_name, o.timezone, o.website_url, o.service_hours,
     o.response_expectation, o.ai_sending_enabled, o.policy_version,
-    o.auto_confirm_bookings, o.availability_calendar_complete, o.hold_minutes, o.discount_tiers,
+    o.auto_confirm_bookings, o.availability_calendar_complete, o.hold_minutes, o.discount_tiers, o.autonomous,
     o.add_ons,
     v.id as conversation_id, v.revision, v.handler_mode, v.sales_stage,
     v.summary, v.summary_through_count,
@@ -150,6 +152,7 @@ export async function loadConversationContext(
       holdMinutes: row['hold_minutes'] != null && row['availability_calendar_complete'] === true
         ? Number(row['hold_minutes']) : null,
       discountTiers: (row['discount_tiers'] as Array<{ minDays: number; percent: number }> | null) ?? [],
+      autonomous: row['autonomous'] === true,
       addOns: (row['add_ons'] as Array<{ id: string; name: string; priceMinor: number; per: 'day' | 'rental' }> | null) ?? [],
       policyVersion: Number(row['policy_version']),
     },
