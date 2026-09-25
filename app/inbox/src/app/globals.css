@@ -53,6 +53,19 @@ a { color: var(--accent); }
   border-radius: 10px; padding: 1.25rem;
 }
 
+/* Anything a customer or colleague typed wraps rather than widening the page.
+   Live: a customer pasted a 784-character link and every message in the
+   conversation grew past the edge of the screen, cutting the replies off.
+   min-width: 0 lets a card shrink inside a grid or flex row, which by default
+   refuses to go narrower than its longest word. */
+.card, .notice { overflow-wrap: anywhere; min-width: 0; }
+img, video, audio { max-width: 100%; }
+
+@media (max-width: 40rem) {
+  .shell { padding: 1.25rem 0.85rem 3rem; }
+  .card { padding: 0.9rem; }
+}
+
 .label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
 .input {
   width: 100%; padding: 0.55rem 0.7rem; font: inherit;

@@ -147,7 +147,7 @@ export default async function ConversationPage({
                 <select
                   className="input" id="assignee" name="assignee"
                   defaultValue={thread.ownerMembershipId ?? ''}
-                  style={{ minWidth: '14rem' }}
+                  style={{ minWidth: 'min(14rem, 100%)' }}
                 >
                   <option value="">Nobody</option>
                   {members.map((m) => (
@@ -188,7 +188,7 @@ export default async function ConversationPage({
           <h2 style={{ fontSize: '0.9rem', color: 'var(--muted)', fontWeight: 500 }}>
             Internal notes
           </h2>
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '0.5rem' }}>
             {notes.map((n) => (
               <article key={n.id} className="card" style={{ borderStyle: 'dashed' }}>
                 <div className="muted" style={{ fontSize: '0.75rem', marginBottom: '0.3rem' }}>
@@ -202,7 +202,7 @@ export default async function ConversationPage({
         </section>
       )}
 
-      <section style={{ display: 'grid', gap: '0.6rem', marginBottom: '2rem' }}>
+      <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '0.6rem', marginBottom: '2rem' }}>
         {thread.messages.map((m) => {
           const outbound = m.direction === 'outbound'
           const problem = m.deliveryState === 'failed' || m.deliveryState === 'unknown'
@@ -211,8 +211,9 @@ export default async function ConversationPage({
               key={m.id}
               className="card"
               style={{
-                marginLeft: outbound ? '3rem' : 0,
-                marginRight: outbound ? 0 : '3rem',
+                // Less of an indent on a phone, where 3rem is a fifth of the screen.
+                marginLeft: outbound ? 'min(3rem, 10%)' : 0,
+                marginRight: outbound ? 0 : 'min(3rem, 10%)',
                 borderColor: problem ? 'var(--danger)' : undefined,
               }}
             >
@@ -245,7 +246,7 @@ export default async function ConversationPage({
                           <img
                             src={`/api/media/${m.id}`}
                             alt="Sent by the customer"
-                            style={{ maxWidth: '20rem', borderRadius: 6, display: 'block' }}
+                            style={{ maxWidth: 'min(20rem, 100%)', borderRadius: 6, display: 'block' }}
                           />
                         </a>
                       ) : (

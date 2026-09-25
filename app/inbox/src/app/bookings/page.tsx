@@ -226,7 +226,7 @@ export default async function BookingsPage() {
                   </a>
                 </div>
                 {b.checklist !== null && (
-                  <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.25rem 0.9rem', margin: '0.7rem 0 0', fontSize: '0.9rem' }}>
+                  <dl style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', gap: '0.25rem 0.9rem', margin: '0.7rem 0 0', fontSize: '0.9rem' }}>
                     {b.checklist.deliveryWanted && (
                       <>
                         <dt className="muted">Delivery</dt>
