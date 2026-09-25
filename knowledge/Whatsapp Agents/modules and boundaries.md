@@ -4,6 +4,17 @@ Vyra has three modules: the **Sales Agent**, the **Operations Agent**, and **Inv
 
 Decided by Usama on 26 September 2026.
 
+## The order we build in
+
+1. **Sales Agent** — now.
+2. **Inventory** — next. The Sales Agent is only as good as the car facts it quotes from, so these two must both be excellent before anything else.
+3. **Operations Agent** — after that.
+4. **Analytics** — the future, once the three are going well: trends, forecasting and pricing insight. Day-to-day reporting (today's revenue, bookings, cars out) stays with the Operations Agent; Analytics is the deeper data side.
+
+## The bar: a premium product
+
+Vyra is priced as a full end-to-end solution — around $500 to $1,000 a month per operator — not a cheap chatbot. Every module is built to that bar: it answers in seconds day and night, never invents a fact, never leaves a customer without a reply, handles a standard booking with nobody involved, and looks and feels as polished as the cars it rents.
+
 ## The one-sentence version
 
 - **Sales Agent** talks to **customers**. It turns an enquiry into a confirmed, paid booking and keeps the customer informed about their own booking.
