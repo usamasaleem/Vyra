@@ -1,3 +1,4 @@
+import { queueTemplateMessage, templateApproved } from '@vyra/db'
 import type { QueryRunner } from './relay.js'
 import { MetaApiError, MetaUnknownOutcomeError, type WhatsAppClient } from './whatsapp/client.js'
 
@@ -27,6 +28,10 @@ export type SendIntent = {
   replyImageUrl: string | null
   /** A labelled link, sent as a cta_url button. */
   replyLink: { label: string; url: string } | null
+  /** An approved template: allowed after 24 hours of silence, when nothing else is. */
+  template: { name: string; language: string; params: string[] } | null
+  /** The customer's WhatsApp name, for a template that greets them. */
+  recipientName: string | null
   /**
    * Meta's id for the earlier message this one quotes, resolved here rather
    * than stored.
@@ -130,7 +135,8 @@ export function checkEligibility(intent: SendIntent, now: Date): EligibilityVerd
   }
 
   const lastInbound = intent.lastCustomerMessageAt
-  if (lastInbound === null || now.getTime() - lastInbound.getTime() > CUSTOMER_SERVICE_WINDOW_MS) {
+  if (intent.template === null
+    && (lastInbound === null || now.getTime() - lastInbound.getTime() > CUSTOMER_SERVICE_WINDOW_MS)) {
     // An approved template is required out here. The MVP creates a task
     // instead of sending, rather than silently dropping the reply.
     return { allowed: false, reason: 'outside_customer_service_window' }
@@ -149,10 +155,10 @@ export type DispatchResult =
 const LOAD_INTENT_SQL = `
   select
     m.id, m.operator_id, m.conversation_id, m.body, m.kind, m.reply_buttons, m.reply_list, m.reply_image_url,
-    m.sent_by_membership_id, m.revision_at_send, m.reply_link,
+    m.sent_by_membership_id, m.revision_at_send, m.reply_link, m.template,
     q.provider_id as quotes_provider_id,
     v.revision, v.handler_mode, v.owner_membership_id, v.last_customer_message_at,
-    c.channel_identifier, c.opted_out_at,
+    c.channel_identifier, c.opted_out_at, c.display_name,
     a.phone_number_id
   from messages m
   -- The quoted message, if there is one and it actually reached Meta. A left
@@ -216,6 +222,8 @@ export async function dispatchMessage(
     replyList: (row['reply_list'] as SendIntent['replyList']) ?? null,
     replyImageUrl: (row['reply_image_url'] as string) ?? null,
     replyLink: (row['reply_link'] as SendIntent['replyLink']) ?? null,
+    template: (row['template'] as SendIntent['template']) ?? null,
+    recipientName: (row['display_name'] as string) ?? null,
     quotesProviderId: (row['quotes_provider_id'] as string) ?? null,
     sentByMembershipId: (row['sent_by_membership_id'] as string) ?? null,
     revisionAtSend: row['revision_at_send'] === null ? null : Number(row['revision_at_send']),
@@ -252,9 +260,18 @@ export async function dispatchMessage(
 
   const verdict = checkEligibility(intent, now)
   if (!verdict.allowed) {
+    /**
+     * Outside the 24 hours, with an approved template to reopen it: the
+     * customer is asked to reply, and a colleague's message is held rather
+     * than dropped — it goes out the moment they do. The agent's own reply is
+     * not held: by then it answers whatever they say next, fresh.
+     */
+    const reopened = verdict.reason === 'outside_customer_service_window'
+      && await reopenWithTemplate(run, intent, now).catch(() => false)
+    const held = reopened && intent.sentByMembershipId !== null
     await run(
       `update messages set delivery_state = 'cancelled', error_code = $2 where id = $1`,
-      [messageId, verdict.reason],
+      [messageId, held ? 'awaiting_customer_reply' : verdict.reason],
     )
     return { outcome: 'suppressed', reason: verdict.reason }
   }
@@ -270,6 +287,7 @@ export async function dispatchMessage(
       imageUrl: intent.replyImageUrl,
       link: intent.replyLink,
       quotesProviderId: intent.quotesProviderId,
+      template: intent.template,
     })
     await run(
       `update messages
@@ -339,4 +357,37 @@ export async function dispatchMessage(
 function toDateOrNull(value: unknown): Date | null {
   if (value === null || value === undefined) return null
   return value instanceof Date ? value : new Date(value as string)
+}
+
+/**
+ * "We have a reply for you — please reply to see it", once a day at most.
+ *
+ * The only honest way to reach somebody who went quiet: the template says
+ * there is something waiting, and their reply opens the window for it.
+ */
+async function reopenWithTemplate(run: QueryRunner, intent: SendIntent, now: Date): Promise<boolean> {
+  if (!(await templateApproved(run, { operatorId: intent.operatorId, key: 'reply_waiting' }))) return false
+  const [booking] = await run(
+    `select trim(v.make || ' ' || v.model) as vehicle from bookings b
+     join quotes q on q.id = b.quote_id and q.operator_id = b.operator_id
+     left join vehicles v on v.id = q.vehicle_id
+     where b.conversation_id = $1 and b.operator_id = $2 and b.state in ('requested', 'confirmed')
+     order by b.created_at desc limit 1`,
+    [intent.conversationId, intent.operatorId],
+  )
+  const about = booking?.['vehicle'] != null ? `${booking['vehicle'] as string} booking` : 'car rental enquiry'
+  await queueTemplateMessage(run, {
+    operatorId: intent.operatorId,
+    conversationId: intent.conversationId,
+    key: 'reply_waiting',
+    params: [firstName(intent.recipientName), about],
+    idempotencyKey: `reply-waiting:${intent.conversationId}:${now.toISOString().slice(0, 10)}`,
+  })
+  return true
+}
+
+/** "James Carter" to "James"; a WhatsApp name that is not a name reads as "there". */
+export function firstName(displayName: string | null): string {
+  const first = (displayName ?? '').trim().split(/\s+/)[0] ?? ''
+  return /^\p{L}[\p{L}'-]{0,30}$/u.test(first) ? first : 'there'
 }

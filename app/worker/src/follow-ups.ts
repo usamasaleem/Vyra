@@ -1,8 +1,9 @@
 import { BOOKING_NOW, BOOKING_NOW_OR_HOLD } from '@vyra/contracts'
 import {
   cancelFollowUpsWaitingOnTheTeam, findDueFollowUps, followUpFacts, markFollowUpNeedsAPerson, markFollowUpSent, queueOutboundText,
-  raiseHandoff, scheduleFollowUp, type QueryRunner,
+  queueTemplateMessage, raiseHandoff, scheduleFollowUp, templateApproved, type QueryRunner,
 } from '@vyra/db'
+import { firstName } from './dispatcher.js'
 
 /**
  * Sending the chases that have come due.
@@ -68,6 +69,34 @@ export async function sendDueFollowUps(
   let rescheduled = 0
 
   for (const item of due) {
+    /**
+     * Past the 24 hours, the car they were quoted is offered once more in the
+     * approved template — only while it is genuinely still available. Nothing
+     * else is allowed out there, and a car that has gone is not worth a
+     * message nobody asked for.
+     */
+    if (!item.insideWindow && await templateApproved(run, { operatorId: item.operatorId, key: 'quote_follow_up' })) {
+      const facts = await followUpFacts(run, { operatorId: item.operatorId, conversationId: item.conversationId }).catch(() => null)
+      if (facts !== null && (facts.state === 'available' || facts.state === 'held')) {
+        const [who] = await run(
+          `select c.display_name from conversations v join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
+           where v.id = $1 and v.operator_id = $2`, [item.conversationId, item.operatorId])
+        const queued = await queueTemplateMessage(run, {
+          operatorId: item.operatorId,
+          conversationId: item.conversationId,
+          key: 'quote_follow_up',
+          params: [firstName((who?.['display_name'] as string) ?? null), facts.vehicle, facts.dates],
+          idempotencyKey: `followup:${item.id}`,
+        })
+        await markFollowUpSent(run, {
+          followUpId: item.id, operatorId: item.operatorId, body: `template: quote_follow_up`, messageId: queued.messageId,
+        })
+        sent++
+        log({ event: 'followup.sent', followUp: item.id, conversation: item.conversationId, as: 'template' })
+        continue
+      }
+    }
+
     const blocked =
       item.approvedPolicy === null
         ? 'no approved follow-up policy is published'

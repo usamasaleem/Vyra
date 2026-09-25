@@ -287,7 +287,13 @@ export default async function ConversationPage({
                   check before sending it again.
                 </p>
               )}
-              {m.deliveryState === 'cancelled' && (
+              {m.deliveryState === 'cancelled' && m.errorCode === 'awaiting_customer_reply' && (
+                <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 0 }}>
+                  Held: they have been quiet for over 24 hours, so WhatsApp only allows a template. We
+                  sent one asking them to reply, and this goes out the moment they do.
+                </p>
+              )}
+              {m.deliveryState === 'cancelled' && m.errorCode !== 'awaiting_customer_reply' && (
                 <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 0 }}>
                   Not sent: {m.errorCode?.replace(/_/g, ' ')}
                 </p>

@@ -1,3 +1,4 @@
+import { TEMPLATES } from '@vyra/contracts'
 import type { QueryRunner } from '../runner.js'
 import { getSetupState, type SetupStep } from './setup.js'
 
@@ -15,6 +16,8 @@ import { getSetupState, type SetupStep } from './setup.js'
  * messages after 24 hours of silence. An operator switching on should know
  * exactly what still reaches their team.
  */
+const TEMPLATE_COUNT = Object.keys(TEMPLATES).length
+
 export type ReadinessItem = SetupStep & {
   /** Shown so nobody is surprised, never blocking: the automation does not exist yet. */
   later?: true
@@ -39,6 +42,7 @@ export async function getAutonomyState(run: QueryRunner, operatorId: string): Pr
     `select o.autonomous, o.autonomous_set_at, o.auto_check_documents, o.auto_confirm_bookings, o.auto_confirm_limit_minor,
             o.auto_confirm_max_days, o.hold_minutes, jsonb_array_length(coalesce(o.discount_tiers, '[]'::jsonb)) as tiers,
             coalesce(m.display_name, m.id::text) as set_by,
+            (select count(*)::int from whatsapp_templates t where t.operator_id = o.id and t.status = 'APPROVED') as templates_approved,
             (select count(*)::int from push_subscriptions s
               join memberships p on p.id = s.membership_id and p.active and p.role <> 'operations'
               where s.operator_id = o.id) as alert_devices
@@ -119,10 +123,13 @@ export async function getAutonomyState(run: QueryRunner, operatorId: string): Pr
       detail: 'Needs a payment provider.',
     },
     {
-      key: 'templates', later: true, blocking: false, done: false, href: null,
-      title: 'After 24 hours of silence, messages go to your team',
-      why: 'WhatsApp only allows a message outside the 24-hour window with a template Meta has approved. Until then the day-before message and late follow-ups become tasks.',
-      detail: 'Needs Meta business verification.',
+      key: 'templates',
+      title: 'WhatsApp templates approved by Meta',
+      why: 'After 24 hours of silence WhatsApp only allows an approved template. With them, the day-before and return reminders, a follow-up on a price, and a colleague\u2019s late reply all still reach the customer; without them each becomes a task.',
+      done: n('templates_approved') >= TEMPLATE_COUNT,
+      detail: `${n('templates_approved')} of ${TEMPLATE_COUNT} approved.`,
+      href: null,
+      blocking: false,
     },
   ]
 

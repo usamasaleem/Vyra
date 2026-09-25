@@ -19,6 +19,9 @@ import { formatMoney } from './quotes.js'
  */
 export type FollowUpFacts = {
   text: string
+  /** The car and the dates, plainly, for a follow-up sent as a template. */
+  vehicle: string
+  dates: string
   /** What the car is doing now, which decides the buttons under the chase. */
   state: 'available' | 'held' | 'taken' | 'unknown'
 }
@@ -68,7 +71,7 @@ export async function followUpFacts(
     const when = civil(hold.until) === civil(input.now ?? new Date()) ? `${time} today` : `${time} tomorrow`
     return {
       text: `*${vehicle}*, ${dates} — ${price}. Still held for you until ${when}.`,
-      state: 'held',
+      state: 'held', vehicle, dates,
     }
   }
 
@@ -84,11 +87,11 @@ export async function followUpFacts(
     return {
       text: `The *${vehicle}* has since been booked for ${dates}. Tell me other dates, or I can `
         + 'suggest another car.',
-      state: 'taken',
+      state: 'taken', vehicle, dates,
     }
   }
   if (calendar.state === 'free') {
-    return { text: `*${vehicle}*, ${dates} — ${price}. Still available.`, state: 'available' }
+    return { text: `*${vehicle}*, ${dates} — ${price}. Still available.`, state: 'available', vehicle, dates }
   }
-  return { text: `*${vehicle}*, ${dates} — ${price}.`, state: 'unknown' }
+  return { text: `*${vehicle}*, ${dates} — ${price}.`, state: 'unknown', vehicle, dates }
 }

@@ -8,11 +8,12 @@ import { reapStaleDispatching } from './failures.js'
 import {
   purgeExpiredConversations, releaseExpiredHolds,
   escalateAbandonedConversations, escalateOverdueHandoffs, findSendingCredentials,
-  resumeAbandonedConversations,
+  resumeAbandonedConversations, releaseHeldMessages,
 } from '@vyra/db'
 import { sendDueFollowUps } from './follow-ups.js'
 import { sendDueReminders } from './reminders.js'
 import { sendTeamAlerts, TEAM_ALERT_INTERVAL_MS } from './team-alerts.js'
+import { syncTemplates, TEMPLATE_SYNC_INTERVAL_MS } from './templates.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
@@ -216,6 +217,7 @@ const IDLE_INTERVAL_MS = 250
 const REAP_INTERVAL_MS = 60_000
 let lastReapAt = 0
 let lastAlertAt = 0
+let lastTemplateSyncAt = 0
 
 let running = true
 let relayInFlight: Promise<unknown> = Promise.resolve()
@@ -239,6 +241,14 @@ async function relayLoop(): Promise<void> {
         lastAlertAt = Date.now()
         await sendTeamAlerts(query, log).catch((error: unknown) => {
           log({ event: 'team_alert.error', error: messageOf(error) })
+        })
+      }
+
+      // What Meta says about each template: only an approved one is ever sent.
+      if (Date.now() - lastTemplateSyncAt > TEMPLATE_SYNC_INTERVAL_MS) {
+        lastTemplateSyncAt = Date.now()
+        await syncTemplates(query, clientFor, log).catch((error: unknown) => {
+          log({ event: 'templates.sync_failed', error: messageOf(error) })
         })
       }
 
@@ -563,6 +573,14 @@ const runner: Runner = await runWorker({
 
       const { context } = result
       let { handling } = result
+
+      // They wrote back: anything a colleague wrote while they were quiet goes out now.
+      if (context.message.kind !== 'reaction') {
+        const { released } = await releaseHeldMessages(query, {
+          operatorId: context.operator.id, conversationId: context.conversation.id,
+        }).catch(() => ({ released: 0 }))
+        if (released > 0) log({ event: 'held_messages.released', conversation: context.conversation.id, count: released })
+      }
       log({
         event: 'task.processed',
         jobId: helpers.job.id,

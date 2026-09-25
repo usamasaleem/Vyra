@@ -153,6 +153,8 @@ describe('what a chase says about the car', () => {
     expect(await followUpFacts(run, { operatorId: OP, conversationId: MINE })).toEqual({
       text: '*Ferrari 488 Spider*, Thursday 1 January to Saturday 3 January — AED 15,000. Still available.',
       state: 'available',
+      vehicle: 'Ferrari 488 Spider',
+      dates: 'Thursday 1 January to Saturday 3 January',
     })
   })
 

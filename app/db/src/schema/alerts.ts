@@ -102,3 +102,34 @@ export const pushKeys = pgTable(
   },
   () => [check('push_keys_single_row', sql`id = 1`)],
 )
+
+/**
+ * The templates submitted to Meta for one operator, and what Meta said.
+ *
+ * Synced from Meta rather than assumed: a template is only used while its
+ * status here is APPROVED, and a rejected or paused one quietly goes back to
+ * being a task for a person.
+ */
+export const whatsappTemplates = pgTable(
+  'whatsapp_templates',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    name: text().notNull(),
+    language: text().notNull(),
+    category: text().notNull(),
+    body: text().notNull(),
+    /** PENDING, APPROVED, REJECTED, PAUSED, DISABLED — Meta's words, as Meta sends them. */
+    status: text().notNull(),
+    providerTemplateId: text(),
+    rejectedReason: text(),
+    submittedAt: timestamp({ withTimezone: true }),
+    checkedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_templates_name_key').on(table.operatorId, table.name, table.language),
+  ],
+)

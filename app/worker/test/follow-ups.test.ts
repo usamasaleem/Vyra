@@ -226,4 +226,29 @@ describe('chasing more than once', () => {
     expect(await sendDueFollowUps(run, silently)).toMatchObject({ sent: 0 })
     expect(await chases()).toEqual([{ attempt: 1, state: 'cancelled' }])
   })
+
+  /**
+   * A day later, WhatsApp only allows a template. The car they were quoted is
+   * offered once more in it, while it is still available.
+   */
+  it('follows up with the approved template after 24 hours, while the car is available', async () => {
+    await run(`update operators set availability_calendar_complete = true where id = $1`, [OP])
+    await run(`update contacts set display_name = 'Elena Rossi'`, [])
+    await run(`update conversations set last_customer_message_at = now() - interval '2 days' where id = $1`, [CONV])
+    const [car] = await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate, chassis_number, provenance, confirmed_by)
+       values ($1, 'Rolls-Royce', 'Cullinan', 2023, 'Black', 'suv', 'R1', 'VR1', 'operator_confirmed', 'Owner') returning id`, [OP])
+    await run(
+      `insert into quotes (operator_id, conversation_id, vehicle_id, revision, state, total_minor, lines, start_date, end_date, days, valid_until)
+       values ($1, $2, $3, 1, 'draft', 1600000, '[]'::jsonb, now() + interval '5 days', now() + interval '7 days', 2, now() + interval '3 days')`,
+      [OP, CONV, car!['id']])
+    await run(`insert into whatsapp_templates (operator_id, name, language, category, body, status)
+               values ($1, 'vyra_quote_follow_up', 'en', 'MARKETING', 'b', 'APPROVED')`, [OP])
+    await scheduleDue(1)
+
+    expect(await sendDueFollowUps(run, silently)).toMatchObject({ sent: 1, raisedForAPerson: 0 })
+    const [m] = await run(`select kind::text as kind, body from messages where direction = 'outbound'`, [])
+    expect(m!['kind']).toBe('template')
+    expect(m!['body']).toMatch(/^Hello Elena, the Rolls-Royce Cullinan is still available for .+\. Would you like us to reserve it for you\?/)
+  })
 })

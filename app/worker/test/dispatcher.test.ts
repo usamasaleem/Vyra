@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkEligibility, dispatchMessage, type SendIntent } from '../src/dispatcher.ts'
+import { queueTemplateMessage, releaseHeldMessages } from '../../db/src/queries/templates.ts'
 import type { QueryRunner } from '../src/relay.ts'
 import { MetaApiError, MetaUnknownOutcomeError, type WhatsAppClient } from '../src/whatsapp/client.ts'
 
@@ -22,7 +23,7 @@ const baseIntent = (overrides: Partial<SendIntent> = {}): SendIntent => ({
   quotesProviderId: null,
   sentByMembershipId: null, revisionAtSend: 0, conversationRevision: 0,
   handlerMode: 'ai', ownerMembershipId: null, lastCustomerMessageAt: new Date(NOW.getTime() - 60_000),
-  recipient: '971500000001', optedOutAt: null, phoneNumberId: '111',
+  recipient: '971500000001', optedOutAt: null, phoneNumberId: '111', template: null, recipientName: null,
   ...overrides,
 })
 
@@ -148,7 +149,8 @@ describe('what may be sent at all', () => {
 describe('dispatching against the database', () => {
   const sending = (id = 'wamid.SENT'): WhatsAppClient => ({
     sendText: vi.fn(async () => ({ providerMessageId: id })),
-    showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null),
+    showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null), listTemplates: vi.fn(async () => []),
+      createTemplate: vi.fn(async () => ({ id: 't', status: 'PENDING', category: 'UTILITY' })),
   })
 
   const queueOutbound = async (fields: Record<string, unknown> = {}) => {
@@ -197,7 +199,52 @@ describe('dispatching against the database', () => {
     expect(await stateOf(id)).toMatchObject({ delivery_state: 'accepted', provider_id: 'wamid.REAL' })
     expect(client.sendText).toHaveBeenCalledWith({
       to: '971500000001', body: 'Here are two options.', buttons: null, list: null, imageUrl: null,
-      link: null, quotesProviderId: null,
+      link: null, quotesProviderId: null, template: null,
+    })
+  })
+
+  describe('after 24 hours of silence', () => {
+    const quiet = () => run(`update conversations set last_customer_message_at = now() - interval '2 days'`, [])
+    const approve = (name: string) => run(
+      `insert into whatsapp_templates (operator_id, name, language, category, body, status)
+       values ($1, $2, 'en', 'UTILITY', 'b', 'APPROVED')`, [OPERATOR, name])
+
+    it('sends an approved template, which is allowed out there', async () => {
+      await quiet()
+      const { messageId } = await queueTemplateMessage(run, {
+        operatorId: OPERATOR, conversationId: CONVERSATION, key: 'handover_reminder',
+        params: ['James', 'Ferrari 488 Spider', 'Friday 26 September', 'We will deliver it\nat 10:00.'], idempotencyKey: 'r1',
+      })
+      const client = sending()
+      expect(await dispatchMessage(run, client, messageId!)).toMatchObject({ outcome: 'sent' })
+      expect(client.sendText).toHaveBeenCalledWith(expect.objectContaining({
+        template: { name: 'vyra_handover_reminder', language: 'en', params: ['James', 'Ferrari 488 Spider', 'Friday 26 September', 'We will deliver it at 10:00.'] },
+      }))
+      const [m] = await run(`select body from messages where id = $1`, [messageId])
+      expect(m!['body']).toBe('Hello James, a reminder that your Ferrari 488 Spider rental starts tomorrow, Friday 26 September. We will deliver it at 10:00. If anything has changed, just reply to this message.')
+    })
+
+    it('holds a colleague\'s message, asks the customer to reply, and sends it when they do', async () => {
+      await quiet()
+      await approve('vyra_reply_waiting')
+      await run(`update contacts set display_name = 'James Carter'`, [])
+      const id = await queueOutbound({ sentBy: MEMBERSHIP, revisionAtSend: null, body: 'Yes, Oman is fine with the permit.' })
+      expect(await dispatchMessage(run, sending(), id)).toMatchObject({ outcome: 'suppressed' })
+      expect((await stateOf(id)).error_code).toBe('awaiting_customer_reply')
+      const [asked] = await run(`select body, kind::text as kind from messages where kind = 'template'`, [])
+      expect(asked).toEqual({ kind: 'template', body: 'Hello James, we have a reply for you about your car rental enquiry. Please reply to this message to see it.' })
+
+      await run(`update conversations set last_customer_message_at = now()`, [])
+      expect(await releaseHeldMessages(run, { operatorId: OPERATOR, conversationId: CONVERSATION })).toEqual({ released: 1 })
+      expect(await dispatchMessage(run, sending('wamid.LATE'), id)).toMatchObject({ outcome: 'sent' })
+    })
+
+    it('drops nothing silently without a template: it is cancelled as before', async () => {
+      await quiet()
+      const id = await queueOutbound({ sentBy: MEMBERSHIP, revisionAtSend: null })
+      await dispatchMessage(run, sending(), id)
+      expect((await stateOf(id)).error_code).toBe('outside_customer_service_window')
+      expect(await run(`select id from messages where kind = 'template'`, [])).toEqual([])
     })
   })
 
@@ -220,7 +267,7 @@ describe('dispatching against the database', () => {
 
     expect(client.sendText).toHaveBeenCalledWith({
       to: '971500000001', body: '20th to 23rd September — that right?', buttons, list: null, imageUrl: null,
-      link: null, quotesProviderId: null,
+      link: null, quotesProviderId: null, template: null,
     })
   })
 
@@ -270,7 +317,8 @@ describe('dispatching against the database', () => {
   it('records an ambiguous send as unknown', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
-      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null),
+      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null), listTemplates: vi.fn(async () => []),
+      createTemplate: vi.fn(async () => ({ id: 't', status: 'PENDING', category: 'UTILITY' })),
       sendText: vi.fn(async () => { throw new MetaUnknownOutcomeError('socket hang up') }),
     }
     const result = await dispatchMessage(run, client, id)
@@ -284,7 +332,8 @@ describe('dispatching against the database', () => {
   it('does not re-send a message whose outcome is unknown', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
-      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null),
+      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null), listTemplates: vi.fn(async () => []),
+      createTemplate: vi.fn(async () => ({ id: 't', status: 'PENDING', category: 'UTILITY' })),
       sendText: vi.fn(async () => { throw new MetaUnknownOutcomeError('timeout') }),
     }
     await dispatchMessage(run, client, id)
@@ -295,7 +344,8 @@ describe('dispatching against the database', () => {
   it('returns a retryable failure to pending', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
-      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null),
+      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null), listTemplates: vi.fn(async () => []),
+      createTemplate: vi.fn(async () => ({ id: 't', status: 'PENDING', category: 'UTILITY' })),
       sendText: vi.fn(async () => { throw new MetaApiError('upstream', 503, null, true) }),
     }
     const result = await dispatchMessage(run, client, id)
@@ -309,7 +359,8 @@ describe('dispatching against the database', () => {
   it('marks a permanent rejection failed and leaves it alone', async () => {
     const id = await queueOutbound()
     const client: WhatsAppClient = {
-      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null),
+      showTyping: vi.fn(async () => {}), markRead: vi.fn(async () => {}), fetchMedia: vi.fn(async () => null), listTemplates: vi.fn(async () => []),
+      createTemplate: vi.fn(async () => ({ id: 't', status: 'PENDING', category: 'UTILITY' })),
       sendText: vi.fn(async () => { throw new MetaApiError('Invalid parameter', 400, 100, false) }),
     }
     const result = await dispatchMessage(run, client, id)

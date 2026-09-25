@@ -267,6 +267,12 @@ export const messages = pgTable(
      * it, so what was offered survives a retry and is readable in the inbox.
      */
     replyLink: jsonb().$type<{ label: string; url: string } | null>(),
+    /**
+     * Sent as an approved WhatsApp template rather than free text — the only
+     * way to write after 24 hours of silence. The body holds the rendered
+     * sentence for the inbox; this holds what Meta is sent.
+     */
+    template: jsonb().$type<{ name: string; language: string; params: string[] } | null>(),
 
     /**
      * The earlier message this one quotes, shown in a contextual bubble above

@@ -1,7 +1,8 @@
 import {
-  bookingChecklist, dueReminders, getApprovedAnswer, queueOutboundText, recordOutstandingWork,
-  reminderKey, renderHandoverFacts, renderReturnFacts, type QueryRunner,
+  bookingChecklist, dueReminders, getApprovedAnswer, queueOutboundText, queueTemplateMessage, recordOutstandingWork,
+  reminderKey, reminderTemplateFacts, renderHandoverFacts, renderReturnFacts, templateApproved, type QueryRunner,
 } from '@vyra/db'
+import { firstName } from './dispatcher.js'
 
 /**
  * Sending the day-before messages that have come due.
@@ -33,6 +34,31 @@ export async function sendDueReminders(
     const what = due.kind === 'handover-reminder'
       ? `remind them about the ${list.vehicle ?? 'car'} going out tomorrow`
       : `arrange the return of the ${list.vehicle ?? 'car'}, due back ${list.endDate ?? 'soon'}`
+
+    /**
+     * Past the 24 hours, the approved template goes instead — in our fixed
+     * wording with this booking's facts, which is what Meta allows. The
+     * operator's own message is only for inside the window.
+     */
+    if (!inside) {
+      const key = due.kind === 'handover-reminder' ? 'handover_reminder' as const : 'return_reminder' as const
+      if (await templateApproved(run, { operatorId: due.operatorId, key })) {
+        const [who] = await run(
+          `select c.display_name from conversations v join contacts c on c.id = v.contact_id and c.operator_id = v.operator_id
+           where v.id = $1 and v.operator_id = $2`, [due.conversationId, due.operatorId])
+        const facts = reminderTemplateFacts(list, due.kind)
+        await queueTemplateMessage(run, {
+          operatorId: due.operatorId,
+          conversationId: due.conversationId,
+          key,
+          params: [firstName((who?.['display_name'] as string) ?? null), list.vehicle ?? 'car', facts.day, facts.plan],
+          idempotencyKey: reminderKey(due),
+        })
+        sent += 1
+        log({ event: 'reminder.sent', kind: due.kind, booking: due.bookingId, as: 'template' })
+        continue
+      }
+    }
 
     const blocked = written === null
       ? `${what} — the ${due.kind === 'handover-reminder' ? 'day-before' : 'return'} message is not `

@@ -92,6 +92,8 @@ describe('schema v1 applies', () => {
       'vehicle_rates',
       'vehicles',
       'whatsapp_accounts',
+      // What Meta said about each template the agent may send after 24 hours.
+      'whatsapp_templates',
     ])
   })
 

@@ -146,3 +146,30 @@ export function nextQuestion(list: Checklist): string | null {
     case 'return_address': return 'Where should we collect the car from at the end — the same address?'
   }
 }
+
+/**
+ * The day and the one-line plan, for a reminder sent as a template.
+ *
+ * A template parameter is one line of plain text, so the reminder's facts are
+ * said as a sentence here rather than as the formatted block a free message
+ * carries.
+ */
+export function reminderTemplateFacts(
+  list: Checklist,
+  kind: 'handover-reminder' | 'return-reminder',
+): { day: string; plan: string } {
+  if (kind === 'handover-reminder') {
+    const time = list.deliveryTime === null ? '' : ` at ${list.deliveryTime}`
+    const plan = list.handover === 'delivery'
+      ? `We will deliver it${list.deliveryAddress === null ? '' : ` to ${list.deliveryAddress}`}${time}.`
+      : list.handover === 'collection'
+        ? `It will be ready for you to collect${time}.`
+        : 'Reply here to confirm the time and place of the handover.'
+    return { day: list.startDate === null ? 'tomorrow' : day(list.startDate), plan }
+  }
+  const time = list.returnTime === null ? '' : ` at ${list.returnTime}`
+  const plan = list.handover === 'delivery'
+    ? `We will collect it${list.returnAddress === null ? '' : ` from ${list.returnAddress}`}${time}.`
+    : list.returnTime === null ? 'Reply here with the time you will bring it back.' : `Please bring it back${time}.`
+  return { day: list.endDate === null ? 'tomorrow' : day(list.endDate), plan }
+}

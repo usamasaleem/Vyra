@@ -9,7 +9,8 @@
     "clean": "tsc -b --clean",
     "start": "node --env-file-if-exists=../inbox/.env.local dist/index.js",
     "failures": "tsx --env-file-if-exists=../inbox/.env.local src/cli/failures.ts",
-    "simulate": "tsx --env-file-if-exists=../inbox/.env.local src/cli/simulate.ts"
+    "simulate": "tsx --env-file-if-exists=../inbox/.env.local src/cli/simulate.ts",
+    "templates": "tsx --env-file-if-exists=../inbox/.env.local src/cli/templates.ts"
   },
   "dependencies": {
     "@vyra/agent": "*",

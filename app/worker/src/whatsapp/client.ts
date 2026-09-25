@@ -41,6 +41,11 @@ export type SendTextInput = {
   to: string
   body: string
   /**
+   * Send an approved template instead of free text — the only thing WhatsApp
+   * accepts after 24 hours of silence. Everything else on the input is ignored.
+   */
+  template?: { name: string; language: string; params: string[] } | null
+  /**
    * Reply buttons to offer, or nothing for an ordinary text message.
    *
    * Almost always nothing. Only two closed questions in this product earn a
@@ -125,6 +130,12 @@ export type SendTextResult = {
 
 export type WhatsAppClient = {
   sendText(input: SendTextInput): Promise<SendTextResult>
+  /** The templates on a WhatsApp Business account, with Meta's verdict on each. */
+  listTemplates(wabaId: string): Promise<Array<{ id: string; name: string; language: string; status: string; category: string; rejectedReason: string | null }>>
+  /** Submit one template for review. Meta answers with its id and a first status, usually PENDING. */
+  createTemplate(wabaId: string, template: {
+    name: string; language: string; category: string; body: string; example: string[]
+  }): Promise<{ id: string; status: string; category: string }>
   /**
    * Mark the customer's message read and show that a reply is being written.
    *
@@ -227,6 +238,41 @@ export function createWhatsAppClient(config: {
       await receipt(messageId, false)
     },
 
+    async listTemplates(wabaId) {
+      const response = await doFetch(
+        `https://graph.facebook.com/${config.apiVersion}/${wabaId}/message_templates?fields=id,name,language,status,category,rejected_reason&limit=200`,
+        { headers: { authorization: `Bearer ${config.accessToken}` }, signal: AbortSignal.timeout(timeoutMs) },
+      )
+      const body = await response.json() as {
+        data?: Array<{ id: string; name: string; language: string; status: string; category: string; rejected_reason?: string }>
+        error?: { message?: string }
+      }
+      if (!response.ok) throw new MetaApiError(body.error?.message ?? `HTTP ${response.status}`, response.status, null, false)
+      return (body.data ?? []).map((t) => ({
+        id: t.id, name: t.name, language: t.language, status: t.status, category: t.category,
+        rejectedReason: t.rejected_reason === undefined || t.rejected_reason === 'NONE' ? null : t.rejected_reason,
+      }))
+    },
+
+    async createTemplate(wabaId, template) {
+      const response = await doFetch(`https://graph.facebook.com/${config.apiVersion}/${wabaId}/message_templates`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${config.accessToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: template.name,
+          language: template.language,
+          category: template.category,
+          components: [{ type: 'BODY', text: template.body, example: { body_text: [template.example] } }],
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+      const body = await response.json() as { id?: string; status?: string; category?: string; error?: { message?: string; error_user_msg?: string } }
+      if (!response.ok || body.id === undefined) {
+        throw new MetaApiError(body.error?.error_user_msg ?? body.error?.message ?? `HTTP ${response.status}`, response.status, null, false)
+      }
+      return { id: body.id, status: body.status ?? 'PENDING', category: body.category ?? template.category }
+    },
+
     async fetchMedia({ mediaId }) {
       const authorized = { authorization: `Bearer ${config.accessToken}` }
       try {
@@ -260,7 +306,7 @@ export function createWhatsAppClient(config: {
       }
     },
 
-    async sendText({ to, body, buttons, list, imageUrl, link, quotesProviderId, flow }) {
+    async sendText({ to, body, buttons, list, imageUrl, link, quotesProviderId, flow, template }) {
       const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`
 
       /**
@@ -313,7 +359,22 @@ export function createWhatsAppClient(config: {
           ? { context: { message_id: quotesProviderId } }
           : {}
 
-      const payload = useFlow
+      const payload = template !== undefined && template !== null
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'template',
+            template: {
+              name: template.name,
+              language: { code: template.language },
+              components: template.params.length === 0 ? [] : [{
+                type: 'body',
+                parameters: template.params.map((text) => ({ type: 'text', text })),
+              }],
+            },
+          }
+        : useFlow
         ? {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
