@@ -112,9 +112,22 @@ export async function recordBookingProgressTool(
     return ok({ stillNeeded: missing.map((m) => ASK_FOR[m]), guidance: timeRefused })
   }
 
+  /**
+   * With Stripe connected, the link is made and sent by the system the moment
+   * this turn's reply goes — so the agent says it is coming, and never writes
+   * one of its own.
+   */
+  const [stripe] = args.paymentPlan === 'link'
+    ? await ctx.run(`select 1 from payment_accounts where operator_id = $1`, [ctx.operatorId]).catch(() => [])
+    : []
+  const linkComing = stripe !== undefined
+    ? 'A secure payment link for what they owe is sent to them automatically right after your reply: '
+      + 'say it is on its way in the next message. Never write a link yourself. '
+    : ''
+
   return ok({
     stillNeeded: missing.map((m) => ASK_FOR[m]),
-    guidance: wasOpen && nowReady
+    guidance: linkComing + (wasOpen && nowReady
       ? 'That is everything the handover needs. A summary of the whole booking is sent to them '
         + 'automatically straight after your reply, so do not list the details — thank them in a '
         + 'sentence'
@@ -122,6 +135,6 @@ export async function recordBookingProgressTool(
       : missing.length === 0 || onlyTheMoney
         ? 'Everything is in. Thank them in a few words and stop — do not ask for anything else.'
         : `Acknowledge what they gave in a few words, then ask for ${ASK_FOR[missing[0]!]}. One thing `
-          + 'at a time.',
+          + 'at a time.'),
   })
 }

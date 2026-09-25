@@ -92,10 +92,10 @@ describe('switching the agent to autonomous', () => {
     expect(await setAutonomous(run, { operatorId: OP, membershipId: MEMBER, on: false })).toEqual({ ok: true, on: false })
   })
 
-  it('says plainly what still reaches a person, without blocking on it', async () => {
-    const later = (await getAutonomyState(run, OP)).items.filter((i) => i.later === true)
-    expect(later.map((i) => i.key)).toEqual(['payments'])
-    expect(later.every((i) => !i.blocking)).toBe(true)
+  it('lists documents, payments and templates as improvements, never as blockers', async () => {
+    const items = (await getAutonomyState(run, OP)).items.filter((i) => ['documents', 'payments', 'templates'].includes(i.key))
+    expect(items.map((i) => i.key)).toEqual(['documents', 'payments', 'templates'])
+    expect(items.every((i) => !i.blocking)).toBe(true)
   })
 
   it('needs the cancellation answer like every other', async () => {

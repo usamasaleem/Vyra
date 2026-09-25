@@ -20,6 +20,7 @@ import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
 import { transcribeVoiceNote } from './transcribe-voice-note.js'
 import { describePhoto } from './describe-photo.js'
 import { documentChecker } from './document-check.js'
+import { paymentLinks } from './payment-links.js'
 import {
   openaiDocumentReader, openaiModel, openaiPhotoReader, openaiTranscriber, PROMPT_VERSION, resilientModel,
   type ModelAdapter, type PhotoReader, type Transcriber,
@@ -108,6 +109,15 @@ const whatsapp = createWhatsAppClient({
   apiVersion: env.WHATSAPP_API_VERSION,
   phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
   accessToken: env.WHATSAPP_ACCESS_TOKEN,
+})
+
+/**
+ * Stripe checkouts, for an operator who has connected Stripe. After payment
+ * Stripe sends the customer to a page on the inbox that sends them back here.
+ */
+const stripeLinks = paymentLinks({
+  run: query, keyMaterial: env.WHATSAPP_TOKEN_KEY, log,
+  successUrl: 'https://vyra-inbox.netlify.app/paid',
 })
 
 /** Licence and ID photos, read into fields for the automatic check. */
@@ -788,6 +798,7 @@ const runner: Runner = await runWorker({
           model,
           destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft',
           queueWaitMs,
+          paymentLinks: stripeLinks,
         },
         context,
       )

@@ -79,6 +79,8 @@ describe('schema v1 applies', () => {
       'operator_invitations',
       'operators',
       'outbox',
+      // An operator's own Stripe account, sealed like a WhatsApp token.
+      'payment_accounts',
       'payments',
       // One key pair for the whole deployment: push services check the sender,
       // not the operator. The only table without operator_id, on purpose.

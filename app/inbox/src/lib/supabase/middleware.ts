@@ -43,7 +43,8 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // authenticate yet. It grants no access to anybody's data on its own — a new
   // account is a member of nothing until it creates a company or accepts an
   // invitation, and both of those happen after Supabase has verified who it is.
-  const isPublic = path === '/login' || path === '/signup' || path.startsWith('/signup/')
+  // '/paid' is where Stripe sends a customer after paying: they have no account here.
+  const isPublic = path === '/login' || path === '/signup' || path.startsWith('/signup/') || path === '/paid'
 
   if (data.user === null && !isPublic) {
     /**

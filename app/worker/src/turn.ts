@@ -84,6 +84,7 @@ import {
 import type { QueryRunner, Transactor } from '@vyra/db'
 import type { ConversationContext } from './context.js'
 import type { CheckDocuments } from './document-check.js'
+import type { PaymentLinks } from './payment-links.js'
 
 /**
  * The AI turn — where every piece built for it finally meets.
@@ -746,6 +747,8 @@ export type TurnDependencies = {
    * and the wait is over by the time this function is entered.
    */
   queueWaitMs?: number | null
+  /** Makes and sends a Stripe payment link when the customer chose one; absent without Stripe. */
+  paymentLinks?: PaymentLinks
 }
 
 export async function runConversationTurn(
@@ -2260,6 +2263,17 @@ const PHOTOS_PER_CAR = 6
   const summarising = await activeBookingFor(deps.run, {
     operatorId: context.operator.id, conversationId: context.conversation.id,
   }).catch(() => null)
+  // They chose to pay by link: it goes now, before the summary that names it.
+  if (summarising !== null && deps.paymentLinks !== undefined && deps.destination === 'send') {
+    await deps.paymentLinks({
+      operatorId: context.operator.id, conversationId: context.conversation.id, bookingId: summarising,
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({
+        event: 'payment_link.failed', conversationId: context.conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+    })
+  }
   if (summarising !== null) {
     await sendBookingSummaryIfComplete(deps, {
       operatorId: context.operator.id, conversationId: context.conversation.id, bookingId: summarising,

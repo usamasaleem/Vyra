@@ -3,6 +3,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { memberships, operators } from './operators.js'
+import { boolean } from 'drizzle-orm/pg-core'
 
 /**
  * Telling a person, on their phone, that a customer is waiting on them.
@@ -133,3 +134,23 @@ export const whatsappTemplates = pgTable(
     uniqueIndex('whatsapp_templates_name_key').on(table.operatorId, table.name, table.language),
   ],
 )
+
+/**
+ * An operator's own payment account — Stripe — so payment links are made and
+ * payments confirmed without anybody attaching or ticking anything.
+ *
+ * The secret key and the webhook signing secret are sealed, like a WhatsApp
+ * token; what is shown is the last four characters and whether it is live.
+ */
+export const paymentAccounts = pgTable('payment_accounts', {
+  operatorId: uuid().primaryKey().references(() => operators.id, { onDelete: 'cascade' }),
+  provider: text().notNull(),
+  secretKeyCipher: text().notNull(),
+  secretKeyHint: text().notNull(),
+  webhookSecretCipher: text().notNull(),
+  webhookEndpointId: text().notNull(),
+  accountId: text().notNull(),
+  livemode: boolean().notNull(),
+  connectedByMembershipId: uuid(),
+  connectedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})

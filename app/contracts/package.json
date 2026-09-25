@@ -13,6 +13,10 @@
     "./secrets": {
       "types": "./dist/secrets.d.ts",
       "default": "./dist/secrets.js"
+    },
+    "./stripe": {
+      "types": "./dist/stripe.d.ts",
+      "default": "./dist/stripe.js"
     }
   },
   "scripts": {

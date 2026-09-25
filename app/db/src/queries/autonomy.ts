@@ -42,6 +42,7 @@ export async function getAutonomyState(run: QueryRunner, operatorId: string): Pr
     `select o.autonomous, o.autonomous_set_at, o.auto_check_documents, o.auto_confirm_bookings, o.auto_confirm_limit_minor,
             o.auto_confirm_max_days, o.hold_minutes, jsonb_array_length(coalesce(o.discount_tiers, '[]'::jsonb)) as tiers,
             coalesce(m.display_name, m.id::text) as set_by,
+            exists (select 1 from payment_accounts pa where pa.operator_id = o.id) as stripe,
             (select count(*)::int from whatsapp_templates t where t.operator_id = o.id and t.status = 'APPROVED') as templates_approved,
             (select count(*)::int from push_subscriptions s
               join memberships p on p.id = s.membership_id and p.active and p.role <> 'operations'
@@ -117,10 +118,13 @@ export async function getAutonomyState(run: QueryRunner, operatorId: string): Pr
       blocking: false,
     },
     {
-      key: 'payments', later: true, blocking: false, done: false, href: null,
-      title: 'Payments are still confirmed by a person',
-      why: 'The agent tells the customer how to pay and records what they say; a person marks it received. A payment provider would confirm it on its own.',
-      detail: 'Needs a payment provider.',
+      key: 'payments',
+      title: 'Connect Stripe for payment links',
+      why: 'The agent sends a secure checkout when a customer chooses to pay by link, and the booking is marked paid the moment the money arrives. Without it a person attaches every link and confirms every payment.',
+      done: row?.['stripe'] === true,
+      detail: row?.['stripe'] === true ? 'Connected.' : 'Not connected.',
+      href: '/settings/payments',
+      blocking: false,
     },
     {
       key: 'templates',

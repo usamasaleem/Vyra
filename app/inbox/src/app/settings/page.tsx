@@ -56,6 +56,14 @@ export default async function SettingsPage() {
         </Link>
       </section>
 
+      <section className="card" style={{ marginBottom: '1rem' }}>
+        <h2 style={{ fontSize: '1.05rem', marginTop: 0 }}>Payments</h2>
+        <p className="muted" style={{ fontSize: '0.8rem', margin: '0 0 0.6rem' }}>
+          Connect Stripe and the agent sends payment links itself, and payments confirm themselves.
+        </p>
+        <Link className="button secondary" href="/settings/payments">Stripe</Link>
+      </section>
+
       <SettingsForm
         settings={settings}
         retention={retention}

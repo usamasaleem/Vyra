@@ -379,6 +379,10 @@ export const payments = pgTable(
     method: paymentMethod(),
     /** Whatever the operator already uses. Null when nothing was sent. */
     linkUrl: text(),
+    /** The Stripe checkout behind linkUrl, which Stripe's payment notice names. */
+    linkSessionId: text(),
+    /** A checkout lasts 24 hours; after that a fresh one is made when it is needed. */
+    linkExpiresAt: timestamp({ withTimezone: true }),
     /** The provider's own id, for the day one is wired. */
     provider: text(),
     providerRef: text(),
