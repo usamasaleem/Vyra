@@ -34,3 +34,28 @@ export async function recordTranscript(
   )
   return { recorded: rows.length > 0 }
 }
+
+/**
+ * A photo, described in words, stored where its text would be.
+ *
+ * The same move as a voice note: once the message has words, the ordinary turn
+ * answers it. Marked in media so the inbox still shows the photo itself and
+ * anyone reading can tell the words were written by the system.
+ */
+export async function recordPhotoDescription(
+  run: QueryRunner,
+  input: { messageId: string; operatorId: string; text: string },
+): Promise<{ recorded: boolean }> {
+  const rows = await run(
+    `update messages
+     set body = $3, media = coalesce(media, '{}'::jsonb) || jsonb_build_object(
+           'described', true,
+           'describedAt', to_jsonb(now())
+         )
+     where id = $1 and operator_id = $2 and direction = 'inbound'
+       and kind = 'image' and body is null
+     returning id`,
+    [input.messageId, input.operatorId, input.text],
+  )
+  return { recorded: rows.length > 0 }
+}

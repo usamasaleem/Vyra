@@ -258,7 +258,28 @@ export default async function ConversationPage({
                   )}
                 </div>
               ) : (
-                <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+                <>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+                  {/*
+                    A photo described for the agent, or a voice note written
+                    out: the words are the system's reading, so the original is
+                    still here for a person to check against.
+                  */}
+                  {m.playable && m.kind === 'image' && (
+                    <a href={`/api/media/${m.id}`} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: '0.5rem' }}>
+                      <img
+                        src={`/api/media/${m.id}`}
+                        alt="Sent by the customer"
+                        style={{ maxWidth: 'min(20rem, 100%)', borderRadius: 6, display: 'block' }}
+                      />
+                    </a>
+                  )}
+                  {m.playable && m.kind === 'audio' && (
+                    <audio controls preload="none" style={{ width: '100%', maxWidth: '22rem', marginTop: '0.5rem' }}>
+                      <source src={`/api/media/${m.id}`} />
+                    </audio>
+                  )}
+                </>
               )}
               {m.deliveryState === 'unknown' && (
                 <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 0 }}>

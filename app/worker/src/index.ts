@@ -17,9 +17,10 @@ import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor }
 import { processInboundMessage } from './tasks/process-inbound-message.js'
 import { createWhatsAppClient, type WhatsAppClient } from './whatsapp/client.js'
 import { transcribeVoiceNote } from './transcribe-voice-note.js'
+import { describePhoto } from './describe-photo.js'
 import {
-  openaiModel, openaiTranscriber, PROMPT_VERSION,
-  type ModelAdapter, type Transcriber,
+  openaiModel, openaiPhotoReader, openaiTranscriber, PROMPT_VERSION, resilientModel,
+  type ModelAdapter, type PhotoReader, type Transcriber,
 } from '@vyra/agent'
 import {
   acknowledgeWaiting, greetIfNew, fileDocumentIfBooked, handleNonTextMessage, handleUrgentMessage,
@@ -53,11 +54,29 @@ const transact: Transactor = (fn) =>
 const model: ModelAdapter | null =
   env.OPENAI_API_KEY === undefined
     ? null
-    : openaiModel({
-        apiKey: env.OPENAI_API_KEY,
-        model: env.AI_MODEL,
-        effort: env.AI_REASONING_EFFORT,
-        serviceTier: env.AI_SERVICE_TIER,
+    : resilientModel({
+        primary: openaiModel({
+          apiKey: env.OPENAI_API_KEY,
+          model: env.AI_MODEL,
+          effort: env.AI_REASONING_EFFORT,
+          serviceTier: env.AI_SERVICE_TIER,
+        }),
+        /**
+         * Tried when the main model has failed twice or timed out, before a
+         * person is asked to take over. No service tier: the fast tier is a
+         * property of the main model's contract, and a backup that is refused
+         * for asking for it would be no backup at all.
+         */
+        fallback: env.AI_FALLBACK_MODEL === 'none' || env.AI_FALLBACK_MODEL === env.AI_MODEL
+          ? null
+          : openaiModel({
+              apiKey: env.OPENAI_API_KEY,
+              model: env.AI_FALLBACK_MODEL,
+              effort: env.AI_REASONING_EFFORT,
+              // A backup that waits a full minute too would double the silence.
+              timeoutMs: 45_000,
+            }),
+        onEvent: (event) => log(event),
       })
 
 /**
@@ -69,6 +88,10 @@ const model: ModelAdapter | null =
  */
 const transcriber: Transcriber | null =
   env.OPENAI_API_KEY === undefined ? null : openaiTranscriber({ apiKey: env.OPENAI_API_KEY })
+
+/** Photos, in words: the main model reads them, and a missing key costs only this. */
+const photoReader: PhotoReader | null =
+  env.OPENAI_API_KEY === undefined ? null : openaiPhotoReader({ apiKey: env.OPENAI_API_KEY, model: env.AI_MODEL })
 
 /**
  * The worker's own credentials, still used for one number.
@@ -502,6 +525,17 @@ const runner: Runner = await runWorker({
         })
       })
 
+      await describePhoto({
+        run: query, whatsapp, reader: photoReader, log,
+        messageId: (payload as { message_id?: unknown } | null)?.message_id,
+      }).catch((error: unknown) => {
+        log({
+          event: 'photo.failed',
+          jobId: helpers.job.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+
       const result = await processInboundMessage(
         query,
         (payload ?? {}) as Record<string, unknown>,
@@ -518,7 +552,8 @@ const runner: Runner = await runWorker({
         return
       }
 
-      const { context, handling } = result
+      const { context } = result
+      let { handling } = result
       log({
         event: 'task.processed',
         jobId: helpers.job.id,
@@ -602,19 +637,28 @@ const runner: Runner = await runWorker({
             messageKind: context.message.kind, autosend: env.AI_AUTOSEND_ENABLED, ...filed })
           return
         }
-        const routed = await handleNonTextMessage(
-          { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
-          context,
-        )
-        log({
-          event: 'turn.completed',
-          jobId: helpers.job.id,
-          conversation: context.conversation.id,
-          messageKind: context.message.kind,
-          autosend: env.AI_AUTOSEND_ENABLED,
-          ...routed,
-        })
-        return
+        /**
+         * A photo that is not for a booking, described in words: the agent
+         * answers it like any message. Only a photo nobody could read still
+         * goes to a person.
+         */
+        if (context.message.kind === 'image' && context.message.body !== null && DISPATCHER_AVAILABLE) {
+          handling = { action: 'draft', reason: 'ready_for_ai_turn' }
+        } else {
+          const routed = await handleNonTextMessage(
+            { run: query, transact, destination: env.AI_AUTOSEND_ENABLED ? 'send' : 'draft' },
+            context,
+          )
+          log({
+            event: 'turn.completed',
+            jobId: helpers.job.id,
+            conversation: context.conversation.id,
+            messageKind: context.message.kind,
+            autosend: env.AI_AUTOSEND_ENABLED,
+            ...routed,
+          })
+          return
+        }
       }
 
       /**

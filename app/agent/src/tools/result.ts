@@ -33,6 +33,12 @@ export const REFUSAL_REASONS = [
   'stale_subject',
   /** The tool would write, but there was nothing valid to write. */
   'nothing_to_do',
+  /**
+   * Something broke on our side — the database, a bug — while the tool ran.
+   * Not a refusal of the request: the thing simply did not happen, and a
+   * person is told. Named so it cannot be read as "not allowed".
+   */
+  'system_error',
 ] as const
 
 export type RefusalReason = (typeof REFUSAL_REASONS)[number]

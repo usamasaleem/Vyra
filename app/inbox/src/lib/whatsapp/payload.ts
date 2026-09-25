@@ -65,6 +65,16 @@ const messageSchema = z.object({
     mime_type: z.string().optional(),
   }).optional(),
   /**
+   * A shared pin. Unlisted until now, so the schema stripped it and a customer
+   * who sent the hotel's location to have the car delivered sent nothing at all.
+   */
+  location: z.object({
+    latitude: z.number(),
+    longitude: z.number(),
+    name: z.string().optional(),
+    address: z.string().optional(),
+  }).optional(),
+  /**
    * A tapped reply button. Meta sends the id we chose and the title the
    * customer saw; both matter, and the id is the one that cannot be mistyped.
    */
@@ -174,6 +184,9 @@ export function toMessageBody(message: InboundMessage): string | null {
    * is held for a person, which is the right outcome: the customer definitely
    * chose something and guessing which car would be worse than asking.
    */
+  const pin = message.location
+  if (pin !== undefined) return locationSentence(pin)
+
   const flow = message.interactive?.nfm_reply
   if (flow !== undefined) {
     const car = carChosenInFlow(flow.response_json)
@@ -194,5 +207,24 @@ export function toInboundKind(message: InboundMessage): string {
   // A finished Flow too, for the same reason: it is an answer to a question
   // the agent asked, and the non-text path would hold it for a person.
   if (message.interactive?.nfm_reply !== undefined) return 'text'
+  // A pin is somewhere the customer is telling us about, most often where to
+  // bring the car. As words, the agent reads it like any answer.
+  if (message.location !== undefined) return 'text'
   return toMessageKind(message.type)
+}
+
+/**
+ * A pin as the sentence the agent reads and the salesperson sees.
+ *
+ * The map link rides along so whoever delivers the car can open the exact
+ * spot, which a hotel name alone does not give them.
+ */
+export function locationSentence(pin: {
+  latitude: number; longitude: number; name?: string | undefined; address?: string | undefined
+}): string {
+  const place = [pin.name, pin.address].filter((p) => p !== undefined && p.trim() !== '').join(', ')
+  const map = `https://maps.google.com/?q=${pin.latitude},${pin.longitude}`
+  return place === ''
+    ? `Location pin shared: ${map}`
+    : `Location pin shared: ${place} — ${map}`
 }

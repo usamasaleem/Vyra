@@ -145,6 +145,14 @@ export const serverEnvSchema = z.object({
     .default('fast'),
 
   /**
+   * The model a turn falls back to when the main one has failed twice or timed
+   * out, before a person is asked to take over. A different family on purpose:
+   * one model's outage is rarely another's. `none` turns the fallback off.
+   * Measured on the simulated customers before being set as the default.
+   */
+  AI_FALLBACK_MODEL: z.string().default('gpt-5.5'),
+
+  /**
    * Whether an accepted reply is sent, or written as an internal note for a
    * person to read and send themselves.
    *

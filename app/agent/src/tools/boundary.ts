@@ -166,18 +166,28 @@ export function createToolBoundary(ctx: ToolContext, options: BoundaryOptions = 
     try {
       return record(await IMPLEMENTATIONS[name](ctx, parsed.data as never))
     } catch (error) {
-      // An infrastructure failure is not a refusal and must not be disguised as
-      // one. It is recorded so the turn's history is complete, then rethrown
-      // for the worker's failure handling (build plan step 28) to turn into a
-      // visible human task rather than silence.
-      history.push({
-        requestedName: name,
-        status: 'refused',
-        reason: null,
-        durationMs: clock() - started,
-        needsAPerson: null,
-      })
-      throw error
+      /**
+       * Something broke on our side. It used to be rethrown, and the whole
+       * turn died with it: live, a malformed date crashed prepare_quote, the
+       * customer who had just said "yes, confirm this booking" got no reply at
+       * all, and the conversation became "AI unavailable — reply manually".
+       *
+       * The worry that kept it a throw is right — the model must not be told
+       * something reassuring about a system that is broken. So this is not
+       * dressed as a refusal of the request. It says plainly that nothing
+       * happened, forbids saying otherwise, and puts it in front of a person,
+       * who gets the error; the customer gets an honest holding reply instead
+       * of silence.
+       */
+      const detail = error instanceof Error ? error.message : String(error)
+      return record(refuse(
+        'system_error',
+        `${name} failed because of a problem on our side, and NOTHING it was asked to do happened. `
+        + 'Do not call it again this turn, and do not say or imply that it worked. Tell the customer '
+        + 'you are checking this and a colleague will confirm shortly, then carry on with anything else '
+        + 'you can answer.',
+        `${name} failed with a system error, so the agent could not finish it: ${detail.slice(0, 200)}`,
+      ))
     }
   }
 

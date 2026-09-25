@@ -1161,18 +1161,22 @@ describe('the budget', () => {
 
 describe('infrastructure failure', () => {
   /**
-   * A database that is down is not a refusal. Disguising it as one would let a
-   * turn continue as though the answer were simply unavailable, and the model
-   * would tell the customer something reassuring about a system that is broken.
+   * A database that is down is not a refusal of the request, and the model
+   * must not be told something reassuring about a system that is broken. But
+   * a throw killed the whole turn and left the customer with nothing, so it is
+   * reported as what it is — nothing happened — and a person is told.
    */
-  it('propagates rather than reporting a refusal', async () => {
+  it('reports that nothing happened, and puts it in front of a person', async () => {
     const broken: ToolContext = {
       ...ctx,
       run: async () => { throw new Error('connection terminated unexpectedly') },
     }
     const boundary = createToolBoundary(broken)
-    await expect(boundary.call('get_operator_policy', { topic: 'deposit' })).rejects.toThrow(/connection terminated/)
-    expect(boundary.history).toHaveLength(1)
+    const result = await boundary.call('get_operator_policy', { topic: 'deposit' })
+    expect(result).toMatchObject({ status: 'refused', reason: 'system_error' })
+    expect((result as { detail: string }).detail).toMatch(/NOTHING it was asked to do happened/)
+    expect(result.needsAPerson).toMatch(/connection terminated unexpectedly/)
+    expect(boundary.history).toEqual([expect.objectContaining({ status: 'refused', reason: 'system_error' })])
   })
 })
 
