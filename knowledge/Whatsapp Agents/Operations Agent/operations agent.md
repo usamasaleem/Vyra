@@ -1,5 +1,7 @@
 # Vyra Operations Agent
 
+> **Superseded in part (26 September 2026):** fleet, availability and rates now belong to the Inventory module, and the Operations Agent talks to the team on WhatsApp and the dashboard. See [modules and boundaries](../modules%20and%20boundaries.md), which wins where the two disagree.
+
 ## Purpose
 
 The Operations Agent manages the rental business after a customer need has been captured by the Sales Agent. It owns the facts and workflows that make a vehicle deliverable, rentable, compliant, and operationally ready.
