@@ -1,5 +1,5 @@
 import {
-  boolean,  foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid,
+  boolean, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { operators, memberships } from './operators.js'
@@ -78,6 +78,60 @@ export const vehicleRates = pgTable(
     }),
     index('vehicle_rates_vehicle_current_idx').on(table.vehicleId, table.effectiveTo),
     unique('vehicle_rates_id_operator_key').on(table.id, table.operatorId),
+  ],
+)
+
+/**
+ * A stretch of dates when the operator charges more, or less.
+ *
+ * Dubai rental prices move with the calendar — December and the new year are
+ * dearer, the summer is cheaper — and a day rate alone cannot say that, so the
+ * agent quoted a December Ferrari at the price of a September one and a person
+ * had to correct it. A season is a percentage on top of whatever the rate
+ * works out to, not a second set of rates: the operator already has weekly
+ * and monthly tiers, and a season is how they bend, not a replacement for
+ * them.
+ *
+ * One car or every car. `vehicleId` null is the whole fleet; when both apply
+ * to a day, the car's own season wins, because it is the more specific thing
+ * somebody decided.
+ *
+ * Removed rather than deleted, like a rate superseded: a quote priced in a
+ * season has to stay explainable after the season is gone.
+ */
+export const rateSeasons = pgTable(
+  'rate_seasons',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    /** Null for every car. */
+    vehicleId: uuid(),
+
+    /** What the operator calls it — "Peak season", "Summer". Shown on the quote. */
+    name: text().notNull(),
+    /** Inclusive YYYY-MM-DD, like the calendar a rental is checked against. */
+    startDate: text().notNull(),
+    endDate: text().notNull(),
+    /** Whole percent: 20 is 20% more, -15 is 15% off. Never zero. */
+    percent: integer().notNull(),
+
+    /** Who set it, as with a rate. A price change nobody owns is not one. */
+    createdBy: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    removedBy: text(),
+    removedAt: timestamp({ withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.vehicleId, table.operatorId],
+      foreignColumns: [vehicles.id, vehicles.operatorId],
+      name: 'rate_seasons_vehicle_operator_fkey',
+    }).onDelete('cascade'),
+    check('rate_seasons_dates', sql`start_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' and end_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' and end_date >= start_date`),
+    check('rate_seasons_percent', sql`percent between -90 and 300 and percent <> 0`),
+    index('rate_seasons_live_idx').on(table.operatorId, table.startDate).where(sql`removed_at is null`),
   ],
 )
 

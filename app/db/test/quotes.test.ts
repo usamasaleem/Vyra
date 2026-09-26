@@ -8,6 +8,7 @@ import {
   listDraftQuotes, listRates, rejectQuote,
   renderQuoteMessage, setVehicleHighlight, setVehicleRate,
 } from '../src/queries/quotes.ts'
+import { addRateSeason, listRateSeasons, removeRateSeason } from '../src/queries/seasons.ts'
 import type { QueryRunner, Transactor } from '../src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
@@ -698,5 +699,142 @@ describe('the price the agent is told about', () => {
   it('is nothing when a person turned it down', async () => {
     await quoteFor(null, 'rejected')
     expect(await currentQuoteFor(run, { operatorId: OP, enquiryId })).toBeNull()
+  })
+})
+
+/**
+ * Weekly, monthly and seasonal prices, as the operator sets them.
+ *
+ * Ferrari 488: AED 5,000 a day, 30,000 a week, 95,000 a month, and December
+ * twenty percent dearer. Asked for seven days, the customer hears the week.
+ */
+describe('the operator’s tiers and seasons', () => {
+  const ferrari = () => setRate({ daily: 500000, weekly: 3000000, monthly: 9500000 })
+  const addSeason = (fields: Partial<Parameters<typeof addRateSeason>[1]> = {}) =>
+    addRateSeason(run, {
+      operatorId: OP, vehicleId: null, name: 'Peak season', startDate: '2026-12-01',
+      endDate: '2026-12-31', percent: 20, createdBy: 'Owner', ...fields,
+    })
+
+  it('quotes a day at the day rate', async () => {
+    await ferrari()
+    const result = await quote('2026-10-05', '2026-10-06')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.totalMinor).toBe(500000)
+  })
+
+  it('quotes seven days as the week', async () => {
+    await ferrari()
+    const result = await quote('2026-10-05', '2026-10-12')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.lines).toEqual([{ label: '1 week', amountMinor: 3000000 }])
+    expect(renderQuoteMessage({ ...result.quote, depositMinor: null, validUntil: null })).toBe('*1 week: AED 30,000*')
+  })
+
+  it('quotes thirty days as the month', async () => {
+    await ferrari()
+    const result = await quote('2026-10-01', '2026-10-31')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.totalMinor).toBe(9500000)
+    expect(result.quote.lines.map((l) => l.label)).toEqual(['1 month'])
+  })
+
+  it('adds the season to a week that falls in it', async () => {
+    await ferrari()
+    expect(await addSeason()).toMatchObject({ ok: true })
+    const result = await quote('2026-12-05', '2026-12-12')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.lines).toEqual([
+      { label: '1 week', amountMinor: 3000000 },
+      { label: 'Peak season +20%', amountMinor: 600000 },
+    ])
+    expect(result.quote.totalMinor).toBe(3600000)
+  })
+
+  it('charges the season only on the days inside it', async () => {
+    await ferrari()
+    await addSeason()
+    // 28 Nov to 5 Dec: seven days, four of them in December.
+    const result = await quote('2026-11-28', '2026-12-05')
+    if (!result.ok) throw new Error('expected a quote')
+    // 30,000 x 4/7 x 20% = 3,428.57, down to whole dirhams in the customer's favour.
+    expect(result.quote.lines[1]).toEqual({ label: 'Peak season +20%, 4 of 7 days', amountMinor: 342800 })
+    expect(result.quote.totalMinor).toBe(3342800)
+  })
+
+  it('does not charge the day the car comes back', async () => {
+    await ferrari()
+    await addSeason()
+    const result = await quote('2026-11-29', '2026-12-01')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.totalMinor).toBe(1000000)
+  })
+
+  it('takes money off in a low season, rounded in the customer’s favour', async () => {
+    await ferrari()
+    await addSeason({ name: 'Summer', startDate: '2026-07-01', endDate: '2026-08-31', percent: -15 })
+    const result = await quote('2026-07-10', '2026-07-13')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.lines[1]).toEqual({ label: 'Summer -15%', amountMinor: -225000 })
+    expect(result.quote.totalMinor).toBe(1275000)
+  })
+
+  it('prefers the car’s own season over the fleet’s', async () => {
+    await ferrari()
+    await addSeason()
+    await addSeason({ vehicleId, name: 'Ferrari December', percent: 50 })
+    const result = await quote('2026-12-10', '2026-12-11')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.lines.map((l) => l.label)).toEqual(['1 day', 'Ferrari December +50%'])
+    expect(result.quote.totalMinor).toBe(750000)
+  })
+
+  it('ignores another car’s season', async () => {
+    await ferrari()
+    const [other] = await run(
+      `insert into vehicles (operator_id, make, model, year, colour, category, plate, chassis_number,
+                             provenance, confirmed_by)
+       values ($1,'Lamborghini','Urus',2023,'Nero','exotic','Dubai L 2','VIN2','operator_confirmed','Owner')
+       returning id`,
+      [OP],
+    )
+    await addSeason({ vehicleId: other!['id'] as string })
+    const result = await quote('2026-12-10', '2026-12-11')
+    if (!result.ok) throw new Error('expected a quote')
+    expect(result.quote.totalMinor).toBe(500000)
+  })
+
+  it('prices again once a season is set or removed, rather than handing back the old quote', async () => {
+    await ferrari()
+    const before = await quote('2026-12-10', '2026-12-11')
+    const added = await addSeason()
+    const during = await quote('2026-12-10', '2026-12-11')
+    if (!before.ok || !during.ok || !added.ok) throw new Error('expected quotes')
+    expect(during.quote.unchanged).toBeUndefined()
+    expect(during.quote.totalMinor).toBe(600000)
+
+    expect(await removeRateSeason(run, { operatorId: OP, seasonId: added.seasonId, removedBy: 'Owner' })).toBe(true)
+    const after = await quote('2026-12-10', '2026-12-11')
+    if (!after.ok) throw new Error('expected a quote')
+    expect(after.quote.totalMinor).toBe(500000)
+    expect(await listRateSeasons(run, OP)).toEqual([])
+  })
+
+  it('refuses a season it cannot price from', async () => {
+    expect(await addSeason({ percent: 0 })).toEqual({ ok: false, problem: 'percent' })
+    expect(await addSeason({ endDate: '2026-11-30' })).toEqual({ ok: false, problem: 'dates' })
+    expect(await addSeason({ name: ' ' })).toEqual({ ok: false, problem: 'name' })
+    expect(await addSeason({ vehicleId: '99999999-9999-9999-9999-999999999999' }))
+      .toEqual({ ok: false, problem: 'vehicle' })
+  })
+
+  it('lists live seasons with the car they apply to', async () => {
+    await addSeason()
+    await addSeason({ vehicleId, name: 'Ferrari December', percent: 50 })
+    const seasons = await listRateSeasons(run, OP)
+    expect(seasons.map((s) => [s.name, s.vehicleLabel, s.percent])).toEqual([
+      ['Peak season', 'All cars', 20],
+      ['Ferrari December', 'Ferrari 488 · Giallo', 50],
+    ])
   })
 })

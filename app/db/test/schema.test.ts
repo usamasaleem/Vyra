@@ -88,6 +88,8 @@ describe('schema v1 applies', () => {
       // A phone that asked to be told a customer is waiting on the team.
       'push_subscriptions',
       'quotes',
+      // When the operator charges more or less — December, the summer.
+      'rate_seasons',
       'team_alerts',
       // When each car is taken, recorded once rather than asked every time.
       'vehicle_availability',

@@ -1,5 +1,6 @@
 import { formatDateForMessage, HIGHLIGHT_LIMIT } from '@vyra/contracts'
 import type { QueryRunner, Transactor } from '../runner.js'
+import { liveSeasons, seasonLines } from './seasons.js'
 
 /**
  * Calculating a draft quote.
@@ -214,6 +215,15 @@ export async function calculateDraftQuote(
     lines.push({ label: `${remaining} day${remaining > 1 ? 's' : ''}`, amountMinor: remaining * daily })
   }
 
+  const seasonal = seasonLines(
+    await liveSeasons(run, input.operatorId, input.vehicleId, input.startDate, input.endDate),
+    input.startDate, days, rental,
+  )
+  for (const line of seasonal) {
+    rental += line.amountMinor
+    lines.push(line)
+  }
+
   const delivery = rate['delivery_fee_minor'] == null ? 0 : Number(rate['delivery_fee_minor'])
   if (delivery > 0) lines.push({ label: 'Delivery and collection', amountMinor: delivery })
 
@@ -243,6 +253,12 @@ export async function calculateDraftQuote(
        and start_date = $6::timestamptz and end_date = $7::timestamptz
        and state in ('draft', 'approved', 'sent')
        and valid_until > now()
+       -- A season set or removed since is a changed price, as a new rate is.
+       and created_at > coalesce(
+         (select max(greatest(s.created_at, coalesce(s.removed_at, s.created_at)))
+          from rate_seasons s
+          where s.operator_id = $1 and (s.vehicle_id is null or s.vehicle_id = $4::uuid)),
+         '-infinity')
      order by revision desc
      limit 1`,
     [

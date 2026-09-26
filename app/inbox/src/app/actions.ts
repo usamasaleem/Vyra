@@ -16,6 +16,8 @@ import {
   renderQuoteMessage,
   setVehicleRate,
   setVehicleHighlight,
+  addRateSeason,
+  removeRateSeason,
   assignConversation,
   queueOutboundText,
   NoDisplayName,
@@ -466,6 +468,64 @@ export async function saveRate(
 
   revalidatePath('/rates')
   return { error: null }
+}
+
+
+export type SeasonState = { error: string | null; saved?: boolean }
+
+/**
+ * A season: December dearer, the summer cheaper, for one car or every car.
+ *
+ * The percentage is typed as the operator says it — "20" for twenty percent
+ * more, "-15" for fifteen off — and the name they give it is what the customer
+ * reads on the quote beside the amount.
+ */
+export async function saveSeason(
+  _previous: SeasonState,
+  formData: FormData,
+): Promise<SeasonState> {
+  const actor = await requireActor()
+  try {
+    assertPermitted(permissions.canAdminister(actor), 'set a season')
+  } catch {
+    return { error: 'Only an administrator can set seasons.' }
+  }
+
+  const vehicleId = String(formData.get('vehicleId') ?? '')
+  const raw = String(formData.get('percent') ?? '').trim().replace(/%$/, '')
+  const result = await addRateSeason(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    vehicleId: vehicleId === '' ? null : vehicleId,
+    name: String(formData.get('name') ?? ''),
+    startDate: String(formData.get('startDate') ?? ''),
+    endDate: String(formData.get('endDate') ?? ''),
+    percent: raw === '' ? Number.NaN : Number(raw),
+    createdBy: actor.email ?? actor.membershipId,
+  })
+  if (!result.ok) {
+    const say = {
+      name: 'Give the season a short name, like "Peak season".',
+      dates: 'The last day must be on or after the first.',
+      percent: 'The change is a whole percent between -90 and 300, and not 0 — "20" for 20% more, "-15" for 15% off.',
+      vehicle: 'That car is not one of yours.',
+    } as const
+    return { error: say[result.problem] }
+  }
+
+  revalidatePath('/rates')
+  return { error: null, saved: true }
+}
+
+/** Ending a season. The quotes priced in it keep their figures. */
+export async function endSeason(formData: FormData): Promise<void> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canAdminister(actor), 'remove a season')
+  await removeRateSeason(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    seasonId: String(formData.get('seasonId') ?? ''),
+    removedBy: actor.email ?? actor.membershipId,
+  })
+  revalidatePath('/rates')
 }
 
 

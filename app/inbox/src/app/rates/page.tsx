@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { SiteNav } from '../site-nav'
-import { getNavCounts, listRates } from '@vyra/db'
+import { getNavCounts, listRateSeasons, listRates } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
 import { actorReads } from '@/lib/db'
 import { RateForm } from './rate-form'
 import { PhotoForm } from './photo-form'
 import { HighlightForm } from './highlight-form'
+import { SeasonForm } from './season-form'
+import { endSeason } from '../actions'
 
 /**
  * Rates, the last thing standing between the agent and a price.
@@ -16,6 +18,11 @@ import { HighlightForm } from './highlight-form'
  */
 export const dynamic = 'force-dynamic'
 
+/** "1 Dec 2026". A season can cross the new year, so the year stays. */
+const dayLabel = (date: string) =>
+  new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
+    .format(new Date(`${date}T12:00:00Z`))
+
 export default async function RatesPage({
   searchParams,
 }: {
@@ -23,9 +30,10 @@ export default async function RatesPage({
 }) {
   const { added } = await searchParams
   const actor = await requireActor()
-  const [counts, rates] = await actorReads(actor, (run) => Promise.all([
+  const [counts, rates, seasons] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
     listRates(run, actor.operatorId),
+    listRateSeasons(run, actor.operatorId),
   ]))
   const canEdit = permissions.canAdminister(actor)
   const unpriced = rates.filter((r) => r.dailyRateMinor === null).length
@@ -75,6 +83,41 @@ export default async function RatesPage({
           A customer asking what you have is answered with a picture of each car once two of
           them have one — until then they get a list of names.
         </p>
+      )}
+
+      {rates.length > 0 && (
+        <section className="card" style={{ marginTop: '1rem' }}>
+          <h2 style={{ margin: '0 0 0.3rem', fontSize: '1.05rem' }}>Seasons</h2>
+          <p className="muted" style={{ margin: '0 0 0.8rem', fontSize: '0.85rem' }}>
+            Dates when you charge more or less. The agent adds the change to any rental day inside a
+            season, and the customer sees it as its own line on the quote.
+          </p>
+          {seasons.length === 0 ? (
+            <p className="muted" style={{ margin: '0 0 0.8rem', fontSize: '0.85rem' }}>No seasons. Every day is priced at the rates below.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 0.9rem', display: 'grid', gap: '0.4rem' }}>
+              {seasons.map((s) => (
+                <li key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <span>
+                    <strong>{s.name}</strong>{' '}
+                    <span className="tag">{s.percent > 0 ? '+' : ''}{s.percent}%</span>{' '}
+                    <span className="muted" style={{ fontSize: '0.85rem' }}>
+                      {dayLabel(s.startDate)} to{' '}
+                      {dayLabel(s.endDate)} · {s.vehicleLabel} · set by {s.createdBy}
+                    </span>
+                  </span>
+                  {canEdit && (
+                    <form action={endSeason}>
+                      <input type="hidden" name="seasonId" value={s.id} />
+                      <button className="button secondary" type="submit">Remove</button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {canEdit && <SeasonForm cars={rates.map((r) => ({ vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel }))} />}
+        </section>
       )}
 
       {rates.length === 0 ? (

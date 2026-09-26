@@ -386,6 +386,13 @@
       "when": 1790382153051,
       "tag": "0054_waitlist",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790424369911,
+      "tag": "0055_rate_seasons",
+      "breakpoints": true
     }
   ]
 }
