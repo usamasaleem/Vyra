@@ -12,6 +12,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Tells the browser too, so form controls and scrollbars stay light on a
+  // phone in dark mode rather than drawing dark widgets on a white page.
+  colorScheme: 'light',
+  themeColor: '#ffffff',
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {

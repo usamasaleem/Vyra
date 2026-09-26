@@ -42,7 +42,7 @@ export default async function SetupPage() {
             key={step.key}
             className="card"
             style={{
-              borderColor: step.done ? undefined : step.blocking ? '#b45309' : undefined,
+              borderColor: step.done ? undefined : step.blocking ? 'var(--accent)' : undefined,
               opacity: step.done ? 0.6 : 1,
             }}
           >

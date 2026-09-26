@@ -61,7 +61,7 @@ function RejectQuote({ quoteId, revision }: { quoteId: string; revision: number 
         onClick={() => setOpen(true)}
         style={{
           background: 'none', border: 'none', padding: 0, font: 'inherit',
-          color: 'var(--muted, #888)', textDecoration: 'underline', cursor: 'pointer',
+          color: 'var(--muted)', textDecoration: 'underline', cursor: 'pointer',
         }}
       >
         Don&rsquo;t send this

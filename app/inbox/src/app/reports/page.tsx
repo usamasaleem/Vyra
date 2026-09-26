@@ -226,7 +226,7 @@ export default async function ReportsPage({
         <h2 style={{ fontSize: '1.05rem' }}>Before the reply started</h2>
 
         {backlog.length > 0 && (
-          <div className="card" style={{ borderColor: '#b45309', marginBottom: '0.8rem' }}>
+          <div className="card" style={{ borderColor: 'var(--accent)', marginBottom: '0.8rem' }}>
             <strong>{backlog.length} job{backlog.length === 1 ? ' is' : 's are'} late right now.</strong>
             <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem' }}>
               {backlog.map((j) => (

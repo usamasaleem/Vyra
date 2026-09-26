@@ -1,29 +1,23 @@
+/* One theme, white, whatever the device prefers.
+   The inbox used to follow the phone into dark mode, so the same page looked
+   like two products depending on who opened it — and every colour chosen on
+   one background had to be checked again on the other. A premium dashboard
+   is one look: white pages, dark text, light grey edges, and the accent kept
+   for what needs acting on. */
 :root {
-  --bg: #fbfaf9;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --border: #e5e1dc;
-  --text: #1c1b19;
-  --muted: #6b6660;
+  /* Hover and quiet fills: a step off white, so a row can light up without a card. */
+  --subtle: #f6f6f4;
+  --border: #e4e3df;
+  --line: #e4e3df;
+  --text: #1a1a18;
+  --muted: #65625c;
   --accent: #b4520f;
   --accent-soft: #fdf3ec;
   --danger: #9a2c2c;
   --ok: #2f6b4f;
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #171614;
-    --surface: #1f1e1b;
-    --border: #322f2b;
-    --text: #f0ede8;
-    --muted: #a09a92;
-    --accent: #e08a4e;
-    --accent-soft: #2a201a;
-    --danger: #d98080;
-    --ok: #7fb99a;
-    color-scheme: dark;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -69,7 +63,7 @@ img, video, audio { max-width: 100%; }
 .label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
 .input {
   width: 100%; padding: 0.55rem 0.7rem; font: inherit;
-  background: var(--bg); color: var(--text);
+  background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 7px;
 }
 .input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -82,10 +76,11 @@ img, video, audio { max-width: 100%; }
      underlined and sits on the text baseline instead of as a box. */
   display: inline-block; text-decoration: none; line-height: 1.2;
 }
-.button.secondary { background: transparent; color: var(--text); border-color: var(--border); }
+.button.secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+.button.secondary:hover { background: var(--subtle); filter: none; }
 .button:hover { filter: brightness(1.05); }
 
-.notice { border-left: 3px solid var(--danger); padding: 0.6rem 0.85rem; background: var(--surface); border-radius: 0 7px 7px 0; font-size: 0.9rem; }
+.notice { border-left: 3px solid var(--danger); padding: 0.6rem 0.85rem; background: var(--subtle); border-radius: 0 7px 7px 0; font-size: 0.9rem; }
 .muted { color: var(--muted); }
 .stack > * + * { margin-top: 0.9rem; }
 .tag {
@@ -115,7 +110,7 @@ img, video, audio { max-width: 100%; }
   padding: 0.45rem 0.7rem; border-radius: 7px 7px 0 0;
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
-a.sitenav-item:hover { color: var(--text); background: var(--surface); }
+a.sitenav-item:hover { color: var(--text); background: var(--subtle); }
 .sitenav-item.is-current {
   color: var(--text); font-weight: 600; border-bottom-color: var(--accent);
 }

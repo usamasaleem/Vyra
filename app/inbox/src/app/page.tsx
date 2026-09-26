@@ -62,7 +62,7 @@ export default async function InboxPage({
         it — a permanent banner is a banner nobody reads.
       */}
       {setup.blocked > 0 && (
-        <div className="card" style={{ borderColor: '#b45309', marginBottom: '1rem' }}>
+        <div className="card" style={{ borderColor: 'var(--accent)', marginBottom: '1rem' }}>
           <strong>
             {setup.blocked === 1
               ? 'One thing still stops the agent selling.'
@@ -147,8 +147,8 @@ export default async function InboxPage({
                       margin: '0 0 0.6rem',
                       fontSize: '0.85rem',
                       padding: '0.45rem 0.6rem',
-                      borderLeft: '3px solid var(--accent, #b45309)',
-                      background: 'color-mix(in srgb, var(--accent, #b45309) 8%, transparent)',
+                      borderLeft: '3px solid var(--accent)',
+                      background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
                       borderRadius: '0 4px 4px 0',
                     }}
                   >

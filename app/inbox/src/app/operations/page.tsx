@@ -68,8 +68,8 @@ export default async function OperationsPage() {
                       </tr>
                     ))}
                     <tr style={{ fontWeight: 600 }}>
-                      <td style={{ padding: '0.3rem 0', borderTop: '1px solid var(--line, #ddd)' }}>Total</td>
-                      <td style={{ textAlign: 'right', borderTop: '1px solid var(--line, #ddd)' }}>
+                      <td style={{ padding: '0.3rem 0', borderTop: '1px solid var(--line)' }}>Total</td>
+                      <td style={{ textAlign: 'right', borderTop: '1px solid var(--line)' }}>
                         {formatMoney(q.totalMinor, q.currency)}
                       </td>
                     </tr>

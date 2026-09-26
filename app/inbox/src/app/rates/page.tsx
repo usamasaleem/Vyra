@@ -61,14 +61,14 @@ export default async function RatesPage({
       )}
 
       {unpriced > 0 && (
-        <p className="card" style={{ borderLeft: '3px solid var(--accent, #b45309)' }}>
+        <p className="card" style={{ borderLeft: '3px solid var(--accent)' }}>
           {unpriced} vehicle{unpriced === 1 ? ' has' : 's have'} no rate. The agent will refuse to
           quote {unpriced === 1 ? 'it' : 'them'}.
         </p>
       )}
 
       {rates.length > 0 && photographed < 2 && (
-        <p className="card" style={{ borderLeft: '3px solid var(--accent, #b45309)' }}>
+        <p className="card" style={{ borderLeft: '3px solid var(--accent)' }}>
           {photographed === 0
             ? 'No car has photographs.'
             : 'One car has photographs.'}{' '}

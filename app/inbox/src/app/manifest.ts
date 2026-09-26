@@ -12,7 +12,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Shared sales inbox for WhatsApp rental enquiries',
     start_url: '/',
     display: 'standalone',
-    background_color: '#fbfaf9',
+    background_color: '#ffffff',
     theme_color: '#b4520f',
     icons: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },

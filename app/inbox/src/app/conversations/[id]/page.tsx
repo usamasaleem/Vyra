@@ -112,8 +112,8 @@ export default async function ConversationPage({
           className="card"
           style={{
             marginBottom: '1.5rem',
-            borderLeft: '3px solid var(--accent, #b45309)',
-            background: 'color-mix(in srgb, var(--accent, #b45309) 8%, transparent)',
+            borderLeft: '3px solid var(--accent)',
+            background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
           }}
         >
           <strong style={{ display: 'block', fontSize: '0.8rem', letterSpacing: '0.04em', opacity: 0.75 }}>

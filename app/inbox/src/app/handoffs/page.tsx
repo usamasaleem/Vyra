@@ -95,9 +95,9 @@ export default async function HandoffsPage({
                 className="card"
                 style={
                   clock.late
-                    ? { borderLeft: '3px solid var(--danger, #b91c1c)' }
+                    ? { borderLeft: '3px solid var(--danger)' }
                     : h.priority === 'urgent'
-                      ? { borderLeft: '3px solid var(--accent, #b45309)' }
+                      ? { borderLeft: '3px solid var(--accent)' }
                       : undefined
                 }
               >

@@ -41,7 +41,7 @@ export default function SignUpPage() {
           </p>
         </div>
 
-        <hr style={{ border: 0, borderTop: '1px solid var(--line, #e5e5e5)', margin: '0.25rem 0' }} />
+        <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '0.25rem 0' }} />
 
         <div>
           <label className="label" htmlFor="company">Company name</label>
