@@ -25,14 +25,38 @@ export function anthropicModel(options: {
   label?: string
   maxTokens?: number
   baseUrl?: string
+  /**
+   * Whether the model thinks before it answers. Omitted means the provider's
+   * default. DeepSeek's Anthropic-compatible endpoint thinks by default and
+   * accepts `disabled`.
+   */
+  thinking?: 'enabled' | 'disabled'
+  /** How hard it thinks, where the provider takes one (DeepSeek: low, high, max). */
+  effort?: string
+  /** Same reasoning as the OpenAI adapter's: a call past a minute is gone, not slow. */
+  timeoutMs?: number
 }): ModelAdapter {
   const baseUrl = options.baseUrl ?? 'https://api.anthropic.com'
+  const identity = [options.model, options.thinking === 'disabled' ? 'no-thinking' : options.effort]
+    .filter(Boolean).join(':')
+  /**
+   * The thinking that came with each tool call, keyed by the call's id.
+   *
+   * In thinking mode DeepSeek refuses the next round of a turn unless the
+   * assistant message that made the tool calls carries its thinking back
+   * ("The `content[].thinking` in the thinking mode must be passed back"),
+   * while earlier turns need nothing. The transcript this harness keeps has no
+   * room for thinking, so it is remembered here, for the life of the process —
+   * which covers every round of a turn — and bounded so it cannot grow.
+   */
+  const thoughts = new Map<string, Array<{ type: 'thinking'; thinking: string; signature?: string }>>()
 
   return {
-    label: options.label ?? options.model,
-    modelId: options.model,
+    label: options.label ?? identity,
+    modelId: identity,
     complete: async (request: ModelRequest): Promise<ModelResponse> => {
       const response = await fetch(`${baseUrl}/v1/messages`, {
+        signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
         method: 'POST',
         headers: {
           'x-api-key': options.apiKey,
@@ -50,7 +74,9 @@ export function anthropicModel(options: {
             strict: true,
           })),
           ...(request.noTools === true ? { tool_choice: { type: 'none' } } : {}),
-          messages: toMessages(request),
+          ...(options.thinking === undefined ? {} : { thinking: { type: options.thinking } }),
+          ...(options.effort === undefined ? {} : { output_config: { effort: options.effort } }),
+          messages: toMessages(request, thoughts),
         }),
       })
 
@@ -62,24 +88,44 @@ export function anthropicModel(options: {
         content: Array<
           | { type: 'text'; text: string }
           | { type: 'tool_use'; id: string; name: string; input: unknown }
+          | { type: 'thinking'; thinking: string; signature?: string }
         >
+        usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | null
       }
 
       const toolCalls: ModelToolCall[] = []
       const text: string[] = []
+      const thinking: Array<{ type: 'thinking'; thinking: string; signature?: string }> = []
       for (const block of body.content ?? []) {
         if (block.type === 'tool_use') toolCalls.push({ id: block.id, name: block.name, arguments: block.input })
         else if (block.type === 'text') text.push(block.text)
+        else if (block.type === 'thinking') thinking.push(block)
+      }
+      if (thinking.length > 0 && toolCalls[0] !== undefined) {
+        thoughts.set(toolCalls[0].id, thinking)
+        while (thoughts.size > 500) thoughts.delete(thoughts.keys().next().value!)
       }
 
-      return { toolCalls, reply: text.length > 0 ? text.join('\n').trim() : null }
+      const u = body.usage
+      const cached = u?.cache_read_input_tokens
+      const usage = u === undefined || u === null ? undefined : {
+        // Anthropic counts cache reads apart from input_tokens; the harness counts them as a subset.
+        ...(u.input_tokens === undefined ? {} : { inputTokens: u.input_tokens + (cached ?? 0) }),
+        ...(u.output_tokens === undefined ? {} : { outputTokens: u.output_tokens }),
+        ...(cached === undefined ? {} : { cachedInputTokens: cached }),
+      }
+
+      return { toolCalls, reply: text.length > 0 ? text.join('\n').trim() : null, ...(usage === undefined ? {} : { usage }) }
     },
   }
 }
 
 type AnthropicMessage = { role: 'user' | 'assistant'; content: unknown }
 
-function toMessages(request: ModelRequest): AnthropicMessage[] {
+function toMessages(
+  request: ModelRequest,
+  thoughts: Map<string, Array<{ type: 'thinking'; thinking: string; signature?: string }>>,
+): AnthropicMessage[] {
   const messages: AnthropicMessage[] = []
 
   for (const entry of request.transcript) {
@@ -94,9 +140,12 @@ function toMessages(request: ModelRequest): AnthropicMessage[] {
     if (entry.from === 'agent') {
       messages.push({
         role: 'assistant',
-        content: entry.toolCalls.map((call) => ({
-          type: 'tool_use', id: call.id, name: call.name, input: call.arguments,
-        })),
+        content: [
+          ...(entry.toolCalls[0] === undefined ? [] : thoughts.get(entry.toolCalls[0].id) ?? []),
+          ...entry.toolCalls.map((call) => ({
+            type: 'tool_use', id: call.id, name: call.name, input: call.arguments,
+          })),
+        ],
       })
       continue
     }

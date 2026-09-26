@@ -54,8 +54,21 @@ export async function nextAction(input: {
 }): Promise<CustomerAction> {
   // Rate limits are the harness's problem, not the agent's: wait and try again.
   let response: Response | undefined
+  // A DeepSeek customer speaks the Anthropic Messages shape, which DeepSeek serves; no thinking, it is only a customer.
+  const deepseek = input.model.startsWith('deepseek')
   for (let attempt = 0; attempt < 6; attempt++) {
-    response = await fetch('https://api.openai.com/v1/responses', {
+    response = deepseek ? await fetch('https://api.deepseek.com/anthropic/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': input.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: input.model,
+        max_tokens: 1024,
+        thinking: { type: 'disabled' },
+        system: `${RULES}\n\nYOUR BRIEF:\n${input.brief}`,
+        messages: [{ role: 'user', content: `The chat so far:\n\n${render(input.lines)}\n\nYour next action, as JSON:` }],
+      }),
+      signal: AbortSignal.timeout(60_000),
+    }) : await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { authorization: `Bearer ${input.apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -75,12 +88,15 @@ export async function nextAction(input: {
   if (!response.ok) throw new Error(`customer model ${response.status}: ${await response.text()}`)
   const data = await response.json() as {
     output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>
+    content?: Array<{ type: string; text?: string }>
   }
-  const text = (data.output ?? [])
-    .filter((o) => o.type === 'message')
-    .flatMap((o) => o.content ?? [])
-    .map((c) => c.text ?? '')
-    .join('')
+  const text = deepseek
+    ? (data.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('')
+    : (data.output ?? [])
+      .filter((o) => o.type === 'message')
+      .flatMap((o) => o.content ?? [])
+      .map((c) => c.text ?? '')
+      .join('')
   const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)
   try {
     return JSON.parse(json) as CustomerAction

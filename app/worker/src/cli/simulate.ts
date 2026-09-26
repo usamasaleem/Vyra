@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs'
-import { openaiModel } from '@vyra/agent'
+import { anthropicModel, openaiModel } from '@vyra/agent'
 import { check, type Finding } from '../simulate/checks.js'
 import { PERSONAS } from '../simulate/personas.js'
 import { playPersona, type Played } from '../simulate/run.js'
@@ -27,14 +27,41 @@ const withAnswers = args.includes('--answers')
 const out = flag('--out') ?? `simulation-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.md`
 const concurrency = Number(flag('--concurrency') ?? 4)
 
-const apiKey = process.env['OPENAI_API_KEY']
-if (apiKey === undefined || apiKey === '') {
+const customerOnDeepseek = (process.env['CUSTOMER_MODEL'] ?? '').startsWith('deepseek')
+const apiKey = process.env['OPENAI_API_KEY'] ?? ''
+if (apiKey === '' && !(customerOnDeepseek && process.env['AGENT_PROVIDER'] === 'deepseek')) {
   console.error('OPENAI_API_KEY is not set (it is read from app/inbox/.env.local).')
   process.exit(2)
 }
-const modelName = process.env['AI_MODEL'] ?? 'gpt-6-luna'
+/**
+ * The agent's model. The customers are always played by OpenAI (CUSTOMER_MODEL, default gpt-6-luna), so a
+ * comparison between providers changes one thing: who answers them.
+ *
+ *   AGENT_PROVIDER=deepseek AI_MODEL=deepseek-flash DEEPSEEK_THINKING=disabled npm run simulate …
+ */
+const provider = process.env['AGENT_PROVIDER'] ?? 'openai'
 const effort = process.env['AI_REASONING_EFFORT'] as 'low' | 'medium' | 'high' | undefined
-const model = openaiModel({ apiKey, model: modelName, ...(effort === undefined ? {} : { effort }) })
+const customerModelName = process.env['CUSTOMER_MODEL'] ?? 'gpt-6-luna'
+let model
+if (provider === 'deepseek') {
+  const deepseekKey = process.env['DEEPSEEK_API_KEY']
+  if (deepseekKey === undefined || deepseekKey === '') {
+    console.error('DEEPSEEK_API_KEY is not set.')
+    process.exit(2)
+  }
+  const thinking = process.env['DEEPSEEK_THINKING'] as 'enabled' | 'disabled' | undefined
+  model = anthropicModel({
+    apiKey: deepseekKey,
+    model: process.env['AI_MODEL'] ?? 'deepseek-flash',
+    baseUrl: 'https://api.deepseek.com/anthropic',
+    maxTokens: 4096,
+    ...(thinking === undefined ? {} : { thinking }),
+    ...(effort === undefined ? {} : { effort }),
+  })
+} else {
+  model = openaiModel({ apiKey, model: process.env['AI_MODEL'] ?? 'gpt-6-luna', ...(effort === undefined ? {} : { effort }) })
+}
+const modelName = model.modelId
 
 const repeat = Math.max(1, Number(flag('--repeat') ?? 1))
 const personas = (only === null ? PERSONAS : PERSONAS.filter((p) => only.includes(p.id)))
@@ -52,7 +79,7 @@ await Promise.all(Array.from({ length: Math.min(concurrency, personas.length) },
   while (next < personas.length) {
     const persona = personas[next++]!
     const played = await playPersona({
-      persona, model, customerModel: { apiKey, model: modelName }, withAnswers,
+      persona, model, customerModel: { apiKey: customerOnDeepseek ? process.env['DEEPSEEK_API_KEY'] ?? '' : apiKey, model: customerModelName }, withAnswers,
     })
     const findings = check(played)
     results.push({ played, findings })
@@ -67,6 +94,11 @@ const passed = results.filter((r) => r.findings.every((f) => f.severity !== 'fai
 const booked = results.filter((r) => r.played.facts.bookings.some((b) => b.state === 'confirmed')).length
 const allMs = results.flatMap((r) => r.played.turnMs)
 const avg = allMs.length === 0 ? 0 : Math.round(allMs.reduce((a, b) => a + b, 0) / allMs.length / 100) / 10
+const sortedMs = [...allMs].sort((a, b) => a - b)
+const pct = (p: number) => sortedMs.length === 0 ? 0 : Math.round(sortedMs[Math.min(sortedMs.length - 1, Math.floor(p * sortedMs.length))]! / 100) / 10
+const allRuns = results.flatMap((r) => r.played.facts.runs)
+const tokens = allRuns.reduce((t, r) => ({ input: t.input + r.input, cached: t.cached + r.cached, output: t.output + r.output }), { input: 0, cached: 0, output: 0 })
+const failedTurns = allRuns.filter((r) => r.state === 'error').length
 
 /**
  * Accuracy and consistency, the two numbers this is for.
@@ -92,11 +124,14 @@ const consistency = [...byPersona.values()]
 const md: string[] = [
   `# Sales simulation — ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
   '',
-  `${passed} of ${results.length} passed · ${booked} booked · average reply ${avg}s · model ${modelName}`
+  `${passed} of ${results.length} passed · ${booked} booked · average reply ${avg}s (median ${pct(0.5)}s, 95th ${pct(0.95)}s) · model ${modelName}`
     + `${withAnswers ? ' · payment and collection answers published' : ''}`,
   '',
   `Accuracy, in ${agentMessages} agent messages: ${invented.length} invented figure${invented.length === 1 ? '' : 's'}, `
     + `${unpublished.length} unpublished polic${unpublished.length === 1 ? 'y' : 'ies'}, ${misdated.length} wrong date${misdated.length === 1 ? '' : 's'}.`,
+  '',
+  `Tokens over ${allRuns.length} agent turns: ${tokens.input} input (${tokens.cached} cached), ${tokens.output} output. `
+    + `Turn states: ${[...new Set(allRuns.map((r) => r.state))].map((st) => `${st} ${allRuns.filter((r) => r.state === st).length}`).join(', ')}.`,
   ...(repeat > 1
     ? [
       '',
@@ -139,6 +174,7 @@ for (const { played, findings } of results) {
   md.push('', '</details>', '')
 }
 writeFileSync(out, md.join('\n'))
+console.log(`TOKENS ${JSON.stringify({ ...tokens, turns: allRuns.length, failedTurns, median: pct(0.5), p95: pct(0.95), avg })}`)
 console.log(`\n${passed} of ${results.length} passed · in ${agentMessages} agent messages: ${invented.length} invented figures, `
   + `${unpublished.length} unpublished policies, ${misdated.length} wrong dates. Report: ${out}`)
 process.exit(passed === results.length ? 0 : 1)

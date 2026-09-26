@@ -35,7 +35,7 @@ export type RunFacts = {
   latestQuote: { vehicle: string | null; days: number; totalMinor: number; discounted: boolean } | null
   held: boolean
   handoffs: Array<{ reason: string; summary: string }>
-  runs: Array<{ state: string; ms: number; tools: string }>
+  runs: Array<{ state: string; ms: number; tools: string; input: number; output: number; cached: number }>
   outbound: Array<{ body: string; buttons: string[] }>
   nextAction: string | null
   /** Every amount the record can account for, in whole currency, as plain number strings. */
@@ -282,7 +282,8 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
        and expires_at > now()`, [conversationId])
   const handoffs = await run(`select reason::text as reason, summary from handoffs where conversation_id = $1`, [conversationId])
   const runs = await run(
-    `select result_state::text as state, duration_ms, tool_names from agent_runs where conversation_id = $1 order by created_at`,
+    `select result_state::text as state, duration_ms, tool_names, input_tokens, output_tokens, reasoning_tokens,
+            cached_input_tokens from agent_runs where conversation_id = $1 order by created_at`,
     [conversationId])
   const outbound = await run(
     `select body, reply_buttons from messages where conversation_id = $1 and direction = 'outbound'
@@ -353,6 +354,9 @@ async function factsFor(run: QueryRunner, conversationId: string): Promise<RunFa
     handoffs: handoffs.map((h) => ({ reason: h['reason'] as string, summary: String(h['summary'] ?? '') })),
     runs: runs.map((r) => ({
       state: r['state'] as string, ms: Number(r['duration_ms'] ?? 0), tools: String(r['tool_names'] ?? ''),
+      // Reasoning is billed as output, so it is folded in here.
+      input: Number(r['input_tokens'] ?? 0), cached: Number(r['cached_input_tokens'] ?? 0),
+      output: Number(r['output_tokens'] ?? 0) + Number(r['reasoning_tokens'] ?? 0),
     })),
     outbound: outbound.map((o) => ({
       body: String(o['body'] ?? ''),
