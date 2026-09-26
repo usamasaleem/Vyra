@@ -1,6 +1,7 @@
 import { civilDateIn, formatCivil } from '@vyra/contracts'
 import {
-  checkCalendar, findCurrentAnswer, formatMoneyMinor, raiseOperationsRequest, searchFleet,
+  backOnFrom, checkCalendar, findCurrentAnswer, formatMoneyMinor, isCarStatus, raiseOperationsRequest,
+  searchFleet, UNTIL_FURTHER_NOTICE,
 } from '@vyra/db'
 import type { ToolContext } from './context.js'
 import { ok, refuse, type ToolResult } from './result.js'
@@ -50,6 +51,12 @@ export type VehicleSearchResult = {
      * quote the car next to it.
      */
     dayRate: string | null
+    /**
+     * Present only for a car off the road today: the first day it can go out
+     * again, or "not known yet". Which status it is — the garage, damage — is
+     * left out on purpose: the customer hears "not available", not the story.
+     */
+    availableAgainFrom?: string
   }>
   /**
    * Present only when a person has checked and the answer has not expired.
@@ -229,7 +236,17 @@ export async function searchVehicles(
     powerHp: v.powerHp,
     seats: v.seats,
     dayRate: v.dailyRateMinor === null ? null : formatMoneyMinor(v.dailyRateMinor, v.currency),
+    ...(v.offTheRoad === null ? {} : { availableAgainFrom: v.offTheRoad.backOn ?? 'not known yet' }),
   }))
+
+  /**
+   * Said once for the whole list rather than left to the field's name, because
+   * a model describing the fleet will otherwise offer the car in the garage
+   * alongside the rest.
+   */
+  const offTheRoad = fleet.some((v) => v.availableAgainFrom !== undefined)
+    ? ' A car with availableAgainFrom is off the road: it cannot be rented for any day before that date, or at all while it says "not known yet". Do not offer it for those days; if they ask for it, say it is not available then and suggest another car. Do not say why.'
+    : ''
 
   if (found.matches.length === 0) {
     return ok({
@@ -244,7 +261,8 @@ export async function searchVehicles(
          * me your cars" has not told anybody anything yet.
          */
         ? `No car matched that out of ${found.fleetSize} in the fleet. Do not invent one and do not try to list them — say roughly how many there are and ask what sort of thing they are after, or what they want to spend a day. Then search again with category or maxDayRateMinor.`
-        : 'The words they used did not match anything, but this is the operator\'s ENTIRE fleet — every car they have. Read it and decide for yourself whether one of these is what they meant: spelling and accents ("Huracan" is the Huracán), nicknames, a colour in another language ("the orange one" is the Arancio Borealis), or a description like "something loud". If one of them fits, answer about that car and use its exact make and model in any further tool call. Only say the operator does not have it once you have looked at this list and nothing here fits.',
+        : 'The words they used did not match anything, but this is the operator\'s ENTIRE fleet — every car they have. Read it and decide for yourself whether one of these is what they meant: spelling and accents ("Huracan" is the Huracán), nicknames, a colour in another language ("the orange one" is the Arancio Borealis), or a description like "something loud". If one of them fits, answer about that car and use its exact make and model in any further tool call. Only say the operator does not have it once you have looked at this list and nothing here fits.'
+        + offTheRoad,
     })
   }
 
@@ -269,7 +287,8 @@ export async function searchVehicles(
         'These cars are in the fleet and you may describe them, including any dayRate shown — a named person at the operator set it. A car with dayRate null has no confirmed price: say that it needs checking rather than quoting another car\'s figure. You have NOT checked whether any of them is free, so do not say available, free or bookable. If the customer wants a total or a booking, ask which dates.'
         + (notShown > 0
           ? ` These are ${fleet.length} of ${matchedCount} that matched, ${filters.order === 'cheapest' ? 'cheapest' : 'dearest'} first. Say there are ${notShown} more rather than listing these and stopping, and ask what would narrow it — a kind of car, or what they want to spend a day.`
-          : ''),
+          : '')
+        + offTheRoad,
     })
   }
 
@@ -318,7 +337,13 @@ export async function searchVehicles(
       fleet,
       availability: {
         status: 'unavailable',
-        note: `Booked until ${calendar.until}.`,
+        // A car in the garage is not "booked", and one with no date back is
+        // not booked until the end of time.
+        note: isCarStatus(calendar.reason)
+          ? (calendar.until === UNTIL_FURTHER_NOTICE
+            ? 'Not available, and no date yet for when it will be.'
+            : `Not available; available again from ${backOnFrom(calendar.until)}.`)
+          : `Booked until ${calendar.until}.`,
         source: 'the operator\'s own calendar',
         checkedMinutesAgo: 0,
       },

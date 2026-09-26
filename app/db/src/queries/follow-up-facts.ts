@@ -1,6 +1,7 @@
 import { formatDateForMessage } from '@vyra/contracts'
 import type { QueryRunner } from '../runner.js'
 import { checkCalendar } from './availability.js'
+import { isCarStatus } from './car-status.js'
 import { activeHoldFor } from './holds.js'
 import { formatMoney } from './quotes.js'
 
@@ -85,8 +86,10 @@ export async function followUpFacts(
 
   if (calendar.state === 'booked') {
     return {
-      text: `The *${vehicle}* has since been booked for ${dates}. Tell me other dates, or I can `
-        + 'suggest another car.',
+      // A car gone to the garage has not "been booked", and the customer is
+      // owed no more of the reason than that.
+      text: `The *${vehicle}* ${isCarStatus(calendar.reason) ? 'is no longer available' : 'has since been booked'} `
+        + `for ${dates}. Tell me other dates, or I can suggest another car.`,
       state: 'taken', vehicle, dates,
     }
   }

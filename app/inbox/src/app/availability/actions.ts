@@ -1,7 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { recordUnavailable, releaseAvailability, setCalendarComplete } from '@vyra/db'
+import {
+  CAR_STATUSES, recordUnavailable, releaseAvailability, setCalendarComplete, setCarStatus,
+  type CarStatus,
+} from '@vyra/db'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner } from '@/lib/db'
 
@@ -41,6 +44,52 @@ export async function markUnavailable(
 
   revalidatePath('/availability')
   return { error: null }
+}
+
+export type StatusState = { error: string | null; warning: string | null }
+
+/**
+ * A car in service, in the garage, damaged or off sale — or back on the road.
+ *
+ * Its bookings are left where they are: the car cannot be driven whatever the
+ * calendar says, but a customer's booking is not somebody else's to cancel,
+ * and the warning is what tells the team to pick up the phone.
+ */
+export async function setStatus(
+  _previous: StatusState,
+  formData: FormData,
+): Promise<StatusState> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canReply(actor), 'change a car\'s status')
+
+  const status = String(formData.get('status') ?? '')
+  const backOn = String(formData.get('backOn') ?? '')
+  const note = String(formData.get('note') ?? '').trim()
+
+  if (status !== 'available' && !(status in CAR_STATUSES)) {
+    return { error: 'Pick a status.', warning: null }
+  }
+  if (backOn !== '' && !ISO_DATE.test(backOn)) return { error: 'Pick the day it is back.', warning: null }
+
+  const result = await setCarStatus(actorRunner(actor), {
+    operatorId: actor.operatorId,
+    vehicleId: String(formData.get('vehicleId') ?? ''),
+    status: status as CarStatus | 'available',
+    backOn: backOn === '' ? null : backOn,
+    note: note === '' ? null : note,
+    recordedBy: actor.email ?? actor.role,
+    recordedByMembershipId: actor.membershipId,
+  })
+  if (!result.ok) return { error: result.detail, warning: null }
+
+  revalidatePath('/availability')
+  return {
+    error: null,
+    warning: result.clashingBookings === 0
+      ? null
+      : `${result.clashingBookings === 1 ? 'A customer has' : `${result.clashingBookings} customers have`} `
+        + 'this car booked while it is off the road. The booking still stands — call them.',
+  }
 }
 
 export async function releaseBlock(formData: FormData): Promise<void> {

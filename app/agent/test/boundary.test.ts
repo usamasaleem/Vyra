@@ -9,6 +9,7 @@ import { toolDefinitions, TOOL_NAMES } from '../src/tools/schemas.ts'
 import { draftKnowledge, publishKnowledge } from '../../db/src/queries/knowledge.ts'
 import { ensureEnquiry } from '../../db/src/queries/enquiry-fields.ts'
 import { queueOutboundText } from '../../db/src/queries/outbound.ts'
+import { setCarStatus } from '../../db/src/queries/car-status.ts'
 import type { QueryRunner, Transactor } from '../../db/src/runner.ts'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'db', 'migrations')
@@ -439,6 +440,56 @@ describe('search_vehicles with a fleet', () => {
     const result = await search('lamborghini')
     const { fleet } = (result as { data: { fleet: Array<{ make: string }> } }).data
     expect(fleet.map((v) => v.make)).not.toContain('Lamborghini')
+  })
+
+  /**
+   * A car in the garage is still a car the operator has: leaving it out would
+   * have the agent tell somebody asking for it next month that there is none.
+   * It comes back marked, with the day it is back and never the reason.
+   */
+  describe('a car with a status', () => {
+    const offSale = async (backOn: string | null) => {
+      const [car] = await run(`select id from vehicles where operator_id = $1 and model = '488'`, [OP])
+      const result = await setCarStatus(run, {
+        operatorId: OP, vehicleId: car!['id'] as string, status: 'damaged', backOn, recordedBy: 'Sara',
+      })
+      expect(result.ok).toBe(true)
+    }
+
+    it('is listed with the day it can go out again, and the model is told not to offer it', async () => {
+      await addVehicle()
+      await offSale(null)
+
+      const result = await createToolBoundary(ctx).call('search_vehicles', {
+        vehicle: 'Ferrari', startDate: null, category: null, maxDayRateMinor: null, minSeats: null, order: null, endDate: null,
+      })
+      const data = (result as { data: { fleet: Array<Record<string, unknown>>; guidance: string } }).data
+      expect(data.fleet[0]).toMatchObject({ model: '488', availableAgainFrom: 'not known yet' })
+      expect(data.guidance).toContain('availableAgainFrom is off the road')
+      // The customer hears "not available", not the story.
+      expect(JSON.stringify(result)).not.toMatch(/damaged/i)
+    })
+
+    it('answers a dated question with a plain no, not "booked"', async () => {
+      await addVehicle()
+      await offSale(null)
+
+      const result = await createToolBoundary(ctx).call('search_vehicles', {
+        vehicle: 'ferrari', startDate: '2030-01-10', category: null, maxDayRateMinor: null, minSeats: null, order: null, endDate: '2030-01-12',
+      })
+      expect(result).toMatchObject({
+        status: 'ok',
+        data: { availability: { status: 'unavailable', note: 'Not available, and no date yet for when it will be.' } },
+      })
+      expect(JSON.stringify(result)).not.toMatch(/damaged|booked until/i)
+    })
+
+    it('says nothing about a car on the road', async () => {
+      await addVehicle()
+      const result = await search('ferrari')
+      expect((result as { data: { fleet: Array<Record<string, unknown>> } }).data.fleet[0])
+        .not.toHaveProperty('availableAgainFrom')
+    })
   })
 
   /**

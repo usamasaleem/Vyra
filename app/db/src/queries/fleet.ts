@@ -1,4 +1,5 @@
 import type { QueryRunner } from '../runner.js'
+import { backOnFrom, CAR_STATUSES } from './car-status.js'
 
 /**
  * Reading the fleet — the half of `search_vehicles` that can be answered from
@@ -44,6 +45,17 @@ export type FleetVehicle = {
    */
   dailyRateMinor: number | null
   currency: string
+  /**
+   * Off the road today — in service, in the garage, damaged or off sale — and
+   * the first day it can go out again, null when nobody knows yet.
+   *
+   * Still returned rather than left out. Leaving it out would have the agent
+   * tell somebody asking for the Cullinan next month that there is no
+   * Cullinan, which is false; the calendar answers the dates. Which of the
+   * statuses it is stays here: a customer is told the car is not available,
+   * not that it is damaged.
+   */
+  offTheRoad: { backOn: string | null } | null
 }
 
 export type FleetSearch = {
@@ -90,11 +102,24 @@ const SEARCH_SQL = `
          v.plate, v.chassis_number, v.engine, v.power_hp, v.transmission, v.drivetrain,
          v.seats, v.doors,
          v.highlight,
-         r.daily_rate_minor, coalesce(r.currency, 'AED') as currency
+         r.daily_rate_minor, coalesce(r.currency, 'AED') as currency,
+         off_road.end_date as off_until
   from vehicles v
   left join vehicle_rates r
     on r.vehicle_id = v.id and r.operator_id = v.operator_id
    and r.effective_to is null and r.provenance = 'operator_confirmed'
+  -- Its status today, if it has one: see car-status.ts.
+  left join lateral (
+    select a.end_date from vehicle_availability a
+    join operators o on o.id = a.operator_id
+    where a.operator_id = v.operator_id and a.vehicle_id = v.id and a.released_at is null
+      and a.booking_id is null and a.held_for_conversation_id is null
+      and a.reason in (${Object.keys(CAR_STATUSES).map((k) => `'${k}'`).join(', ')})
+      and a.start_date <= to_char(now() at time zone o.timezone, 'YYYY-MM-DD')
+      and a.end_date >= to_char(now() at time zone o.timezone, 'YYYY-MM-DD')
+    order by a.end_date desc
+    limit 1
+  ) off_road on true
   where v.operator_id = $1
     and v.active
     and v.provenance = 'operator_confirmed'
@@ -250,6 +275,7 @@ export async function searchFleet(
       doors: r['doors'] === null ? null : Number(r['doors']),
       dailyRateMinor: r['daily_rate_minor'] == null ? null : Number(r['daily_rate_minor']),
       currency: r['currency'] as string,
+      offTheRoad: r['off_until'] == null ? null : { backOn: backOnFrom(r['off_until'] as string) },
     })),
     availabilityChecked: false,
     fleetSize: Number(size?.['n'] ?? 0),

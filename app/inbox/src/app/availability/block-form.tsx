@@ -32,7 +32,7 @@ export function BlockForm({ vehicles }: { vehicles: Array<{ id: string; label: s
           Why
           <select className="input" name="reason" style={{ marginTop: '0.2rem' }}>
             <option value="booked">Booked</option>
-            <option value="maintenance">Maintenance</option>
+            <option value="maintenance">In service</option>
             <option value="held">Held</option>
             <option value="other">Other</option>
           </select>
