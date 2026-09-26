@@ -104,3 +104,24 @@ function spillsInto(hours: ServiceHours, day: number, minutes: number): boolean 
   const close = minutesOf(yesterday.close)!
   return close < open && minutes < close
 }
+
+/**
+ * Common weeks to start from, so an operator picks one instead of typing
+ * fourteen times.
+ *
+ * Patterns, not anybody's hours: choosing one fills the form and nothing is
+ * saved until the operator presses Save, the same bar as typing it. Dubai's
+ * week is the reason for the shapes — Monday to Friday is the government
+ * week since 2022, and plenty of showrooms still keep Sunday to Thursday.
+ */
+export const SERVICE_HOURS_PATTERNS: ReadonlyArray<{ label: string; hours: ServiceHours }> = [
+  { label: 'Every day, 9am–9pm', hours: everyDay([0, 1, 2, 3, 4, 5, 6], '09:00', '21:00') },
+  { label: 'Every day, 10am–10pm', hours: everyDay([0, 1, 2, 3, 4, 5, 6], '10:00', '22:00') },
+  { label: 'Monday–Saturday, 9am–9pm', hours: everyDay([1, 2, 3, 4, 5, 6], '09:00', '21:00') },
+  { label: 'Monday–Friday, 9am–6pm', hours: everyDay([1, 2, 3, 4, 5], '09:00', '18:00') },
+  { label: 'Sunday–Thursday, 9am–6pm', hours: everyDay([0, 1, 2, 3, 4], '09:00', '18:00') },
+]
+
+function everyDay(days: number[], open: string, close: string): ServiceHours {
+  return Object.fromEntries(days.map((day) => [String(day), { open, close }]))
+}

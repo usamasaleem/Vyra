@@ -1,5 +1,5 @@
 import {
-  AUTOMATED_MESSAGES, AUTOMATED_MESSAGE_LABELS, readServiceHours,
+  AUTOMATED_MESSAGES, AUTOMATED_MESSAGE_LABELS, readServiceHours, readyStarter,
 } from '@vyra/contracts'
 import { getNavCounts, listKnowledge } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
@@ -84,7 +84,14 @@ export default async function MessagesPage() {
 
               {canEdit ? (
                 <div style={{ marginTop: '0.9rem' }}>
-                  <MessageForm topic={topic} current={current} starter={meta.starter(business)} />
+                  <MessageForm
+                    topic={topic}
+                    current={current}
+                    starter={meta.starter(business)}
+                    // The session's name for the business, because that is
+                    // what acceptStarter publishes with.
+                    ready={readyStarter(topic, actor.operatorName)}
+                  />
                 </div>
               ) : (
                 <p className="muted" style={{ margin: '0.6rem 0 0', fontSize: '0.85rem' }}>

@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useRef } from 'react'
+import { SERVICE_HOURS_PATTERNS, type ServiceHours } from '@vyra/contracts'
 import { saveServiceHours, type MessageState } from './actions'
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -15,14 +16,45 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
  * A day left blank is a day they are shut. Blank everywhere means nobody has
  * said — and an operator who has not said is never treated as closed, because
  * telling a customer the office is shut is a claim about their business.
+ *
+ * The common weeks above the days fill the form and save nothing: picking
+ * one is a quicker way to type, and Save is still the act.
  */
 export function HoursForm({ current }: { current: Record<string, { open: string; close: string } | undefined> | null }) {
   const [state, action, pending] = useActionState<MessageState, FormData>(
     saveServiceHours, { error: null },
   )
+  const form = useRef<HTMLFormElement>(null)
+
+  function fill(hours: ServiceHours) {
+    const el = form.current
+    if (el === null) return
+    DAYS.forEach((_, index) => {
+      const day = hours[String(index)]
+      const open = el.elements.namedItem(`open-${index}`) as HTMLInputElement | null
+      const close = el.elements.namedItem(`close-${index}`) as HTMLInputElement | null
+      if (open !== null) open.value = day?.open ?? ''
+      if (close !== null) close.value = day?.close ?? ''
+    })
+  }
 
   return (
-    <form action={action} className="stack" style={{ gap: '0.6rem' }}>
+    <form ref={form} action={action} className="stack" style={{ gap: '0.6rem' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="muted" style={{ fontSize: '0.82rem' }}>Start from:</span>
+        {SERVICE_HOURS_PATTERNS.map((pattern) => (
+          <button
+            key={pattern.label}
+            type="button"
+            className="button secondary"
+            style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+            onClick={() => fill(pattern.hours)}
+          >
+            {pattern.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: 'grid', gap: '0.4rem' }}>
         {DAYS.map((day, index) => {
           const value = current?.[String(index)]
@@ -46,7 +78,7 @@ export function HoursForm({ current }: { current: Record<string, { open: string;
       </div>
 
       <p className="muted" style={{ fontSize: '0.82rem', margin: 0 }}>
-        Leave a day blank to close it. Leave every day blank and the out-of-hours message
+        Pick a common week above or type your own, then save. Leave a day blank to close it. Leave every day blank and the out-of-hours message
         never sends — nobody is assumed to be shut.
       </p>
 

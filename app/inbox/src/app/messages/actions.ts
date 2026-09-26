@@ -1,9 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { hasUnfilledBlank, isAutomatedMessage, readServiceHours } from '@vyra/contracts'
+import { hasUnfilledBlank, isAutomatedMessage, readServiceHours, readyStarter } from '@vyra/contracts'
 import { draftKnowledge, publishKnowledge } from '@vyra/db'
-import { assertPermitted, permissions, requireActor } from '@/lib/auth'
+import { assertPermitted, permissions, requireActor, type Actor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
 
 export type MessageState = { error: string | null; saved?: string }
@@ -40,6 +40,42 @@ export async function saveAutomatedMessage(
     return { error: 'Fill in the ___ before publishing — or take it out if you do not want it.' }
   }
 
+  return await publishMessage(actor, topic, answer, confirmedBy)
+}
+
+/**
+ * Taking the starter as it stands, in one tap.
+ *
+ * The wording comes from the server, never the form, so what is published is
+ * exactly what the page showed beside the button — the operator's name filled
+ * in, any sentence with a blank left out. The approver is the person who
+ * tapped, from the session: pressing "Use this" is putting your name to it,
+ * and asking them to type it as well is the step that kept these unwritten.
+ */
+export async function acceptStarter(
+  _previous: MessageState,
+  formData: FormData,
+): Promise<MessageState> {
+  const actor = await requireActor()
+  assertPermitted(permissions.canAdminister(actor), 'change the automated messages')
+
+  const topic = String(formData.get('topic') ?? '')
+  if (!isAutomatedMessage(topic)) return { error: 'That is not a message the system sends.' }
+  const answer = readyStarter(topic, actor.operatorName)
+  if (answer === null) return { error: 'This one needs writing — use Edit.' }
+
+  return await publishMessage(
+    actor, topic, answer, actor.displayName ?? actor.email ?? actor.membershipId,
+  )
+}
+
+/** Drafted then published, so it gets the same version and name as any answer. */
+async function publishMessage(
+  actor: Actor,
+  topic: string,
+  answer: string,
+  confirmedBy: string,
+): Promise<MessageState> {
   const draft = await draftKnowledge(actorRunner(actor), {
     operatorId: actor.operatorId,
     topic,

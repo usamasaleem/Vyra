@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useRef, useState } from 'react'
-import { saveAutomatedMessage, type MessageState } from './actions'
+import { acceptStarter, saveAutomatedMessage, type MessageState } from './actions'
 
 /**
  * One message, one box, one name — the same shape as an answer, because it
@@ -17,25 +17,70 @@ export function MessageForm({
   topic,
   current,
   starter,
+  ready,
 }: {
   topic: string
   current: string | null
   starter: string
+  /** The starter as one tap publishes it, blanks left out; null when there is none. */
+  ready: string | null
 }) {
   const [state, action, pending] = useActionState<MessageState, FormData>(
     saveAutomatedMessage, { error: null },
   )
+  const [accepted, accept, accepting] = useActionState<MessageState, FormData>(
+    acceptStarter, { error: null },
+  )
+  const [editing, setEditing] = useState(false)
   const box = useRef<HTMLTextAreaElement>(null)
   const [blank, setBlank] = useState(current === null || current.trim() === '')
 
   /** Fill it in, put the cursor at the end, and get out of the way. */
   function useTheDraft() {
+    setEditing(true)
     const el = box.current
     if (el === null) return
     el.value = starter
     setBlank(false)
     el.focus()
     el.setSelectionRange(starter.length, starter.length)
+  }
+
+  if (current === null && ready !== null && !editing) {
+    return (
+      <form action={accept} className="stack" style={{ gap: '0.6rem' }}>
+        <input type="hidden" name="topic" value={topic} />
+        <p className="label" style={{ margin: 0 }}>Ready to use</p>
+        <blockquote
+          style={{
+            margin: 0, padding: '0.6rem 0.85rem', borderLeft: '3px solid var(--border)',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {ready}
+        </blockquote>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="button" type="submit" disabled={accepting}>
+            {accepting ? 'Turning it on…' : 'Use this'}
+          </button>
+          <button
+            className="button secondary"
+            type="button"
+            onClick={() => {
+              setEditing(true)
+              // The box renders on the next paint; fill it once it exists.
+              requestAnimationFrame(useTheDraft)
+            }}
+          >
+            Edit
+          </button>
+          <span className="muted" style={{ fontSize: '0.8rem' }}>
+            Sent under your name once you tap Use this.
+          </span>
+        </div>
+        {accepted.error !== null && <p className="notice">{accepted.error}</p>}
+      </form>
+    )
   }
 
   return (

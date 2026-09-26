@@ -1,3 +1,5 @@
+import { hasUnfilledBlank } from './policy-topics.js'
+
 /**
  * Messages the system sends on its own, in the operator's words.
  *
@@ -145,6 +147,25 @@ export const AUTOMATED_MESSAGE_LABELS: Record<AutomatedMessage, {
     starter: () => 'No rush at all. I will leave it with you — just say the word if you '
       + 'would like me to pick it back up.',
   },
+}
+
+/**
+ * The starter as it can be published in one tap, or null when it cannot.
+ *
+ * The thank-you leaves a blank for a review link, which only the operator can
+ * fill. Offering that sentence in one tap would publish a gap, so the tap
+ * takes the starter without it — every sentence with a blank dropped — and
+ * the operator who wants the review line uses Edit. Null only if nothing is
+ * left, which no starter today does.
+ */
+export function readyStarter(topic: AutomatedMessage, business: string): string | null {
+  const starter = AUTOMATED_MESSAGE_LABELS[topic].starter(business)
+  if (!hasUnfilledBlank(starter)) return starter
+  const kept = (starter.match(/[^.!?]+[.!?:]*\s*/g) ?? [])
+    .filter((sentence) => !hasUnfilledBlank(sentence))
+    .join('')
+    .trim()
+  return kept === '' ? null : kept
 }
 
 /**
