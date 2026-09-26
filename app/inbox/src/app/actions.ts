@@ -3,6 +3,8 @@
 import { headers } from 'next/headers'
 import {
   acceptHandoff,
+  addVehicle,
+  type AddVehicleProblem,
   addNote,
   answerOperationsRequest,
   approveQuote,
@@ -24,6 +26,7 @@ import {
 } from '@vyra/db'
 import { complaintAboutImage } from '@vyra/contracts'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { assertPermitted, permissions, requireActor } from '@/lib/auth'
 import { actorRunner, actorTransactor } from '@/lib/db'
 
@@ -505,49 +508,63 @@ async function servesAPicture(url: string): Promise<string | null> {
   })
 }
 
+/** The photo links as typed, one per line, blanks dropped. */
+function photoLinks(formData: FormData): string[] {
+  return String(formData.get('photoUrls') ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+}
+
 /**
- * Photographs of a car, as public links.
+ * What is wrong with a set of photo links, as a sentence, or null.
  *
- * https only, and checked here rather than trusted: WhatsApp fetches the image
+ * https only, and checked rather than trusted: WhatsApp fetches the image
  * itself and will not follow an http link, so an http URL is a message that
  * silently arrives with no picture. A malformed one is refused for the same
  * reason — the failure would otherwise be invisible until a customer saw
  * nothing.
+ *
+ * Fetched together rather than one at a time — six links checked in sequence
+ * is six timeouts in the worst case, and a save that takes a minute is a save
+ * somebody stops making. The first complaint is the one reported, so the
+ * message names one link to fix rather than listing all of them.
+ */
+async function problemWithPhotoLinks(urls: string[]): Promise<string | null> {
+  for (const url of urls) {
+    if (!url.startsWith('https://')) {
+      return `"${url.slice(0, 40)}" is not an https link. WhatsApp will not fetch it.`
+    }
+    try {
+      new URL(url)
+    } catch {
+      return `"${url.slice(0, 40)}" is not a valid address.`
+    }
+  }
+
+  const verdicts = await Promise.all(urls.map(servesAPicture))
+  const broken = verdicts.findIndex((v) => v !== null)
+  if (broken !== -1) {
+    const url = urls[broken]!
+    const shown = url.length > 52 ? `${url.slice(0, 49)}…` : url
+    return `"${shown}" ${verdicts[broken]!}`
+  }
+  return null
+}
+
+/**
+ * Photographs of a car, as public links.
+ *
+ * Checked by problemWithPhotoLinks before anything is written.
  */
 export async function savePhotos(_previous: PhotoState, formData: FormData): Promise<PhotoState> {
   const actor = await requireActor()
   assertPermitted(permissions.canAdminister(actor), 'change vehicle photographs')
 
   const vehicleId = String(formData.get('vehicleId') ?? '')
-  const urls = String(formData.get('photoUrls') ?? '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '')
-
-  for (const url of urls) {
-    if (!url.startsWith('https://')) {
-      return { error: `"${url.slice(0, 40)}" is not an https link. WhatsApp will not fetch it.` }
-    }
-    try {
-      new URL(url)
-    } catch {
-      return { error: `"${url.slice(0, 40)}" is not a valid address.` }
-    }
-  }
-
-  /**
-   * Fetched together rather than one at a time — six links checked in sequence
-   * is six timeouts in the worst case, and a save that takes a minute is a save
-   * somebody stops making. The first complaint is the one reported, so the
-   * message names one link to fix rather than listing all of them.
-   */
-  const verdicts = await Promise.all(urls.map(servesAPicture))
-  const broken = verdicts.findIndex((v) => v !== null)
-  if (broken !== -1) {
-    const url = urls[broken]!
-    const shown = url.length > 52 ? `${url.slice(0, 49)}…` : url
-    return { error: `"${shown}" ${verdicts[broken]!}` }
-  }
+  const urls = photoLinks(formData)
+  const problem = await problemWithPhotoLinks(urls)
+  if (problem !== null) return { error: problem }
 
   /**
    * The collage URL is written here rather than worked out at send time, so
@@ -577,6 +594,97 @@ export async function savePhotos(_previous: PhotoState, formData: FormData): Pro
   return { error: null }
 }
 
+
+/**
+ * The error, and what was typed. React resets a form once its action returns,
+ * so a refusal that did not hand the values back would make the person type
+ * the whole car again to fix one field.
+ */
+export type AddCarState = { error: string | null; values?: Record<string, string> }
+
+/** What each refusal means to the person holding the form. */
+const ADD_CAR_PROBLEMS: Record<AddVehicleProblem, string> = {
+  make: 'Enter the make, e.g. Lamborghini.',
+  model: 'Enter the model, e.g. Urus.',
+  year: 'Enter the year as four digits, e.g. 2024.',
+  colour: 'Enter the colour.',
+  category: 'Choose a category.',
+  plate: 'Enter the plate as it is written on the car.',
+  chassis: 'Enter the chassis number (VIN).',
+  seats: 'Seats should be a whole number, or left blank.',
+  rate: 'A daily rate is required. The agent cannot quote a car without one.',
+  deposit: 'The deposit should be an amount, or left blank.',
+  plate_taken: 'A car with that plate is already in your fleet.',
+  chassis_taken: 'A car with that chassis number is already in your fleet.',
+}
+
+/**
+ * Adding a car, priced, with its photographs, in one save.
+ *
+ * An administrator's act, like setting a rate: the car arrives confirmed and
+ * the agent can offer it the moment this returns, so whoever presses Save is
+ * the person standing behind it. Amounts convert to fils here, the same single
+ * boundary saveRate uses.
+ */
+export async function addCar(_previous: AddCarState, formData: FormData): Promise<AddCarState> {
+  const actor = await requireActor()
+  try {
+    assertPermitted(permissions.canAdminister(actor), 'add a car')
+  } catch {
+    return { error: 'Only an administrator can add cars.' }
+  }
+
+  const text = (name: string) => String(formData.get(name) ?? '').trim()
+  const whole = (name: string): number | null => {
+    const raw = text(name)
+    return raw === '' ? null : Number(raw)
+  }
+  const toMinor = (name: string): number | null => {
+    const raw = text(name)
+    if (raw === '') return null
+    const value = Number(raw)
+    return Number.isFinite(value) ? Math.round(value * 100) : NaN
+  }
+
+  const values: Record<string, string> = {}
+  for (const [key, value] of formData.entries()) {
+    if (typeof value === 'string' && !key.startsWith('$')) values[key] = value
+  }
+
+  const urls = photoLinks(formData)
+  const photoProblem = await problemWithPhotoLinks(urls)
+  if (photoProblem !== null) return { error: photoProblem, values }
+
+  // Chosen here because the collage link names the car, and is built from the
+  // host serving this request — see savePhotos.
+  const vehicleId = crypto.randomUUID()
+  const host = (await headers()).get('host')
+
+  const result = await addVehicle(actorTransactor(actor), {
+    vehicleId,
+    operatorId: actor.operatorId,
+    membershipId: actor.membershipId,
+    confirmedBy: actor.email ?? actor.membershipId,
+    make: text('make'),
+    model: text('model'),
+    variant: text('variant'),
+    year: whole('year') ?? NaN,
+    colour: text('colour'),
+    category: text('category'),
+    plate: text('plate'),
+    chassisNumber: text('chassisNumber'),
+    seats: whole('seats'),
+    dailyRateMinor: toMinor('dailyRate') ?? 0,
+    depositMinor: toMinor('deposit'),
+    photoUrls: urls,
+    collageUrl: urls.length >= 2 && host !== null ? `https://${host}/api/fleet-photo/${vehicleId}` : null,
+  })
+  if (!result.ok) return { error: ADD_CAR_PROBLEMS[result.problem], values }
+
+  revalidatePath('/rates')
+  revalidatePath('/setup')
+  redirect(`/rates?added=${result.vehicleId}`)
+}
 
 export type HighlightState = { error: string | null }
 

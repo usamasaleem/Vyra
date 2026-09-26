@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { SiteNav } from '../site-nav'
 import { getNavCounts, listRates } from '@vyra/db'
 import { permissions, requireActor } from '@/lib/auth'
@@ -15,7 +16,12 @@ import { HighlightForm } from './highlight-form'
  */
 export const dynamic = 'force-dynamic'
 
-export default async function RatesPage() {
+export default async function RatesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ added?: string }>
+}) {
+  const { added } = await searchParams
   const actor = await requireActor()
   const [counts, rates] = await actorReads(actor, (run) => Promise.all([
     getNavCounts(run, actor.operatorId),
@@ -37,12 +43,22 @@ export default async function RatesPage() {
   return (
     <main className="shell">
       <SiteNav current="rates" counts={counts} />
-      <h1>Rates</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <h1>Rates</h1>
+        {canEdit && <Link className="button" href="/rates/new">Add a car</Link>}
+      </div>
       <p className="muted">
         The agent prices from these and from nothing else. A vehicle with no rate cannot be
         quoted — it says so rather than estimating. Photo links are sent to a customer asking
         about that car.
       </p>
+
+      {added !== undefined && rates.some((r) => r.vehicleId === added) && (
+        <p className="card" style={{ borderLeft: '3px solid var(--accent)' }}>
+          Saved. The agent can offer and quote{' '}
+          <strong>{rates.find((r) => r.vehicleId === added)!.vehicleLabel}</strong> from now on.
+        </p>
+      )}
 
       {unpriced > 0 && (
         <p className="card" style={{ borderLeft: '3px solid var(--accent, #b45309)' }}>
@@ -62,7 +78,9 @@ export default async function RatesPage() {
       )}
 
       {rates.length === 0 ? (
-        <p className="card muted">No confirmed vehicles yet.</p>
+        <p className="card muted">
+          No cars yet.{canEdit && <> <Link href="/rates/new">Add your first car</Link> to let the agent offer it.</>}
+        </p>
       ) : (
         <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0 0', display: 'grid', gap: '0.8rem' }}>
           {rates.map((r) => (

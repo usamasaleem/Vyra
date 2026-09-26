@@ -16,7 +16,8 @@ import { listMembers, listNotes } from '../src/queries/collaboration.ts'
 import { addNote } from '../src/queries/collaboration.ts'
 import { setVehicleRate } from '../src/queries/quotes.ts'
 import { recordUnavailable } from '../src/queries/availability.ts'
-import type { QueryRunner } from '../src/runner.ts'
+import { addVehicle } from '../src/queries/add-vehicle.ts'
+import type { QueryRunner, Transactor } from '../src/runner.ts'
 
 /**
  * Build plan step 14 — the queries the inbox actually runs, run as the role it
@@ -198,6 +199,33 @@ describe('the actions work as the restricted role', () => {
         startDate: '2026-09-20', endDate: '2026-09-23', reason: 'booked', recordedBy: 'Sara',
       }),
     ).resolves.toBeDefined()
+  })
+
+  /**
+   * Adding a car is three writes that must agree — the car, its rate and the
+   * audit record — in one restricted transaction, the way actorTransactor
+   * runs it in the inbox.
+   */
+  it('adds a car with its rate', async () => {
+    const transact: Transactor = async (fn) => {
+      await db.exec('begin')
+      try {
+        await db.query(`select set_config('app.current_user_id', $1, true)`, [USER_A])
+        await db.exec(`set local role vyra_app`)
+        const out = await fn(async (t, p = []) => (await db.query(t, p as unknown[])).rows as Array<Record<string, unknown>>)
+        await db.exec('commit')
+        return out
+      } catch (error) {
+        await db.exec('rollback')
+        throw error
+      }
+    }
+    const added = await addVehicle(transact, {
+      operatorId: OP_A, membershipId: MEMBERSHIP_A, confirmedBy: 'Sara',
+      make: 'Lamborghini', model: 'Urus', year: 2024, colour: 'Nero', category: 'suv',
+      plate: 'D 3', chassisNumber: 'VIN3', dailyRateMinor: 350_000,
+    })
+    expect(added.ok).toBe(true)
   })
 
   /** The note belongs to a conversation this user cannot see, so nothing is written. */

@@ -115,7 +115,7 @@ export async function getSetupState(
       why: 'With an empty fleet the agent cannot name a single car, so every enquiry becomes a question for a person.',
       done: n('cars') > 0,
       detail: n('cars') > 0 ? `${count(n('cars'), 'car')} on file.` : 'No cars yet.',
-      href: '/rates',
+      href: n('cars') > 0 ? '/rates' : '/rates/new',
       blocking: true,
     },
     {
