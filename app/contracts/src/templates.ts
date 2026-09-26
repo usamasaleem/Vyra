@@ -5,7 +5,7 @@
  * customer's last message. Outside it, only a template Meta has approved may
  * be sent — so the day-before reminder for a car booked a week ago, a follow-up
  * the next morning, and a colleague's answer to a question asked yesterday all
- * became tasks for a person. These four are what the agent needs to keep
+ * became tasks for a person. These are what the agent needs to keep
  * going on its own.
  *
  * Fixed wording with the facts as parameters, because that is what Meta
@@ -59,6 +59,14 @@ export const TEMPLATES = {
     body: 'Hello {{1}}, the {{2}} is still available for {{3}}. Would you like us to reserve it for you? Reply to this message and we will take care of it.',
     example: ['James', 'Ferrari 488 Spider', '26 to 28 September'],
     purpose: 'A follow-up on a price the customer was given, when they have been quiet for more than a day.',
+  },
+  waitlist_available: {
+    name: 'vyra_waitlist_available',
+    category: 'UTILITY',
+    language: 'en',
+    body: 'Hello {{1}}, good news: the {{2}} you asked us to watch for is now available for {{3}}. Would you like us to book it for you? Reply to this message and we will take care of it.',
+    example: ['James', 'Lamborghini Huracán', '26 to 28 September'],
+    purpose: 'Tells a customer on the waitlist that the car they wanted has come free, when they have been quiet for more than a day.',
   },
 } as const satisfies Record<string, TemplateDefinition>
 

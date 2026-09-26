@@ -4,6 +4,7 @@ import {
 import { sql } from 'drizzle-orm'
 import { operators } from './operators.js'
 import { conversations } from './conversations.js'
+import { vehicles } from './fleet.js'
 import { followUpState } from './enums.js'
 
 /**
@@ -73,5 +74,69 @@ export const followUps = pgTable(
       .where(sql`state = 'scheduled'`),
     index('follow_ups_due_idx').on(table.state, table.dueAt),
     index('follow_ups_conversation_idx').on(table.conversationId),
+  ],
+)
+
+/**
+ * "Tell me if it frees up."
+ *
+ * A customer who wanted a car that was booked for their dates, and asked to
+ * hear if that changed. Without this the lead went to a competitor on the
+ * spot, and the cancellation two days later freed a car nobody was told about.
+ *
+ * Checked against the calendar every minute rather than hooked into each way a
+ * car can come free — a cancellation, a moved booking, a hold that ran out, a
+ * block a person cleared — because the calendar is where all of those end up,
+ * and a trigger in one of them is a trigger missing from the others.
+ *
+ * Everybody waiting is told at once, oldest first, and the car goes to whoever
+ * books it first: booking takes the car in the calendar, so the second yes is
+ * refused there rather than by anything here.
+ */
+export const waitlistEntries = pgTable(
+  'waitlist_entries',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    operatorId: uuid()
+      .notNull()
+      .references(() => operators.id, { onDelete: 'cascade' }),
+    conversationId: uuid().notNull(),
+    vehicleId: uuid().notNull(),
+
+    /** Inclusive, like the calendar they are checked against. */
+    startDate: text().notNull(),
+    endDate: text().notNull(),
+
+    /** The message that told them, once it went. */
+    notifiedAt: timestamp({ withTimezone: true }),
+    notifiedMessageId: uuid(),
+
+    /**
+     * Why it stopped waiting: 'notified', 'booked' (they took something
+     * else), 'expired' (the first day passed), 'needs_a_person' (it came free
+     * outside the 24 hours with no approved template).
+     */
+    closedReason: text(),
+    closedAt: timestamp({ withTimezone: true }),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId, table.operatorId],
+      foreignColumns: [conversations.id, conversations.operatorId],
+      name: 'waitlist_entries_conversation_operator_fkey',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.vehicleId, table.operatorId],
+      foreignColumns: [vehicles.id, vehicles.operatorId],
+      name: 'waitlist_entries_vehicle_operator_fkey',
+    }).onDelete('cascade'),
+    /** Asking twice for the same car and dates is one place in the queue, not two. */
+    uniqueIndex('waitlist_entries_one_open')
+      .on(table.conversationId, table.vehicleId, table.startDate, table.endDate)
+      .where(sql`closed_at is null`),
+    index('waitlist_entries_open_idx').on(table.operatorId, table.vehicleId).where(sql`closed_at is null`),
   ],
 )

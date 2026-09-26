@@ -2392,9 +2392,11 @@ describe('chasing what the enquiry still needs', () => {
      * on the 15th" went out three times in six minutes from one instruction.
      */
     it('says it once when everything was said the same day', async () => {
+      // Relative, not pinned: a fixed date turns into yesterday and is dropped.
+      const when = soon()
       await remember([
         { field: 'vehicle', value: 'Ferrari 488' },
-        { field: 'start_at', value: '2026-09-25' },
+        { field: 'start_at', value: when.iso },
         { field: 'delivery_preference', value: 'delivery' },
       ])
 
@@ -2402,8 +2404,8 @@ describe('chasing what the enquiry still needs', () => {
       expect(system.split('they said so').length - 1).toBe(1)
       // In the order an enquiry is built up, not alphabetically — which would
       // put delivery before the car and read like a form being read out.
-      expect(system).toContain(
-        'they want the Ferrari 488; it starts Friday 25 September; they want delivery',
+      expect(system).toMatch(
+        new RegExp(`they want the Ferrari 488; it starts \\w+ ${when.spoken}; they want delivery`),
       )
     })
 

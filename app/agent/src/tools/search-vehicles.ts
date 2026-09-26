@@ -323,7 +323,7 @@ export async function searchVehicles(
         checkedMinutesAgo: 0,
       },
       guidance:
-        'This car is recorded as taken for those dates in the operator\'s own calendar. Say so plainly, say when it frees up if that helps, and offer alternatives or other dates. Do not describe it as possibly available or suggest checking again — this is the operator\'s record, not a guess.',
+        'This car is recorded as taken for those dates in the operator\'s own calendar. Say so plainly, say when it frees up if that helps, and offer alternatives or other dates — and ask whether they would like a message if it becomes available; on their yes, call join_waitlist. Do not describe it as possibly available or suggest checking again — this is the operator\'s record, not a guess.',
     })
   }
 

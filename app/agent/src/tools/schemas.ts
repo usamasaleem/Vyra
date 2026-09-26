@@ -167,6 +167,12 @@ export const changeBookingDatesSchema = z.strictObject({
   ),
 })
 
+export const joinWaitlistSchema = z.strictObject({
+  vehicle: z.string().min(1).describe('The exact make and model of the booked car, as search_vehicles returned it.'),
+  startDate: z.string().describe('The first day they want it, YYYY-MM-DD, resolved against the operator\'s today.'),
+  endDate: z.string().describe('The last day, inclusive, YYYY-MM-DD.'),
+})
+
 export const addToBookingSchema = z.strictObject({
   addOnId: z.string().describe(
     'The id of the add-on they want, exactly as listed in your instructions — for example "chauffeur".',
@@ -216,6 +222,7 @@ export const TOOL_SCHEMAS = {
   add_to_booking: addToBookingSchema,
   cancel_booking: cancelBookingSchema,
   change_booking_dates: changeBookingDatesSchema,
+  join_waitlist: joinWaitlistSchema,
 } as const
 
 export type ToolName = keyof typeof TOOL_SCHEMAS
@@ -280,6 +287,11 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     + 'first with customerConfirmed false: nothing changes, and it tells you whether the car is '
     + 'available and the new price. Put that to them and call again with true on their yes. To '
     + 'keep a car they already have for longer, use extend_booking instead.',
+  join_waitlist:
+    'Put them on the waitlist for a car that search_vehicles said is booked on their dates, when '
+    + 'they say yes to being told if it frees up. They get a message here the moment it becomes '
+    + 'available — after a cancellation, say. Offer it once, alongside other cars or dates, and '
+    + 'call it only on their yes. Only for a car the calendar says is booked.',
   /**
    * Deliberately says nothing about who confirms.
    *

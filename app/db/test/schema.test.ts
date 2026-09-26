@@ -93,6 +93,8 @@ describe('schema v1 applies', () => {
       'vehicle_availability',
       'vehicle_rates',
       'vehicles',
+      // Customers waiting to hear that a booked car has come free.
+      'waitlist_entries',
       'whatsapp_accounts',
       // What Meta said about each template the agent may send after 24 hours.
       'whatsapp_templates',

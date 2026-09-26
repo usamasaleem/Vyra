@@ -129,7 +129,7 @@ export async function getAutonomyState(run: QueryRunner, operatorId: string): Pr
     {
       key: 'templates',
       title: 'WhatsApp templates approved by Meta',
-      why: 'After 24 hours of silence WhatsApp only allows an approved template. With them, the day-before and return reminders, a follow-up on a price, and a colleague\u2019s late reply all still reach the customer; without them each becomes a task.',
+      why: 'After 24 hours of silence WhatsApp only allows an approved template. With them, the day-before and return reminders, a follow-up on a price, a colleague\u2019s late reply, and news that a car on the waitlist has come free all still reach the customer; without them each becomes a task.',
       done: n('templates_approved') >= TEMPLATE_COUNT,
       detail: `${n('templates_approved')} of ${TEMPLATE_COUNT} approved.`,
       href: null,

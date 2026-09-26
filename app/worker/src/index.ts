@@ -12,6 +12,7 @@ import {
 } from '@vyra/db'
 import { sendDueFollowUps } from './follow-ups.js'
 import { sendDueReminders } from './reminders.js'
+import { sendWaitlistNotices } from './waitlist.js'
 import { sendTeamAlerts, TEAM_ALERT_INTERVAL_MS } from './team-alerts.js'
 import { syncTemplates, TEMPLATE_SYNC_INTERVAL_MS } from './templates.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
@@ -359,6 +360,12 @@ async function relayLoop(): Promise<void> {
         const reminded = await sendDueReminders(query, log)
         if (reminded.sent > 0 || reminded.raisedForAPerson > 0) {
           log({ event: 'reminders.swept', ...reminded })
+        }
+
+        // A booked car that has come free, for whoever asked to be told.
+        const waited = await sendWaitlistNotices(query, log)
+        if (waited.sent > 0 || waited.raisedForAPerson > 0) {
+          log({ event: 'waitlist.swept', ...waited })
         }
 
         /**

@@ -379,6 +379,13 @@
       "when": 1790357366863,
       "tag": "0053_payment_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790382153051,
+      "tag": "0054_waitlist",
+      "breakpoints": true
     }
   ]
 }

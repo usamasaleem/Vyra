@@ -13,6 +13,7 @@ import { holdCarTool } from './hold-car.js'
 import { offerDiscount } from './offer-discount.js'
 import { addToBookingTool } from './add-to-booking.js'
 import { cancelBookingTool, changeBookingDatesTool } from './change-booking.js'
+import { joinWaitlistTool } from './join-waitlist.js'
 
 /**
  * Build plan step 24 — the boundary itself.
@@ -47,6 +48,7 @@ const IMPLEMENTATIONS: {
   add_to_booking: addToBookingTool,
   cancel_booking: cancelBookingTool,
   change_booking_dates: changeBookingDatesTool,
+  join_waitlist: joinWaitlistTool,
 }
 
 export type ToolCallRecord = {
