@@ -12,23 +12,23 @@ go without stopping for approval.
 
 ## The quick check — every run starts here, and most end here
 
-Most checks find nothing to do, and every model call re-reads the whole session, so this check is three calls.
-While you are in it: write no messages between steps, read no other file (no CLAUDE.md, no memory), and run no git.
+Most checks find nothing to do, and every model call re-reads the whole session, so an idle check is three calls and
+writes nothing. While you are in it: write no messages between steps, read no other file (no CLAUDE.md, no memory),
+run no git, and make no board writes (an update needs a version you would have to read first; that is a call).
 
-1. In ONE message, call both: ToolSearch with "select:ArtifactData", and Bash `date -u +%Y-%m-%dT%H:%M:%SZ`. Its output
-   is "now". Work out "recent" = now minus 40 minutes, in the same ISO form.
-2. In ONE message, make all four ArtifactData calls on https://claude.ai/artifact/K5TXRVHyU3gzqpqoMin4sz:
-   a. update — collection "meta", doc_id "state", data {"lastCheckAt": now}. No if_version: that field belongs to the check.
-   b. get — collection "meta", doc_id "state".
-   c. query — collection "items", where status == "queued", order_by queuedAt ascending, limit 1.
-   d. query — collection "items", where updatedAt > recent, limit 10.
+1. Your first message (the routine's prompt asks for this) calls three tools together: Read this file, ToolSearch with
+   "select:ArtifactData", and Bash `date -u +%Y-%m-%dT%H:%M:%SZ`. The date is "now"; "recent" = now minus 40 minutes.
+2. In ONE message, make all three ArtifactData calls on https://claude.ai/artifact/K5TXRVHyU3gzqpqoMin4sz:
+   a. get — collection "meta", doc_id "state".
+   b. query — collection "items", where status == "queued", order_by queuedAt ascending, limit 1.
+   c. query — collection "items", where updatedAt > recent, limit 10.
 3. Decide, from what came back:
    - `builder` in meta/state (defaults: every 60). slack = min(5, ceil(every / 5)) minutes.
    - retune = `builder.tunedAt` is missing, or `builder.changedAt` is later than it.
-   - changed = the cards from (d) whose updatedAt is later than the top-level `upkeepAt` (all of them if it is missing).
-   - build = a card came back from (c) and either `runNow` or `runAll` is true, or `every` > 0 and `lastRunAt` is
+   - changed = the cards from (c) whose updatedAt is later than the top-level `upkeepAt` (all of them if it is missing).
+   - build = a card came back from (b) and either `runNow` or `runAll` is true, or `every` > 0 and `lastRunAt` is
      missing or at least (every − slack) minutes before now.
-   - stale = `runNow` or `runAll` is true but nothing came back from (c); those flags need clearing.
+   - stale = `runNow` or `runAll` is true but nothing came back from (b); those flags need clearing.
    If build, retune, changed and stale are all false, stop now. Your whole reply is one line: "Nothing queued.", "Not due
    yet.", or "Paused on the board." Write nothing else anywhere.
    Otherwise read `.claude/builder-full.md` and follow it, carrying over everything above.
