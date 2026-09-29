@@ -13,6 +13,7 @@ import {
 import { sendDueFollowUps } from './follow-ups.js'
 import { sendDueReminders } from './reminders.js'
 import { sendWaitlistNotices } from './waitlist.js'
+import { relayDelayMs } from './idle-delay.js'
 import { sendTeamAlerts, TEAM_ALERT_INTERVAL_MS } from './team-alerts.js'
 import { syncTemplates, TEMPLATE_SYNC_INTERVAL_MS } from './templates.js'
 import { publishToGraphileWorker, relayOnce, type QueryRunner, type Transactor } from './relay.js'
@@ -217,8 +218,6 @@ function waitedMs(job: { run_at: Date }): number {
  */
 const SLOW_QUEUE_MS = 15_000
 
-const IDLE_INTERVAL_MS = 250
-
 /**
  * A worker killed between claiming a send and hearing back from Meta leaves
  * the row in `dispatching` forever. Sweep those into `unknown` so a person can
@@ -229,6 +228,8 @@ const REAP_INTERVAL_MS = 60_000
 let lastReapAt = 0
 let lastAlertAt = 0
 let lastTemplateSyncAt = 0
+// When the relay last found something to publish; the pace between passes follows it (idle-delay.ts).
+let lastWorkAt = Date.now()
 
 let running = true
 let relayInFlight: Promise<unknown> = Promise.resolve()
@@ -239,6 +240,7 @@ async function relayLoop(): Promise<void> {
       relayInFlight = relayOnce(transact, publishToGraphileWorker)
       const result = (await relayInFlight) as Awaited<ReturnType<typeof relayOnce>>
       if (result.claimed > 0) {
+        lastWorkAt = Date.now()
         log({ event: 'relay.pass', ...result })
         continue
       }
@@ -399,7 +401,7 @@ async function relayLoop(): Promise<void> {
     } catch (error) {
       log({ event: 'relay.error', error: messageOf(error) })
     }
-    await new Promise((resolve) => setTimeout(resolve, IDLE_INTERVAL_MS))
+    await new Promise((resolve) => setTimeout(resolve, relayDelayMs(Date.now() - lastWorkAt)))
   }
 }
 

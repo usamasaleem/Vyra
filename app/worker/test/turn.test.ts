@@ -659,8 +659,8 @@ describe('the surface for the question the agent was told to ask', () => {
   it('does not offer to confirm a booking it has just confirmed', async () => {
     await know([
       { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
-      { field: 'start_at', value: '2026-09-25' },
-      { field: 'end_at', value: '2026-09-27' },
+      { field: 'start_at', value: soon(20).iso },
+      { field: 'end_at', value: soon(22).iso },
       { field: 'delivery_preference', value: 'delivery' },
     ])
 
@@ -677,10 +677,11 @@ describe('the surface for the question the agent was told to ask', () => {
       `insert into quotes (operator_id, conversation_id, enquiry_id, vehicle_id, revision,
                            state, total_minor, lines, start_date, end_date, days, valid_until,
                            approved_by_membership_id, approved_at)
-       values ($1,$2,$3,$4,1,'sent',800000,'[]'::jsonb,'2026-09-25','2026-09-27',2,
+       values ($1,$2,$3,$4,1,'sent',800000,'[]'::jsonb,$6,$7,2,
                now() + interval '5 days', $5, now())
        returning id`,
-      [OP, CONV, enquiryId, car!['id'], MEMBER],
+      // Relative, not pinned: a fixed date turns into the past, and the test then asserts nothing.
+      [OP, CONV, enquiryId, car!['id'], MEMBER, soon(20).iso, soon(22).iso],
     )
     await run(
       `update operators set auto_confirm_bookings = true,
@@ -710,8 +711,8 @@ describe('the surface for the question the agent was told to ask', () => {
   it('offers delivery buttons when delivery is the outstanding question', async () => {
     await know([
       { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
-      { field: 'start_at', value: '2026-09-25' },
-      { field: 'end_at', value: '2026-09-27' },
+      { field: 'start_at', value: soon(20).iso },
+      { field: 'end_at', value: soon(22).iso },
     ])
 
     const { buttons } = await surfacesOn(
@@ -727,8 +728,8 @@ describe('the surface for the question the agent was told to ask', () => {
   it('hears a phrasing the prose matcher never did', async () => {
     await know([
       { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
-      { field: 'start_at', value: '2026-09-25' },
-      { field: 'end_at', value: '2026-09-27' },
+      { field: 'start_at', value: soon(20).iso },
+      { field: 'end_at', value: soon(22).iso },
     ])
 
     const { buttons } = await surfacesOn('Happy to drop it anywhere in Dubai — or collect from us?')
@@ -742,8 +743,8 @@ describe('the surface for the question the agent was told to ask', () => {
   it('offers nothing when the reply went somewhere else', async () => {
     await know([
       { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
-      { field: 'start_at', value: '2026-09-25' },
-      { field: 'end_at', value: '2026-09-27' },
+      { field: 'start_at', value: soon(20).iso },
+      { field: 'end_at', value: soon(22).iso },
     ])
 
     const { buttons, list } = await surfacesOn('It has a 6.75 litre V12 and 571 horsepower.')
@@ -776,8 +777,8 @@ describe('offering to have a booking confirmed', () => {
       operatorId: OP, enquiryId,
       observations: [
         { field: 'vehicle', value: 'Rolls-Royce Cullinan' },
-        { field: 'start_at', value: '2026-09-25' },
-        { field: 'end_at', value: '2026-09-27' },
+        { field: 'start_at', value: soon(20).iso },
+        { field: 'end_at', value: soon(22).iso },
         { field: 'delivery_preference', value: 'delivery' },
       ],
     })
@@ -2297,8 +2298,8 @@ describe('chasing what the enquiry still needs', () => {
       operatorId: OP, enquiryId,
       observations: [
         { field: 'vehicle', value: 'Ferrari 488' },
-        { field: 'start_at', value: '2026-09-25' },
-        { field: 'end_at', value: '2026-09-28' },
+        { field: 'start_at', value: soon(20).iso },
+        { field: 'end_at', value: soon(23).iso },
         { field: 'delivery_preference', value: 'delivery' },
       ],
     })
