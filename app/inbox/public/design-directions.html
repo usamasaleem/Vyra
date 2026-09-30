@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Inventory dashboard: three directions</title>
+<style>
+  :root { --ink:#1a1a18; --mute:#65625c; --edge:#e4e3df; --page:#f2f2ef; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",system-ui,sans-serif; }
+  header { max-width:72rem; margin:0 auto; padding:2rem 1.25rem 0; }
+  h1 { font-size:1.5rem; margin:0 0 .4rem; letter-spacing:-.01em; }
+  header p { margin:.2rem 0; color:var(--mute); max-width:46rem; }
+  .grid { max-width:72rem; margin:1.5rem auto 3rem; padding:0 1.25rem; display:grid; gap:1.5rem; grid-template-columns:repeat(auto-fit,minmax(21rem,1fr)); }
+  .dir { display:flex; flex-direction:column; gap:.6rem; }
+  .dir h2 { font-size:1.05rem; margin:0; }
+  .dir .why { color:var(--mute); font-size:.85rem; margin:0; }
+  .frame { border-radius:16px; padding:1.1rem; border:1px solid var(--edge); min-height:36rem; }
+  .frame h3 { margin:0 0 .15rem; font-size:1.2rem; letter-spacing:-.01em; }
+  .frame .sub { margin:0 0 1rem; font-size:.8rem; opacity:.7; }
+  .car { width:100%; display:block; }
+  label { display:block; font-size:.74rem; margin-bottom:.15rem; opacity:.75; }
+  .f { border:1px solid; border-radius:8px; padding:.5rem .65rem; font-size:.9rem; margin-bottom:.7rem; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+  .btn { display:inline-block; padding:.6rem 1.1rem; font-weight:600; font-size:.9rem; margin-top:.4rem; }
+  .pick { color:var(--mute); font-size:.85rem; }
+  .note { max-width:72rem; margin:0 auto 3rem; padding:0 1.25rem; color:var(--mute); font-size:.85rem; }
+
+  /* A: quiet, the current look refined */
+  .A { background:#fff; }
+  .A .f { border-color:var(--edge); background:#fff; }
+  .A .sect { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:var(--mute); margin:1rem 0 .5rem; padding-top:.8rem; border-top:1px solid var(--edge); }
+  .A .btn { background:var(--ink); color:#fff; border-radius:8px; }
+  .A .car-box { border:1px solid var(--edge); border-radius:10px; padding:.6rem; margin-bottom:.9rem; background:#fafaf8; }
+
+  /* B: big photo tiles, soft grey, one bright accent (from the reference) */
+  .B { background:#eeeff1; }
+  .B .hero { background:#fff; border-radius:20px; padding:.9rem; margin-bottom:.9rem; }
+  .B .chips { display:flex; gap:.4rem; flex-wrap:wrap; margin:.6rem 0 0; }
+  .B .chip { border:1px solid #cfd0d4; border-radius:999px; padding:.15rem .7rem; font-size:.78rem; background:#fff; }
+  .B .chip.on { background:#111; color:#fff; border-color:#111; }
+  .B .panel { background:#fff; border-radius:20px; padding:.9rem; }
+  .B .f { border-color:transparent; background:#eeeff1; border-radius:12px; }
+  .B .btn { background:#d9f24a; color:#111; border-radius:999px; }
+  .B .pillbar { background:#d9f24a; border-radius:999px; padding:.3rem; display:flex; gap:.3rem; margin-bottom:.9rem; width:max-content; }
+  .B .pillbar span { padding:.2rem .8rem; border-radius:999px; font-size:.8rem; }
+  .B .pillbar .on { background:#111; color:#fff; }
+
+  /* C: dense, spreadsheet-like, for operators with many cars */
+  .C { background:#fff; font-size:.85rem; }
+  .C table { width:100%; border-collapse:collapse; margin-bottom:.9rem; }
+  .C th, .C td { text-align:left; padding:.35rem .5rem; border:1px solid var(--edge); font-weight:400; }
+  .C th { background:#f6f6f4; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--mute); }
+  .C td.in { background:#fffdf3; color:var(--mute); }
+  .C .btn { background:#b4520f; color:#fff; border-radius:4px; }
+  .C .strip { display:flex; gap:.4rem; margin-bottom:.9rem; }
+  .C .strip svg { width:4.2rem; border:1px solid var(--edge); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Inventory dashboard: three directions</h1>
+  <p>The same "Add a car" screen, drawn three ways with the fields it really has today. The car drawing is a stand-in; real listings show the operator's own photos. Look at all three, then tell Vyra which one to build the fleet, photo and pricing pages against.</p>
+</header>
+
+<div class="grid">
+
+  <section class="dir">
+    <h2>A. Quiet</h2>
+    <p class="why">Today's white look, tidied: grouped sections, one dark button, orange only where something needs acting on. Least change, safest to roll out everywhere.</p>
+    <div class="frame A">
+      <h3>Add a car</h3>
+      <p class="sub">The agent can offer and quote it as soon as you save.</p>
+      <div class="car-box"><svg class="car" viewBox="0 0 300 90" aria-label="car placeholder"><path d="M20 62 L45 40 Q60 28 95 26 L190 26 Q225 30 245 46 L280 56 L280 68 L20 68 Z" fill="#cfcdc6"/><circle cx="82" cy="70" r="14" fill="#1a1a18"/><circle cx="222" cy="70" r="14" fill="#1a1a18"/></svg></div>
+      <div class="sect" style="margin-top:0;border:0;padding:0">The car</div>
+      <div class="row"><div><label>Make</label><div class="f">Lamborghini</div></div><div><label>Model</label><div class="f">Urus</div></div></div>
+      <div class="row"><div><label>Year</label><div class="f">2024</div></div><div><label>Colour</label><div class="f">Nero</div></div></div>
+      <div class="sect">Price (AED)</div>
+      <div class="row"><div><label>Per day</label><div class="f">1,900</div></div><div><label>Deposit</label><div class="f">5,000</div></div></div>
+      <span class="btn">Save car</span>
+    </div>
+    <span class="pick">Best if: you want the least risk and one look across the whole product.</span>
+  </section>
+
+  <section class="dir">
+    <h2>B. Photo first</h2>
+    <p class="why">Borrows from your reference: big car photo on top, rounded soft cards, pill buttons, one bright accent. Feels like a premium consumer app.</p>
+    <div class="frame B">
+      <div class="pillbar"><span class="on">Fleet</span><span>Rates</span><span>Availability</span></div>
+      <div class="hero">
+        <h3>Lamborghini Urus</h3>
+        <p class="sub">Nero · 2024 · SUV</p>
+        <svg class="car" viewBox="0 0 300 90" aria-label="car placeholder"><path d="M20 62 L45 40 Q60 28 95 26 L190 26 Q225 30 245 46 L280 56 L280 68 L20 68 Z" fill="#d9f24a"/><circle cx="82" cy="70" r="14" fill="#111"/><circle cx="222" cy="70" r="14" fill="#111"/></svg>
+        <div class="chips"><span class="chip on">Crossover</span><span class="chip">Sedan</span><span class="chip">Coupe</span><span class="chip">SUV</span></div>
+      </div>
+      <div class="panel">
+        <div class="row"><div><label>Per day (AED)</label><div class="f">1,900</div></div><div><label>Deposit</label><div class="f">5,000</div></div></div>
+        <span class="btn">Save car</span>
+      </div>
+    </div>
+    <span class="pick">Best if: photos are what sells a car and you want the dashboard to look like the product.</span>
+  </section>
+
+  <section class="dir">
+    <h2>C. Spreadsheet</h2>
+    <p class="why">Dense rows, tiny thumbnails, everything visible at once. Fast for someone adding thirty cars; less pretty on a phone.</p>
+    <div class="frame C">
+      <h3>Add a car</h3>
+      <p class="sub">Fill the yellow cells. Press Tab to move on.</p>
+      <div class="strip"><svg viewBox="0 0 300 90"><rect width="300" height="90" fill="#f6f6f4"/><path d="M20 62 L45 40 Q60 28 95 26 L190 26 Q225 30 245 46 L280 56 L280 68 L20 68 Z" fill="#cfcdc6"/></svg><svg viewBox="0 0 300 90"><rect width="300" height="90" fill="#f6f6f4"/><text x="150" y="52" font-size="30" text-anchor="middle" fill="#999">+</text></svg></div>
+      <table>
+        <tr><th>Field</th><th>Value</th></tr>
+        <tr><td>Make</td><td class="in">Lamborghini</td></tr>
+        <tr><td>Model</td><td class="in">Urus</td></tr>
+        <tr><td>Year</td><td class="in">2024</td></tr>
+        <tr><td>Colour</td><td class="in">Nero</td></tr>
+        <tr><td>Plate</td><td class="in">Dubai A 12345</td></tr>
+        <tr><td>Per day (AED)</td><td class="in">1,900</td></tr>
+        <tr><td>Deposit (AED)</td><td class="in">5,000</td></tr>
+      </table>
+      <span class="btn">Save car</span>
+    </div>
+    <span class="pick">Best if: operators have big fleets and value speed over polish.</span>
+  </section>
+
+</div>
+<p class="note">Nothing here is connected to real data or changes the live pages. Vyra's suggestion: B for the look, with A's grouped sections on long forms.</p>
+</body>
+</html>
