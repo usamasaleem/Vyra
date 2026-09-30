@@ -53,7 +53,12 @@ export default async function RatesPage({
       <SiteNav current="rates" counts={counts} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <h1>Rates</h1>
-        {canEdit && <Link className="button" href="/rates/new">Add a car</Link>}
+        {canEdit && (
+          <span style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Link className="button" href="/rates/import">Import from a spreadsheet</Link>
+            <Link className="button" href="/rates/new">Add a car</Link>
+          </span>
+        )}
       </div>
       <p className="muted">
         The agent prices from these and from nothing else. A vehicle with no rate cannot be

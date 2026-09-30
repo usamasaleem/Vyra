@@ -4,6 +4,9 @@ import { headers } from 'next/headers'
 import {
   acceptHandoff,
   addVehicle,
+  readFleetSheet,
+  type SheetCar,
+  type SheetRowProblem,
   type AddVehicleProblem,
   addNote,
   answerOperationsRequest,
@@ -978,4 +981,168 @@ export async function dismissRequest(formData: FormData): Promise<void> {
     reason: String(formData.get('reason') ?? '').trim() || 'No longer needed.',
   })
   revalidatePath('/operations')
+}
+
+
+/**
+ * Importing a fleet from a spreadsheet: read it, show what was understood,
+ * and only then save.
+ *
+ * The preview saves nothing. The confirm step re-checks every car through
+ * `addVehicle`, so a hand-edited form cannot save anything the add-a-car form
+ * would refuse, and a car already on file is skipped and named, not doubled.
+ */
+export type FleetImportPreviewRow = { line: number; car: SheetCar; problem: SheetRowProblem | null }
+export type FleetImportState = {
+  error: string | null
+  preview?: {
+    matched: Record<string, string>
+    missing: string[]
+    rows: FleetImportPreviewRow[]
+  }
+  saved?: { added: number; skipped: Array<{ line: number; label: string; why: string }> }
+}
+
+const IMPORT_LIMIT_BYTES = 2 * 1024 * 1024
+const IMPORT_LIMIT_ROWS = 200
+
+/** Comma- or semicolon-separated text with quoted cells, as Excel and Numbers write it. */
+function csvCells(text: string): string[][] {
+  const clean = text.replace(/^\uFEFF/, '')
+  const delimiter = (clean.split('\n', 1)[0] ?? '').split(';').length > (clean.split('\n', 1)[0] ?? '').split(',').length ? ';' : ','
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+  for (let i = 0; i < clean.length; i++) {
+    const c = clean[i]!
+    if (quoted) {
+      if (c === '"' && clean[i + 1] === '"') { cell += '"'; i++ }
+      else if (c === '"') quoted = false
+      else cell += c
+    } else if (c === '"') quoted = true
+    else if (c === delimiter) { row.push(cell); cell = '' }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && clean[i + 1] === '\n') i++
+      row.push(cell); rows.push(row); row = []; cell = ''
+    } else cell += c
+  }
+  if (cell !== '' || row.length > 0) { row.push(cell); rows.push(row) }
+  return rows
+}
+
+const squashId = (s: string) => s.toUpperCase().replace(/[\s-]+/g, '')
+
+export async function previewFleetImport(
+  _previous: FleetImportState,
+  formData: FormData,
+): Promise<FleetImportState> {
+  const actor = await requireActor()
+  try {
+    assertPermitted(permissions.canAdminister(actor), 'import cars')
+  } catch {
+    return { error: 'Only an administrator can add cars.' }
+  }
+
+  const file = formData.get('sheet')
+  if (!(file instanceof File) || file.size === 0) return { error: 'Choose an Excel or CSV file first.' }
+  if (file.size > IMPORT_LIMIT_BYTES) return { error: 'That file is too large. Keep it under 2 MB.' }
+
+  let cells: unknown[][]
+  try {
+    if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
+      cells = csvCells(await file.text())
+    } else if (/\.xlsx$/i.test(file.name)) {
+      const { readSheet } = await import('read-excel-file/node')
+      cells = (await readSheet(Buffer.from(await file.arrayBuffer()))) as unknown[][]
+    } else {
+      return { error: 'Upload an .xlsx or .csv file. For an older .xls file, open it and save it as .xlsx first.' }
+    }
+  } catch {
+    return { error: 'That file could not be read. Check it opens in Excel, or save it again as .xlsx or .csv.' }
+  }
+
+  const sheet = readFleetSheet(cells)
+  if (!sheet.ok) {
+    return {
+      error: sheet.reason === 'empty'
+        ? 'That file is empty.'
+        : 'No column headings found. The first row should say things like Make, Model, Year, Plate and Daily rate.',
+    }
+  }
+  if (sheet.rows.length === 0) return { error: 'The file has headings but no cars under them.' }
+  if (sheet.rows.length > IMPORT_LIMIT_ROWS) {
+    return { error: `That is ${sheet.rows.length} rows. Import up to ${IMPORT_LIMIT_ROWS} cars at a time.` }
+  }
+
+  // Cars already on file are named now, not discovered after pressing Import.
+  const onFile = await actorRunner(actor)(
+    'select plate, chassis_number from vehicles where operator_id = $1',
+    [actor.operatorId],
+  )
+  const plates = new Set(onFile.map((r) => squashId(String(r['plate'] ?? ''))))
+  const chassis = new Set(onFile.map((r) => squashId(String(r['chassis_number'] ?? ''))))
+  const rows = sheet.rows.map((r) => ({
+    ...r,
+    problem: r.problem
+      ?? (plates.has(squashId(r.car.plate)) ? ('plate_taken' as const)
+        : chassis.has(squashId(r.car.chassisNumber)) ? ('chassis_taken' as const) : null),
+  }))
+
+  return { error: null, preview: { matched: sheet.matched, missing: sheet.missing, rows } }
+}
+
+export async function confirmFleetImport(
+  _previous: FleetImportState,
+  formData: FormData,
+): Promise<FleetImportState> {
+  const actor = await requireActor()
+  try {
+    assertPermitted(permissions.canAdminister(actor), 'import cars')
+  } catch {
+    return { error: 'Only an administrator can add cars.' }
+  }
+
+  let rows: FleetImportPreviewRow[]
+  try {
+    rows = JSON.parse(String(formData.get('cars') ?? '[]')) as FleetImportPreviewRow[]
+    if (!Array.isArray(rows) || rows.length > IMPORT_LIMIT_ROWS) throw new Error('shape')
+  } catch {
+    return { error: 'Something went wrong reading the preview. Upload the file again.' }
+  }
+
+  const skipped: Array<{ line: number; label: string; why: string }> = []
+  let added = 0
+  for (const { line, car, problem } of rows) {
+    const label = `${car?.make ?? ''} ${car?.model ?? ''}`.trim() || `Row ${line}`
+    if (problem !== null) {
+      skipped.push({
+        line, label,
+        why: problem === 'repeated_in_sheet' ? 'Listed twice in the sheet.' : ADD_CAR_PROBLEMS[problem],
+      })
+      continue
+    }
+    const result = await addVehicle(actorTransactor(actor), {
+      operatorId: actor.operatorId,
+      membershipId: actor.membershipId,
+      confirmedBy: actor.email ?? actor.membershipId,
+      make: String(car.make ?? ''),
+      model: String(car.model ?? ''),
+      variant: String(car.variant ?? ''),
+      year: Number(car.year),
+      colour: String(car.colour ?? ''),
+      category: String(car.category ?? ''),
+      plate: String(car.plate ?? ''),
+      chassisNumber: String(car.chassisNumber ?? ''),
+      seats: car.seats === null ? null : Number(car.seats),
+      dailyRateMinor: Number(car.dailyRateMinor),
+      depositMinor: car.depositMinor === null ? null : Number(car.depositMinor),
+    })
+    if (result.ok) added++
+    else skipped.push({ line, label, why: ADD_CAR_PROBLEMS[result.problem] })
+  }
+
+  revalidatePath('/rates')
+  revalidatePath('/setup')
+  return { error: null, saved: { added, skipped } }
 }
